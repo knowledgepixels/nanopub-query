@@ -2,7 +2,7 @@ version: '2'
 services:
   query:
     build: .
-    #image: nanopub/query
+#   image: nanopub/query
     restart: unless-stopped
     ports:
       - 9393:8080
@@ -11,11 +11,11 @@ services:
   virtuoso:
     image: openlink/virtuoso-opensource-7:latest
     restart: unless-stopped
-    ports:
-      - 8890:8890
-      #- 1111:1111
+#   ports:
+#     - 8890:8890
+#     - 1111:1111
     environment:
-      #- SPARQL_UPDATE=true
+#     - SPARQL_UPDATE=true
       - DBA_PASSWORD=dba
       - VIRT_SPARQL_MaxQueryExecutionTime=600
       - VIRT_SPARQL_MaxQueryCostEstimationTime=0
