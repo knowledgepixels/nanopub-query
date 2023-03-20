@@ -1,0 +1,10 @@
+version: '2'
+services:
+  registry:
+    build: .
+    #image: nanopub/query
+    restart: unless-stopped
+    ports:
+      - 9393:8080
+    volumes:
+      - ./load:/usr/local/tomcat/load
