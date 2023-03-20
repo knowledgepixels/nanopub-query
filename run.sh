@@ -10,4 +10,4 @@ echo "-------------------------------------"
 echo "Starting up at http://localhost:9393/"
 echo "-------------------------------------"
 
-docker run -v "$(pwd)/target/nanopub-query/":/usr/local/tomcat/webapps/ROOT -p 9393:8080 tomcat:10
+docker run -v "$(pwd)/target/nanopub-query":/usr/local/tomcat/webapps/ROOT -v "$(pwd)/load":/usr/local/tomcat/load -p 9393:8080 tomcat:10

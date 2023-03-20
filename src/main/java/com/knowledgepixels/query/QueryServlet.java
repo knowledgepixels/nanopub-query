@@ -13,6 +13,11 @@ public class QueryServlet extends HttpServlet {
 
 	//private Logger logger = LoggerFactory.getLogger(this.getClass());
 
+	static {
+		System.err.println("Loading Query Servlet...");
+		LocalListLoader.load();
+	}
+
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		try {
