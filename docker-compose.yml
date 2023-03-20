@@ -1,6 +1,6 @@
 version: '2'
 services:
-  registry:
+  query:
     build: .
     #image: nanopub/query
     restart: unless-stopped
@@ -8,3 +8,16 @@ services:
       - 9393:8080
     volumes:
       - ./load:/usr/local/tomcat/load
+  virtuoso:
+    image: openlink/virtuoso-opensource-7:latest
+    restart: unless-stopped
+    ports:
+      - 8890:8890
+      #- 1111:1111
+    environment:
+      #- SPARQL_UPDATE=true
+      - DBA_PASSWORD=dba
+      - VIRT_SPARQL_MaxQueryExecutionTime=600
+      - VIRT_SPARQL_MaxQueryCostEstimationTime=0
+    volumes:
+      - ./data/virtuoso:/database
