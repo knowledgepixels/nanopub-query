@@ -44,9 +44,12 @@ public class MainVerticle extends AbstractVerticle {
 		vertx.createHttpServer().requestHandler(req -> {
 			try {
 				req.setExpectMultipart(true);
+				final StringBuilder payload = new StringBuilder();
 				req.handler(data -> {
-					String dataString = data.toString("UTF-8");
-					System.err.println("Received data: " + dataString);
+					payload.append(data.toString("UTF-8"));
+				});
+				req.endHandler(handler -> {
+					final String dataString = payload.toString();
 					TripleStoreThread ts = QueryApplication.get().getTripleStoreThread();
 					if (ts == null) {
 						req.response().setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR)

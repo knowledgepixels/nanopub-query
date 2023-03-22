@@ -16,8 +16,8 @@ services:
   virtuoso:
     image: openlink/virtuoso-opensource-7:latest
     restart: unless-stopped
-#   ports:
-#     - 8890:8890
+    ports:
+      - 8890:8890
 #     - 1111:1111
     environment:
 #     - SPARQL_UPDATE=true

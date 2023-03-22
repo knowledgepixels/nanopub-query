@@ -5,9 +5,13 @@ ENV TMP_DIR /tmp
 
 WORKDIR $TMP_DIR
 
-COPY . .
+COPY pom.xml pom.xml
 
-RUN mvn clean install && \
+RUN mvn install
+
+COPY src src
+
+RUN mvn install -o && \
     mkdir $APP_DIR && \
     mv target/nanopub-query-*-SNAPSHOT-fat.jar $APP_DIR/nanopub-query.jar && \
     rm -rf $TMP_DIR
