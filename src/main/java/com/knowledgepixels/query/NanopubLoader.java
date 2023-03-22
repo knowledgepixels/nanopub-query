@@ -17,7 +17,6 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
-import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
 import org.nanopub.SimpleTimestampPattern;
@@ -38,7 +37,7 @@ public class NanopubLoader {
 		// TODO
 	}
 
-	public static void process(RepositoryConnection conn, Nanopub np, RDFFormat format) throws RDF4JException {
+	public static void process(RepositoryConnection conn, Nanopub np) throws RDF4JException {
 		// TODO: Check for null characters ("\0"), which can cause problems in Virtuoso.
 		List<Statement> statements = new ArrayList<>();
 		String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());

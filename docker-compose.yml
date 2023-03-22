@@ -9,6 +9,10 @@ services:
       - 9393:9393
     volumes:
       - ./load:/app/load
+    environment:
+      - ENDPOINT=http://virtuoso:1111
+      - USERNAME=dba
+      - PASSWORD=dba
   virtuoso:
     image: openlink/virtuoso-opensource-7:latest
     restart: unless-stopped

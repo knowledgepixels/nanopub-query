@@ -3,6 +3,11 @@ package com.knowledgepixels.query;
 import java.util.Arrays;
 
 import org.apache.http.HttpStatus;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.rio.RDFFormat;
+import org.nanopub.MalformedNanopubException;
+import org.nanopub.Nanopub;
+import org.nanopub.NanopubImpl;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
@@ -18,7 +23,7 @@ public class MainVerticle extends AbstractVerticle {
 
 	static {
 		System.err.println("Loading Nanopub Query verticle...");
-		LocalListLoader.load();
+		QueryApplication.triggerInit();
 	}
 
 	@Override
@@ -40,11 +45,38 @@ public class MainVerticle extends AbstractVerticle {
 			try {
 				req.setExpectMultipart(true);
 				req.handler(data -> {
-					System.err.println("POST: " + data.toString("UTF-8"));
+					String dataString = data.toString("UTF-8");
+					System.err.println("Received data: " + dataString);
+					TripleStoreThread ts = QueryApplication.get().getTripleStoreThread();
+					if (ts == null) {
+						req.response().setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR)
+							.setStatusMessage("Triple store thread not found")
+							.end();
+						System.err.println("Triple store thread not found");
+						return;
+					}
+					RepositoryConnection c = ts.getRepositoryConnection();
+					if (c == null) {
+						req.response().setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR)
+							.setStatusMessage("Triple store connection not found")
+							.end();
+						System.err.println("Triple store connection not found");
+						return;
+					}
+					try {
+						Nanopub np = new NanopubImpl(dataString, RDFFormat.TRIG);
+						NanopubLoader.process(c, np);
+					} catch (MalformedNanopubException ex) {
+						req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)
+							.setStatusMessage(Arrays.toString(ex.getStackTrace()))
+							.end();
+						ex.printStackTrace();
+						return;
+					};
+					req.response()
+						.setStatusCode(HttpStatus.SC_OK)
+						.end();
 				});
-				req.response()
-					.setStatusCode(HttpStatus.SC_OK)
-					.end();
 			} catch (Exception ex) {
 				req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)
 					.setStatusMessage(Arrays.toString(ex.getStackTrace()))
