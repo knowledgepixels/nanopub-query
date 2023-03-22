@@ -10,7 +10,7 @@ services:
     volumes:
       - ./load:/app/load
     environment:
-      - ENDPOINT=http://virtuoso:1111
+      - ENDPOINT=virtuoso:1111
       - USERNAME=dba
       - PASSWORD=dba
   virtuoso:
