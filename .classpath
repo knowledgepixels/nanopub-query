@@ -15,14 +15,119 @@
     </attributes>
   </classpathentry>
   <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-  <classpathentry kind="var" path="M2_REPO/junit/junit/4.13.2/junit-4.13.2.jar" sourcepath="M2_REPO/junit/junit/4.13.2/junit-4.13.2-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-core/4.4.0/vertx-core-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-core/4.4.0/vertx-core-4.4.0-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/junit/junit/4.13.2/junit-4.13.2-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-core/4.4.0/vertx-core-4.4.0-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar" sourcepath="M2_REPO/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-common/4.1.89.Final/netty-common-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-common/4.1.89.Final/netty-common-4.1.89.Final-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-common/4.1.89.Final/netty-common-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-buffer/4.1.89.Final/netty-buffer-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-buffer/4.1.89.Final/netty-buffer-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-buffer/4.1.89.Final/netty-buffer-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-transport/4.1.89.Final/netty-transport-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-transport/4.1.89.Final/netty-transport-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-transport/4.1.89.Final/netty-transport-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-resolver/4.1.89.Final/netty-resolver-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-resolver/4.1.89.Final/netty-resolver-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-resolver/4.1.89.Final/netty-resolver-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-handler/4.1.89.Final/netty-handler-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-handler/4.1.89.Final/netty-handler-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-handler/4.1.89.Final/netty-handler-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-transport-native-unix-common/4.1.89.Final/netty-transport-native-unix-common-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-transport-native-unix-common/4.1.89.Final/netty-transport-native-unix-common-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-transport-native-unix-common/4.1.89.Final/netty-transport-native-unix-common-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-codec/4.1.89.Final/netty-codec-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-codec/4.1.89.Final/netty-codec-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-codec/4.1.89.Final/netty-codec-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-handler-proxy/4.1.89.Final/netty-handler-proxy-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-handler-proxy/4.1.89.Final/netty-handler-proxy-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-handler-proxy/4.1.89.Final/netty-handler-proxy-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-codec-socks/4.1.89.Final/netty-codec-socks-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-codec-socks/4.1.89.Final/netty-codec-socks-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-codec-socks/4.1.89.Final/netty-codec-socks-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-codec-http/4.1.89.Final/netty-codec-http-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-codec-http/4.1.89.Final/netty-codec-http-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-codec-http/4.1.89.Final/netty-codec-http-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-codec-http2/4.1.89.Final/netty-codec-http2-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-codec-http2/4.1.89.Final/netty-codec-http2-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-codec-http2/4.1.89.Final/netty-codec-http2-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-resolver-dns/4.1.89.Final/netty-resolver-dns-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-resolver-dns/4.1.89.Final/netty-resolver-dns-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-resolver-dns/4.1.89.Final/netty-resolver-dns-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/netty/netty-codec-dns/4.1.89.Final/netty-codec-dns-4.1.89.Final.jar" sourcepath="M2_REPO/io/netty/netty-codec-dns/4.1.89.Final/netty-codec-dns-4.1.89.Final-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/netty/netty-codec-dns/4.1.89.Final/netty-codec-dns-4.1.89.Final-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/com/fasterxml/jackson/core/jackson-core/2.14.0/jackson-core-2.14.0.jar" sourcepath="M2_REPO/com/fasterxml/jackson/core/jackson-core/2.14.0/jackson-core-2.14.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.14.0/jackson-core-2.14.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-junit5/4.4.0/vertx-junit5-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-junit5/4.4.0/vertx-junit5-4.4.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-junit5/4.4.0/vertx-junit5-4.4.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/junit/jupiter/junit-jupiter-api/5.9.1/junit-jupiter-api-5.9.1.jar" sourcepath="M2_REPO/org/junit/jupiter/junit-jupiter-api/5.9.1/junit-jupiter-api-5.9.1-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.9.1/junit-jupiter-api-5.9.1-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar" sourcepath="M2_REPO/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/junit/platform/junit-platform-commons/1.9.1/junit-platform-commons-1.9.1.jar" sourcepath="M2_REPO/org/junit/platform/junit-platform-commons/1.9.1/junit-platform-commons-1.9.1-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/junit/platform/junit-platform-commons/1.9.1/junit-platform-commons-1.9.1-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar" sourcepath="M2_REPO/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/junit/jupiter/junit-jupiter-params/5.8.2/junit-jupiter-params-5.8.2.jar" sourcepath="M2_REPO/org/junit/jupiter/junit-jupiter-params/5.8.2/junit-jupiter-params-5.8.2-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.8.2/junit-jupiter-params-5.8.2-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/junit/jupiter/junit-jupiter-engine/5.9.1/junit-jupiter-engine-5.9.1.jar" sourcepath="M2_REPO/org/junit/jupiter/junit-jupiter-engine/5.9.1/junit-jupiter-engine-5.9.1-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.9.1/junit-jupiter-engine-5.9.1-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/junit/platform/junit-platform-engine/1.9.1/junit-platform-engine-1.9.1.jar" sourcepath="M2_REPO/org/junit/platform/junit-platform-engine/1.9.1/junit-platform-engine-1.9.1-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/junit/platform/junit-platform-engine/1.9.1/junit-platform-engine-1.9.1-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/slf4j/slf4j-simple/2.0.7/slf4j-simple-2.0.7.jar" sourcepath="M2_REPO/org/slf4j/slf4j-simple/2.0.7/slf4j-simple-2.0.7-sources.jar">
@@ -30,19 +135,19 @@
       <attribute value="jar:file:/home/tk/.m2/repository/org/slf4j/slf4j-simple/2.0.7/slf4j-simple-2.0.7-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar" sourcepath="M2_REPO/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/org/slf4j/slf4j-api/1.7.21/slf4j-api-1.7.21.jar" sourcepath="M2_REPO/org/slf4j/slf4j-api/1.7.21/slf4j-api-1.7.21-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/slf4j/slf4j-api/1.7.21/slf4j-api-1.7.21-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/jakarta/servlet/jakarta.servlet-api/6.0.0/jakarta.servlet-api-6.0.0.jar" sourcepath="M2_REPO/jakarta/servlet/jakarta.servlet-api/6.0.0/jakarta.servlet-api-6.0.0-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/org/nanopub/nanopub/1.46/nanopub-1.46.jar" sourcepath="M2_REPO/org/nanopub/nanopub/1.46/nanopub-1.46-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/jakarta/servlet/jakarta.servlet-api/6.0.0/jakarta.servlet-api-6.0.0-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/nanopub/nanopub/1.46/nanopub-1.46-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trix/4.3.0-M1/rdf4j-rio-trix-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trix/4.3.0-M1/rdf4j-rio-trix-4.3.0-M1-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trig/4.3.0-M1/rdf4j-rio-trig-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trig/4.3.0-M1/rdf4j-rio-trig-4.3.0-M1-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-trix/4.3.0-M1/rdf4j-rio-trix-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-trig/4.3.0-M1/rdf4j-rio-trig-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-model/4.3.0-M1/rdf4j-model-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-model/4.3.0-M1/rdf4j-model-4.3.0-M1-sources.jar">
@@ -90,9 +195,9 @@
       <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-common-iterator/4.3.0-M1/rdf4j-common-iterator-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/com/google/guava/guava/31.1-jre/guava-31.1-jre.jar" sourcepath="M2_REPO/com/google/guava/guava/31.1-jre/guava-31.1-jre-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre.jar" sourcepath="M2_REPO/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/com/google/guava/guava/31.1-jre/guava-31.1-jre-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.jar" sourcepath="M2_REPO/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1-sources.jar">
@@ -136,14 +241,19 @@
       <attribute value="jar:file:/home/tk/.m2/repository/org/apache/httpcomponents/httpclient-cache/4.5.14/httpclient-cache-4.5.14-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/slf4j/jcl-over-slf4j/1.7.32/jcl-over-slf4j-1.7.32.jar" sourcepath="M2_REPO/org/slf4j/jcl-over-slf4j/1.7.32/jcl-over-slf4j-1.7.32-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/org/slf4j/jcl-over-slf4j/1.7.21/jcl-over-slf4j-1.7.21.jar" sourcepath="M2_REPO/org/slf4j/jcl-over-slf4j/1.7.21/jcl-over-slf4j-1.7.21-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/slf4j/jcl-over-slf4j/1.7.32/jcl-over-slf4j-1.7.32-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/slf4j/jcl-over-slf4j/1.7.21/jcl-over-slf4j-1.7.21-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/commons-io/commons-io/2.11.0/commons-io-2.11.0.jar" sourcepath="M2_REPO/commons-io/commons-io/2.11.0/commons-io-2.11.0-sources.jar">
     <attributes>
       <attribute value="jar:file:/home/tk/.m2/repository/commons-io/commons-io/2.11.0/commons-io-2.11.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-turtle/4.3.0-M1/rdf4j-rio-turtle-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-turtle/4.3.0-M1/rdf4j-rio-turtle-4.3.0-M1-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-turtle/4.3.0-M1/rdf4j-rio-turtle-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-datatypes/4.3.0-M1/rdf4j-rio-datatypes-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-datatypes/4.3.0-M1/rdf4j-rio-datatypes-4.3.0-M1-sources.jar">
@@ -154,6 +264,11 @@
   <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-languages/4.3.0-M1/rdf4j-rio-languages-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-languages/4.3.0-M1/rdf4j-rio-languages-4.3.0-M1-sources.jar">
     <attributes>
       <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-languages/4.3.0-M1/rdf4j-rio-languages-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trix/4.3.0-M1/rdf4j-rio-trix-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trix/4.3.0-M1/rdf4j-rio-trix-4.3.0-M1-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-trix/4.3.0-M1/rdf4j-rio-trix-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-nquads/4.3.0-M1/rdf4j-rio-nquads-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-nquads/4.3.0-M1/rdf4j-rio-nquads-4.3.0-M1-sources.jar">
@@ -171,34 +286,14 @@
       <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-jsonld/4.3.0-M1/rdf4j-rio-jsonld-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/com/fasterxml/jackson/core/jackson-core/2.13.4/jackson-core-2.13.4.jar" sourcepath="M2_REPO/com/fasterxml/jackson/core/jackson-core/2.13.4/jackson-core-2.13.4-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/com/fasterxml/jackson/core/jackson-databind/2.14.0/jackson-databind-2.14.0.jar" sourcepath="M2_REPO/com/fasterxml/jackson/core/jackson-databind/2.14.0/jackson-databind-2.14.0-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.13.4/jackson-core-2.13.4-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.14.0/jackson-databind-2.14.0-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/com/fasterxml/jackson/core/jackson-databind/2.11.4/jackson-databind-2.11.4.jar" sourcepath="M2_REPO/com/fasterxml/jackson/core/jackson-databind/2.11.4/jackson-databind-2.11.4-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/com/fasterxml/jackson/core/jackson-annotations/2.14.0/jackson-annotations-2.14.0.jar" sourcepath="M2_REPO/com/fasterxml/jackson/core/jackson-annotations/2.14.0/jackson-annotations-2.14.0-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.11.4/jackson-databind-2.11.4-javadoc.jar!/" name="javadoc_location"/>
-    </attributes>
-  </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/com/fasterxml/jackson/core/jackson-annotations/2.11.4/jackson-annotations-2.11.4.jar" sourcepath="M2_REPO/com/fasterxml/jackson/core/jackson-annotations/2.11.4/jackson-annotations-2.11.4-sources.jar">
-    <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.11.4/jackson-annotations-2.11.4-javadoc.jar!/" name="javadoc_location"/>
-    </attributes>
-  </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/nanopub/nanopub/1.46/nanopub-1.46.jar" sourcepath="M2_REPO/org/nanopub/nanopub/1.46/nanopub-1.46-sources.jar">
-    <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/nanopub/nanopub/1.46/nanopub-1.46-javadoc.jar!/" name="javadoc_location"/>
-    </attributes>
-  </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trig/4.3.0-M1/rdf4j-rio-trig-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trig/4.3.0-M1/rdf4j-rio-trig-4.3.0-M1-sources.jar">
-    <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-trig/4.3.0-M1/rdf4j-rio-trig-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
-    </attributes>
-  </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-turtle/4.3.0-M1/rdf4j-rio-turtle-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-turtle/4.3.0-M1/rdf4j-rio-turtle-4.3.0-M1-sources.jar">
-    <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/eclipse/rdf4j/rdf4j-rio-turtle/4.3.0-M1/rdf4j-rio-turtle-4.3.0-M1-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.14.0/jackson-annotations-2.14.0-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-repository-sparql/4.3.0-M1/rdf4j-repository-sparql-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-repository-sparql/4.3.0-M1/rdf4j-repository-sparql-4.3.0-M1-sources.jar">
@@ -281,14 +376,14 @@
       <attribute value="jar:file:/home/tk/.m2/repository/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/checkerframework/checker-qual/3.12.0/checker-qual-3.12.0.jar" sourcepath="M2_REPO/org/checkerframework/checker-qual/3.12.0/checker-qual-3.12.0-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/org/checkerframework/checker-qual/3.8.0/checker-qual-3.8.0.jar" sourcepath="M2_REPO/org/checkerframework/checker-qual/3.8.0/checker-qual-3.8.0-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/checkerframework/checker-qual/3.12.0/checker-qual-3.12.0-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/checkerframework/checker-qual/3.8.0/checker-qual-3.8.0-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/com/google/errorprone/error_prone_annotations/2.11.0/error_prone_annotations-2.11.0.jar" sourcepath="M2_REPO/com/google/errorprone/error_prone_annotations/2.11.0/error_prone_annotations-2.11.0-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/com/google/errorprone/error_prone_annotations/2.5.1/error_prone_annotations-2.5.1.jar" sourcepath="M2_REPO/com/google/errorprone/error_prone_annotations/2.5.1/error_prone_annotations-2.5.1-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/com/google/errorprone/error_prone_annotations/2.11.0/error_prone_annotations-2.11.0-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/com/google/errorprone/error_prone_annotations/2.5.1/error_prone_annotations-2.5.1-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/com/google/j2objc/j2objc-annotations/1.3/j2objc-annotations-1.3.jar" sourcepath="M2_REPO/com/google/j2objc/j2objc-annotations/1.3/j2objc-annotations-1.3-sources.jar">
@@ -316,14 +411,14 @@
       <attribute value="jar:file:/home/tk/.m2/repository/commons-lang/commons-lang/2.4/commons-lang-2.4-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/net/trustyuri/trustyuri/1.17/trustyuri-1.17.jar" sourcepath="M2_REPO/net/trustyuri/trustyuri/1.17/trustyuri-1.17-sources.jar">
-    <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/net/trustyuri/trustyuri/1.17/trustyuri-1.17-javadoc.jar!/" name="javadoc_location"/>
-    </attributes>
-  </classpathentry>
   <classpathentry kind="var" path="M2_REPO/commons-logging/commons-logging/1.2/commons-logging-1.2.jar" sourcepath="M2_REPO/commons-logging/commons-logging/1.2/commons-logging-1.2-sources.jar">
     <attributes>
       <attribute value="jar:file:/home/tk/.m2/repository/commons-logging/commons-logging/1.2/commons-logging-1.2-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/net/trustyuri/trustyuri/1.17/trustyuri-1.17.jar" sourcepath="M2_REPO/net/trustyuri/trustyuri/1.17/trustyuri-1.17-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/net/trustyuri/trustyuri/1.17/trustyuri-1.17-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-rdfxml/4.3.0-M1/rdf4j-rio-rdfxml-4.3.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-rdfxml/4.3.0-M1/rdf4j-rio-rdfxml-4.3.0-M1-sources.jar">

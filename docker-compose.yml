@@ -5,9 +5,10 @@ services:
 #   image: nanopub/query
     restart: unless-stopped
     ports:
-      - 9393:8080
+      - 9300:9300
+      - 9393:9393
     volumes:
-      - ./load:/usr/local/tomcat/load
+      - ./load:/app/load
   virtuoso:
     image: openlink/virtuoso-opensource-7:latest
     restart: unless-stopped
