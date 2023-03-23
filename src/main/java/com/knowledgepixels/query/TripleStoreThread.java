@@ -26,7 +26,6 @@ public class TripleStoreThread extends Thread {
 		endpoint = env.get("ENDPOINT");
 		username = env.get("USERNAME");
 		password = env.get("PASSWORD");
-		
 	}
 
 	@Override
