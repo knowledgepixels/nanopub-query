@@ -2,6 +2,8 @@ package com.knowledgepixels.query;
 
 import java.io.IOException;
 
+import org.eclipse.rdf4j.repository.RepositoryConnection;
+
 public class QueryApplication {
 
 	private static QueryApplication instance;
@@ -23,7 +25,7 @@ public class QueryApplication {
 		}.start();
 	}
 
-	private static final int WAIT_SECONDS = 5;
+	private static final int WAIT_SECONDS = 60;
 
 	private boolean initialized = false;
 	private TripleStoreThread tripleStoreThread;
@@ -67,11 +69,15 @@ public class QueryApplication {
 
 		System.err.println("Loading the local list of nanopubs...");
 		LocalListLoader.load();
-
 	}
 
 	public TripleStoreThread getTripleStoreThread() {
 		return tripleStoreThread;
+	}
+
+	public RepositoryConnection getRepositoryConnection() {
+		if (tripleStoreThread == null) return null;
+		return tripleStoreThread.getRepositoryConnection();
 	}
 
 }

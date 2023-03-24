@@ -50,15 +50,7 @@ public class MainVerticle extends AbstractVerticle {
 				});
 				req.endHandler(handler -> {
 					final String dataString = payload.toString();
-					TripleStoreThread ts = QueryApplication.get().getTripleStoreThread();
-					if (ts == null) {
-						req.response().setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR)
-							.setStatusMessage("Triple store thread not found")
-							.end();
-						System.err.println("Triple store thread not found");
-						return;
-					}
-					RepositoryConnection c = ts.getRepositoryConnection();
+					RepositoryConnection c = QueryApplication.get().getRepositoryConnection();
 					if (c == null) {
 						req.response().setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR)
 							.setStatusMessage("Triple store connection not found")
@@ -68,7 +60,7 @@ public class MainVerticle extends AbstractVerticle {
 					}
 					try {
 						Nanopub np = new NanopubImpl(dataString, RDFFormat.TRIG);
-						NanopubLoader.process(c, np);
+						NanopubLoader.load(c, np);
 					} catch (MalformedNanopubException ex) {
 						req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)
 							.setStatusMessage(Arrays.toString(ex.getStackTrace()))

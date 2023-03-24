@@ -31,14 +31,18 @@ public class NanopubLoader {
 
 	private NanopubLoader() {}  // no instances allowed
 
-	public static void load(String nanopubUri) {
+	private static int loadCount = 0;
+
+	public static void load(RepositoryConnection conn, String nanopubUri) {
 		Nanopub np = GetNanopub.get(nanopubUri);
-		System.err.println("NP: " + np.getUri());
-		// TODO
+		load(conn, np);
 	}
 
-	public static void process(RepositoryConnection conn, Nanopub np) throws RDF4JException {
+	public static void load(RepositoryConnection conn, Nanopub np) throws RDF4JException {
+		System.err.println("Loading: " + ++loadCount + " " + np.getUri());
+
 		// TODO: Check for null characters ("\0"), which can cause problems in Virtuoso.
+
 		List<Statement> statements = new ArrayList<>();
 		String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());
 		if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) ||
