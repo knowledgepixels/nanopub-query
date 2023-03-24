@@ -1,13 +1,11 @@
 package com.knowledgepixels.query;
 
 import java.security.GeneralSecurityException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.TimeZone;
 
 import org.eclipse.rdf4j.common.exception.RDF4JException;
 import org.eclipse.rdf4j.model.IRI;
@@ -20,6 +18,8 @@ import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
 import org.nanopub.SimpleTimestampPattern;
+import org.nanopub.extra.security.IntroNanopub;
+import org.nanopub.extra.security.KeyDeclaration;
 import org.nanopub.extra.security.MalformedCryptoElementException;
 import org.nanopub.extra.security.NanopubSignatureElement;
 import org.nanopub.extra.security.SignatureUtils;
@@ -86,7 +86,7 @@ public class NanopubLoader {
 			}
 			if (st.getObject() instanceof IRI) {
 				if (st.getObject().toString().contains(ac)) {
-					subIris.add((IRI) st.getObject());
+			 		subIris.add((IRI) st.getObject());
 				} else {
 					IRI b = getBaseTrustyUri(st.getObject());
 					if (b != null) otherNps.add(b);
@@ -103,14 +103,25 @@ public class NanopubLoader {
 		for (IRI i : otherNps) {
 			statements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));
 		}
-		statements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
 
-//			statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_HEADS_GRAPH));
-//			statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_HEADS_GRAPH));
-//			statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_HEADS_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_GRAPH));
+
+		String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
+		statements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));
 
 		if (hasValidSignature(el)) {
 			statements.add(vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH));
+
+			if (isIntroNanopub(np)) {
+				IntroNanopub introNp = new IntroNanopub(np);
+				statements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));
+				for (KeyDeclaration kc : introNp.getKeyDeclarations()) {
+					statements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));
+				}
+			}
 		}
 		Calendar timestamp = null;
 		try {
@@ -119,14 +130,8 @@ public class NanopubLoader {
 			System.err.println("Illegal date/time for nanopublication " + np.getUri());
 		}
 		if (timestamp != null) {
-			statements.add(vf.createStatement(np.getUri(), CREATION_DAY, vf.createIRI(NPA_DATE_PREFIX + getDayString(timestamp)), ADMIN_GRAPH));
-			statements.add(vf.createStatement(np.getUri(), CREATION_MONTH, vf.createIRI(NPA_DATE_PREFIX + getMonthString(timestamp)), ADMIN_GRAPH));
-			statements.add(vf.createStatement(np.getUri(), CREATION_YEAR, vf.createIRI(NPA_DATE_PREFIX + getYearString(timestamp)), ADMIN_GRAPH));
 			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
 		} else {
-			statements.add(vf.createStatement(np.getUri(), CREATION_DAY, vf.createIRI(NPA_DATE_PREFIX + "NONE"), ADMIN_GRAPH));
-			statements.add(vf.createStatement(np.getUri(), CREATION_MONTH, vf.createIRI(NPA_DATE_PREFIX + "NONE"), ADMIN_GRAPH));
-			statements.add(vf.createStatement(np.getUri(), CREATION_YEAR, vf.createIRI(NPA_DATE_PREFIX + "NONE"), ADMIN_GRAPH));
 			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(""), ADMIN_GRAPH));
 		}
 		while (statements.size() > 1000) {
@@ -148,24 +153,6 @@ public class NanopubLoader {
 		return false;
 	}
 
-	private static String getDayString(Calendar c) {
-		SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd");
-		df.setTimeZone(timeZone);
-		return df.format(c.getTime());
-	}
-
-	private static String getMonthString(Calendar c) {
-		SimpleDateFormat df = new SimpleDateFormat("yyyy-MM");
-		df.setTimeZone(timeZone);
-		return df.format(c.getTime());
-	}
-
-	private static String getYearString(Calendar c) {
-		SimpleDateFormat df = new SimpleDateFormat("yyyy");
-		df.setTimeZone(timeZone);
-		return df.format(c.getTime());
-	}
-
 	private static IRI getBaseTrustyUri(Value v) {
 		if (!(v instanceof IRI)) return null;
 		String s = v.stringValue();
@@ -175,20 +162,25 @@ public class NanopubLoader {
 		return vf.createIRI(s.replaceFirst("^(.*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43})([^A-Za-z0-9\\\\-_].{0,43})?$", "$1"));
 	}
 
-	private static TimeZone timeZone = TimeZone.getTimeZone("UTC");
+	// TODO: Move this to nanopub library:
+	private static boolean isIntroNanopub(Nanopub np) {
+		for (Statement st : np.getAssertion()) {
+			if (st.getPredicate().equals(KeyDeclaration.DECLARED_BY)) return true;
+		}
+		return false;
+	}
+
 	private static ValueFactory vf = SimpleValueFactory.getInstance();
 
-	public static final String NPA_DATE_PREFIX = "http://purl.org/nanopub/admin/date/";
 	public static final IRI ADMIN_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/graph");
 	public static final IRI ADMIN_NETWORK_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/networkGraph");
-	public static final IRI ADMIN_HEADS_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/headsGraph");
 	public static final IRI HAS_HEAD_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasHeadGraph");
-	public static final IRI CREATION_DAY = vf.createIRI("http://purl.org/nanopub/admin/creationDay");
-	public static final IRI CREATION_MONTH = vf.createIRI("http://purl.org/nanopub/admin/creationMonth");
-	public static final IRI CREATION_YEAR = vf.createIRI("http://purl.org/nanopub/admin/creationYear");
 	public static final IRI NOTE = vf.createIRI("http://purl.org/nanopub/admin/note");
 	public static final IRI HAS_SUB_IRI = vf.createIRI("http://purl.org/nanopub/admin/hasSubIri");
 	public static final IRI REFERS_TO_NANOPUB = vf.createIRI("http://purl.org/nanopub/admin/refersToNanopub");
 	public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY = vf.createIRI("http://purl.org/nanopub/admin/hasValidSignatureForPublicKey");
+	public static final IRI HAS_ARTIFACT_CODE = vf.createIRI("http://purl.org/nanopub/admin/artifactCode");
+	public static final IRI IS_INTRO_OF = vf.createIRI("http://purl.org/nanopub/admin/isIntroductionOf");
+	public static final IRI DECLARES_KEY = vf.createIRI("http://purl.org/nanopub/admin/declaresPubkey");
 
 }
