@@ -25,7 +25,7 @@ public class QueryApplication {
 		}.start();
 	}
 
-	private static final int WAIT_SECONDS = 60;
+	private static final int WAIT_SECONDS = 5;
 
 	private boolean initialized = false;
 	private TripleStoreThread tripleStoreThread;

@@ -4,14 +4,17 @@ import java.io.IOException;
 import java.util.Map;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
+import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.repository.http.HTTPRepository;
 
 import virtuoso.rdf4j.driver.VirtuosoRepository;
 
 public class TripleStoreThread extends Thread {
 
-	private VirtuosoRepository virtuosoRepository;
+	private Repository repository;
 	private String endpoint = null;
+	private String endpointType = null;
 	private String username = null;
 	private String password = null;
 
@@ -24,6 +27,8 @@ public class TripleStoreThread extends Thread {
 	public TripleStoreThread() throws IOException {
 		Map<String,String> env = EnvironmentUtils.getProcEnvironment();
 		endpoint = env.get("ENDPOINT");
+		System.err.println("Endpoint: " + endpoint);
+		endpointType = env.get("ENDPOINT_TYPE");
 		username = env.get("USERNAME");
 		password = env.get("PASSWORD");
 	}
@@ -40,22 +45,28 @@ public class TripleStoreThread extends Thread {
 		shutdownRepository();
 	}
 
-	private VirtuosoRepository getRepository() {
-		if (virtuosoRepository == null || !virtuosoRepository.isInitialized()) {
-			virtuosoRepository = new VirtuosoRepository(endpoint, username, password);
-			virtuosoRepository.init();
+	private Repository getRepository() {
+		if (repository == null) {
+			if (endpointType == null || endpointType.equals("rdf4j")) {
+				repository = new HTTPRepository(endpoint);
+			} else if (endpointType.equals("virtuoso")) {
+				repository = new VirtuosoRepository(endpoint, username, password);
+			} else {
+				throw new RuntimeException("Unknown repository type: " + endpointType);
+			}
+			repository.init();
 		}
-		return virtuosoRepository;
+		return repository;
 	}
 
 	public RepositoryConnection getRepositoryConnection() {
-		VirtuosoRepository repo = getRepository();
+		Repository repo = getRepository();
 		if (repo == null) return null;
 		return repo.getConnection();
 	}
 
 	private void shutdownRepository() {
-		VirtuosoRepository repo = getRepository();
+		Repository repo = getRepository();
 		if(repo != null && repo.isInitialized()) {
 			repo.shutDown();
 		}

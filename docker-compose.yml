@@ -10,7 +10,10 @@ services:
     volumes:
       - ./load:/app/load
     environment:
+      - ENDPOINT_TYPE=virtuoso
       - ENDPOINT=virtuoso:1111
+#      - ENDPOINT_TYPE=rdf4j
+#      - ENDPOINT=http://localhost:8080/rdf4j-server/repositories/test/
       - USERNAME=dba
       - PASSWORD=dba
   virtuoso:
