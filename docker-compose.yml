@@ -10,10 +10,10 @@ services:
     volumes:
       - ./load:/app/load
     environment:
-      - ENDPOINT_TYPE=virtuoso
-      - ENDPOINT=virtuoso:1111
-#      - ENDPOINT_TYPE=rdf4j
-#      - ENDPOINT=http://localhost:8080/rdf4j-server/repositories/test/
+#      - ENDPOINT_TYPE=virtuoso
+#      - ENDPOINT=virtuoso:1111
+      - ENDPOINT_TYPE=rdf4j
+      - ENDPOINT=http://localhost:8080/rdf4j-server/repositories/test/
       - USERNAME=dba
       - PASSWORD=dba
   virtuoso:
@@ -29,3 +29,13 @@ services:
       - VIRT_SPARQL_MaxQueryCostEstimationTime=0
     volumes:
       - ./data/virtuoso:/database
+  rdf4j:
+    image: eclipse/rdf4j-workbench:latest
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: '-Xmx4g -Xms4g'
+    volumes:
+      - ./data/rdf4j/data:/var/rdf4j
+      - ./data/rdf4j/logs:/usr/local/tomcat/logs
+    ports:
+      - 8080:8080
