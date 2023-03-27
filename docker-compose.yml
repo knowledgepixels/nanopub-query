@@ -12,28 +12,29 @@ services:
     environment:
 #      - ENDPOINT_TYPE=virtuoso
 #      - ENDPOINT=virtuoso:1111
-      - ENDPOINT_TYPE=rdf4j
-      - ENDPOINT=http://localhost:8080/rdf4j-server/repositories/test/
       - USERNAME=dba
       - PASSWORD=dba
-  virtuoso:
-    image: openlink/virtuoso-opensource-7:latest
-    restart: unless-stopped
-    ports:
-      - 8890:8890
-#     - 1111:1111
-    environment:
-#     - SPARQL_UPDATE=true
-      - DBA_PASSWORD=dba
-      - VIRT_SPARQL_MaxQueryExecutionTime=600
-      - VIRT_SPARQL_MaxQueryCostEstimationTime=0
-    volumes:
-      - ./data/virtuoso:/database
+      - ENDPOINT_TYPE=rdf4j
+      - ENDPOINT=http://rdf4j:8080/rdf4j-server/repositories/test 
+      - INIT_WAIT_SECONDS=30
+#  virtuoso:
+#    image: openlink/virtuoso-opensource-7:latest
+#    restart: unless-stopped
+#    ports:
+#      - 8890:8890
+##     - 1111:1111
+#    environment:
+##     - SPARQL_UPDATE=true
+#      - DBA_PASSWORD=dba
+#      - VIRT_SPARQL_MaxQueryExecutionTime=600
+#      - VIRT_SPARQL_MaxQueryCostEstimationTime=0
+#    volumes:
+#      - ./data/virtuoso:/database
   rdf4j:
     image: eclipse/rdf4j-workbench:latest
     restart: unless-stopped
     environment:
-      JAVA_OPTS: '-Xmx4g -Xms4g'
+      - JAVA_OPTS=-Xmx4g -Xms4g
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
