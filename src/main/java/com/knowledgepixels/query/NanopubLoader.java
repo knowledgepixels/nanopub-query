@@ -17,6 +17,7 @@ import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
+import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.SimpleTimestampPattern;
 import org.nanopub.extra.security.IntroNanopub;
 import org.nanopub.extra.security.KeyDeclaration;
@@ -60,6 +61,13 @@ public class NanopubLoader {
 		}
 		if (!hasValidSignature(el)) {
 			return;
+		}
+		for (IRI s : SimpleCreatorPattern.getCreators(np)) {
+			if (s.stringValue().startsWith("https://orcid.org")) {
+				String repoName = "user_" + s.stringValue().replaceFirst("^.*/([0-9\\-X]*)$", "$1");
+				System.err.println(repoName);
+				QueryApplication.get().createRepository(repoName);
+			}
 		}
 
 		Set<IRI> subIris = new HashSet<>();

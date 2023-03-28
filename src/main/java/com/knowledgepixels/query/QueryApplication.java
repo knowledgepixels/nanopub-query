@@ -4,6 +4,13 @@ import java.io.IOException;
 import java.util.Map;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.client.methods.RequestBuilder;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicResponseHandler;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
 public class QueryApplication {
@@ -92,6 +99,44 @@ public class QueryApplication {
 	public RepositoryConnection getRepositoryConnection() {
 		if (tripleStoreThread == null) return null;
 		return tripleStoreThread.getRepositoryConnection();
+	}
+
+	public void createRepository(String repoName) {
+		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+			HttpUriRequest request = RequestBuilder.put()
+					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + repoName)
+					.addHeader("Content-Type", "text/turtle")
+					.setEntity(new StringEntity(
+							"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
+							"@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
+							"@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
+							"@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
+							"@prefix ms: <http://www.openrdf.org/config/sail/memory#>.\n" +
+							"[] a rep:Repository ;\n" +
+							"  rep:repositoryID \"" + repoName + "\" ;\n" +
+							"  rdfs:label \"" + repoName + " memory store\" ;\n" +
+							"  rep:repositoryImpl [\n" +
+							"    rep:repositoryType \"openrdf:SailRepository\" ;\n" +
+							"    sr:sailImpl [\n" +
+							"      sail:sailType \"openrdf:MemoryStore\" ;\n" +
+							"      ms:persist true ;\n" +
+							"      ms:syncDelay 120\n" +
+							"    ]\n" +
+							"  ]."
+						))
+					.build();
+
+			System.out.println("Executing PUT request... ");
+			HttpResponse response = httpclient.execute(request);
+
+			System.out.println("Status code: " + response.getStatusLine().getStatusCode());
+
+			String responseString = new BasicResponseHandler().handleResponse(response);
+
+			System.out.println("Response: " + responseString);
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
 	}
 
 }
