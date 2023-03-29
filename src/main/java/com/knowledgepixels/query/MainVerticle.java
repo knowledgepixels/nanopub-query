@@ -78,8 +78,18 @@ public class MainVerticle extends AbstractVerticle {
 		HttpServer proxyServer = vertx.createHttpServer();
 		Router proxyRouter = Router.router(vertx);
 		proxyRouter.route(HttpMethod.GET, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.POST, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.PUT, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.HEAD, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.DELETE, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.UPDATE, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.OPTIONS, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.GET, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.POST, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.PUT, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.HEAD, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.DELETE, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.UPDATE, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.OPTIONS, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.GET, "/tools/*").handler(ProxyHandler.create(nginxProxy));
 		proxyRouter.route(HttpMethod.GET, "/test/*").handler(req -> {
