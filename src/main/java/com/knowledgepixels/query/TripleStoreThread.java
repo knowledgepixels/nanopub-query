@@ -67,7 +67,7 @@ public class TripleStoreThread extends Thread {
 
 	private void shutdownRepository() {
 		Repository repo = getRepository();
-		if(repo != null && repo.isInitialized()) {
+		if (repo != null && repo.isInitialized()) {
 			repo.shutDown();
 		}
 	}

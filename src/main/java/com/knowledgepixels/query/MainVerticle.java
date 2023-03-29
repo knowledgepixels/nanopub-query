@@ -10,7 +10,16 @@ import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServer;
+import io.vertx.ext.web.Router;
+import io.vertx.ext.web.proxy.handler.ProxyHandler;
+import io.vertx.httpproxy.HttpProxy;
+import io.vertx.httpproxy.ProxyContext;
+import io.vertx.httpproxy.ProxyInterceptor;
+import io.vertx.httpproxy.ProxyResponse;
 
 public class MainVerticle extends AbstractVerticle {
 
@@ -28,19 +37,59 @@ public class MainVerticle extends AbstractVerticle {
 
 	@Override
 	public void start(Promise<Void> startPromise) throws Exception {
-		vertx.createHttpServer().requestHandler(req -> {
-			req.response()
-				.putHeader("content-type", "text/plain")
-				.end("Hello from Vert.x 9393!");
-		}).listen(9393, http -> {
-			if (http.succeeded()) {
-				server1Started = true;
-				if (allServersStarted()) startPromise.complete();
-				System.out.println("HTTP server started on port 9393");
-			} else {
-				startPromise.fail(http.cause());
+//		vertx.createHttpServer().requestHandler(req -> {
+//			req.response()
+//				.putHeader("content-type", "text/plain")
+//				.end("Hello from Vert.x 9393!");
+//		}).listen(9393, http -> {
+//			if (http.succeeded()) {
+//				server1Started = true;
+//				if (allServersStarted()) startPromise.complete();
+//				System.out.println("HTTP server started on port 9393");
+//			} else {
+//				startPromise.fail(http.cause());
+//			}
+//		});
+
+		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(vertx.createHttpClient());
+		rdf4jProxy.origin(8080, "rdf4j");
+
+		rdf4jProxy.addInterceptor(new ProxyInterceptor() {
+
+			@Override
+			public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
+				//ProxyRequest request = context.request();
+				return ProxyInterceptor.super.handleProxyRequest(context);
 			}
+
+			@Override
+			public Future<Void> handleProxyResponse(ProxyContext context) {
+				ProxyResponse resp = context.response();
+				resp.putHeader("Access-Control-Allow-Origin", "*");
+				resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+				return ProxyInterceptor.super.handleProxyResponse(context);
+			}
+
 		});
+
+		HttpProxy nginxProxy = HttpProxy.reverseProxy(vertx.createHttpClient());
+		nginxProxy.origin(80, "nginx");
+
+		HttpServer proxyServer = vertx.createHttpServer();
+		Router proxyRouter = Router.router(vertx);
+		proxyRouter.route(HttpMethod.GET, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.GET, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.POST, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.OPTIONS, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.GET, "/tools/*").handler(ProxyHandler.create(nginxProxy));
+		proxyRouter.route(HttpMethod.GET, "/test/*").handler(req -> {
+			req.response()
+			.putHeader("content-type", "text/plain")
+			.end("Hello from Vert.x 9393!");
+		});
+		proxyServer.requestHandler(proxyRouter);
+		proxyServer.listen(9393);
+
 		vertx.createHttpServer().requestHandler(req -> {
 			try {
 				req.setExpectMultipart(true);

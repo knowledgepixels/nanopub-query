@@ -90,6 +90,36 @@
       <attribute value="jar:file:/home/tk/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.14.0/jackson-core-2.14.0-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-http-proxy/4.4.0/vertx-http-proxy-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-http-proxy/4.4.0/vertx-http-proxy-4.4.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-http-proxy/4.4.0/vertx-http-proxy-4.4.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-web-proxy/4.4.0/vertx-web-proxy-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-web-proxy/4.4.0/vertx-web-proxy-4.4.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-web-proxy/4.4.0/vertx-web-proxy-4.4.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-web/4.4.0/vertx-web-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-web/4.4.0/vertx-web-4.4.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-web/4.4.0/vertx-web-4.4.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-web-common/4.4.0/vertx-web-common-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-web-common/4.4.0/vertx-web-common-4.4.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-web-common/4.4.0/vertx-web-common-4.4.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-auth-common/4.4.0/vertx-auth-common-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-auth-common/4.4.0/vertx-auth-common-4.4.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-auth-common/4.4.0/vertx-auth-common-4.4.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-bridge-common/4.4.0/vertx-bridge-common-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-bridge-common/4.4.0/vertx-bridge-common-4.4.0-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-bridge-common/4.4.0/vertx-bridge-common-4.4.0-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
   <classpathentry kind="var" path="M2_REPO/io/vertx/vertx-junit5/4.4.0/vertx-junit5-4.4.0.jar" sourcepath="M2_REPO/io/vertx/vertx-junit5/4.4.0/vertx-junit5-4.4.0-sources.jar">
     <attributes>
       <attribute value="jar:file:/home/tk/.m2/repository/io/vertx/vertx-junit5/4.4.0/vertx-junit5-4.4.0-javadoc.jar!/" name="javadoc_location"/>
