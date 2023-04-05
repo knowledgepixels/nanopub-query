@@ -38,9 +38,5 @@ services:
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
-    ports:
-      - 8080:8080
-  nginx:
-    image: nginx:alpine
-    volumes:
-      - ./nginx:/usr/share/nginx/html
+#    ports:
+#      - 8080:8080

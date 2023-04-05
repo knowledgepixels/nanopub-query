@@ -19,6 +19,7 @@ import io.vertx.ext.web.proxy.handler.ProxyHandler;
 import io.vertx.httpproxy.HttpProxy;
 import io.vertx.httpproxy.ProxyContext;
 import io.vertx.httpproxy.ProxyInterceptor;
+import io.vertx.httpproxy.ProxyRequest;
 import io.vertx.httpproxy.ProxyResponse;
 
 public class MainVerticle extends AbstractVerticle {
@@ -58,7 +59,8 @@ public class MainVerticle extends AbstractVerticle {
 
 			@Override
 			public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
-				//ProxyRequest request = context.request();
+				ProxyRequest request = context.request();
+				request.setURI(request.getURI().replaceFirst("^/repo/", "/rdf4j-server/repositories/"));
 				return ProxyInterceptor.super.handleProxyRequest(context);
 			}
 
@@ -77,25 +79,57 @@ public class MainVerticle extends AbstractVerticle {
 
 		HttpServer proxyServer = vertx.createHttpServer();
 		Router proxyRouter = Router.router(vertx);
-		proxyRouter.route(HttpMethod.GET, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.POST, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.PUT, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.HEAD, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.DELETE, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.UPDATE, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.OPTIONS, "/rdf4j-workbench/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.GET, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.POST, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.PUT, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.HEAD, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.DELETE, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.UPDATE, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.OPTIONS, "/rdf4j-server/*").handler(ProxyHandler.create(rdf4jProxy));
-		proxyRouter.route(HttpMethod.GET, "/tools/*").handler(ProxyHandler.create(nginxProxy));
-		proxyRouter.route(HttpMethod.GET, "/test/*").handler(req -> {
+		proxyRouter.route(HttpMethod.GET, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.POST, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.HEAD, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.OPTIONS, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.GET, "/tools/*").handler(req -> {
+			if (req.normalizedPath().matches("^/tools/([a-zA-z0-9\\-_]+)/yasgui.html$")) {
+				String repo = req.normalizedPath().replaceFirst("^/tools/([^/]+)/.*$", "$1");
+				req.response()
+					.putHeader("content-type", "text/html")
+					.end("<!DOCTYPE html>\n"
+							+ "<html lang=\"en\">\n"
+							+ "<head>\n"
+							+ "<meta charset=\"utf-8\">\n"
+							+ "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
+							+ "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+							+ "<title>Nanopub Query SPARQL Editor for repository: " + repo + "</title>\n"
+							+ "<link href='https://cdn.jsdelivr.net/yasgui/2.5.0/yasgui.min.css' rel='stylesheet' type='text/css'/>\n"
+							+ "<style>.yasgui .endpointText {display:none !important;}</style>\n"
+							+ "<script type=\"text/javascript\">localStorage.clear();</script>\n"
+							+ "</head>\n"
+							+ "<body>\n"
+							+ "<h3>Nanopub Query SPARQL Editor for repository: " + repo + "</h3>\n"
+							+ "<div id='yasgui'></div>\n"
+							+ "<script src='https://cdn.jsdelivr.net/yasgui/2.5.0/yasgui.min.js'></script>\n"
+							+ "<script type=\"text/javascript\">\n"
+							+ "var yasgui = YASGUI(document.getElementById(\"yasgui\"), {\n"
+							+ "  yasqe:{sparql:{endpoint:'/repo/" + repo + "'}}\n"
+							+ "});\n"
+							+ "</script>\n"
+							+ "</body>\n"
+							+ "</html>");
+			} else {
+				req.response()
+					.putHeader("content-type", "text/plain")
+					.setStatusCode(404)
+					.end("not found");
+			}
+		});
+		proxyRouter.route(HttpMethod.GET, "/").handler(req -> {
 			req.response()
-			.putHeader("content-type", "text/plain")
-			.end("Hello from Vert.x 9393!");
+			.putHeader("content-type", "text/html")
+			.end("<!DOCTYPE html>\n"
+					+ "<html lang='en'>\n"
+					+ "<head>\n"
+					+ "<title>Nanopub Query</title>\n"
+					+ "<meta charset='utf-8'>\n"
+					+ "</head>\n"
+					+ "<body>\n"
+					+ "This is a test"
+					+ "</body>\n"
+					+ "</html>");
 		});
 		proxyServer.requestHandler(proxyRouter);
 		proxyServer.listen(9393);
