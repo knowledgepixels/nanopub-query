@@ -5,8 +5,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 
-import org.eclipse.rdf4j.repository.RepositoryConnection;
-
 public class LocalListLoader {
 
 	private LocalListLoader() {}  // no instances allowed
@@ -19,16 +17,11 @@ public class LocalListLoader {
 			return;
 		}
 
-		RepositoryConnection conn = QueryApplication.get().getRepositoryConnection();
-		if (conn == null) {
-			throw new RuntimeException("No repository connection found.");
-		}
-
 		try {
 			BufferedReader reader = new BufferedReader(new FileReader(loadFile));
 			String line = reader.readLine();
 			while (line != null) {
-				NanopubLoader.load(conn, line);
+				NanopubLoader.load(line);
 				line = reader.readLine();
 			}
 			reader.close();

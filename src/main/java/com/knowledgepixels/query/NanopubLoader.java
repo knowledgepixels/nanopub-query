@@ -34,13 +34,15 @@ public class NanopubLoader {
 
 	private static int loadCount = 0;
 
-	public static void load(RepositoryConnection conn, String nanopubUri) {
+	public static void load(String nanopubUri) {
 		Nanopub np = GetNanopub.get(nanopubUri);
-		load(conn, np);
+		load(np);
 	}
 
-	public static void load(RepositoryConnection conn, Nanopub np) throws RDF4JException {
+	public static void load( Nanopub np) throws RDF4JException {
 		System.err.println("Loading: " + ++loadCount + " " + np.getUri());
+
+		RepositoryConnection conn = QueryApplication.get().getRepositoryConnection("main");
 
 		// TODO: Check for null characters ("\0"), which can cause problems in Virtuoso.
 
@@ -65,8 +67,8 @@ public class NanopubLoader {
 		for (IRI s : SimpleCreatorPattern.getCreators(np)) {
 			if (s.stringValue().startsWith("https://orcid.org")) {
 				String repoName = "user_" + s.stringValue().replaceFirst("^.*/([0-9\\-X]*)$", "$1");
-				System.err.println(repoName);
-				QueryApplication.get().createRepository(repoName);
+				System.err.println("Loading to repo: " + repoName);
+				QueryApplication.get().getRepositoryConnection(repoName).add(NanopubUtils.getStatements(np));
 			}
 		}
 

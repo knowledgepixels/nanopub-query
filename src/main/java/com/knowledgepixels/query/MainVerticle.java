@@ -3,7 +3,6 @@ package com.knowledgepixels.query;
 import java.util.Arrays;
 
 import org.apache.http.HttpStatus;
-import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.Nanopub;
@@ -143,17 +142,9 @@ public class MainVerticle extends AbstractVerticle {
 				});
 				req.endHandler(handler -> {
 					final String dataString = payload.toString();
-					RepositoryConnection c = QueryApplication.get().getRepositoryConnection();
-					if (c == null) {
-						req.response().setStatusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR)
-							.setStatusMessage("Triple store connection not found")
-							.end();
-						System.err.println("Triple store connection not found");
-						return;
-					}
 					try {
 						Nanopub np = new NanopubImpl(dataString, RDFFormat.TRIG);
-						NanopubLoader.load(c, np);
+						NanopubLoader.load(np);
 					} catch (MalformedNanopubException ex) {
 						req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)
 							.setStatusMessage(Arrays.toString(ex.getStackTrace()))
