@@ -1,9 +1,17 @@
 package com.knowledgepixels.query;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.RequestBuilder;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
 public class QueryApplication {
@@ -43,6 +51,7 @@ public class QueryApplication {
 
 	private boolean initialized = false;
 	private TripleStoreThread tripleStoreThread;
+	private Map<String,Boolean> repositoryNames = null;
 
 	private QueryApplication() {}
 
@@ -92,6 +101,34 @@ public class QueryApplication {
 	public RepositoryConnection getRepositoryConnection(String name) {
 		if (tripleStoreThread == null) return null;
 		return tripleStoreThread.getRepositoryConnection(name);
+	}
+
+	public Set<String> getRepositoryNames() {
+		if (repositoryNames == null) {
+			try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+				HttpResponse resp = httpclient.execute(RequestBuilder.get()
+						.setUri("http://rdf4j:8080/rdf4j-server/repositories")
+						.addHeader("Content-Type", "text/csv")
+						.build());
+				BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
+				int code = resp.getStatusLine().getStatusCode();
+				if (code < 200 || code >= 300) return null;
+				repositoryNames = new HashMap<>();
+				int lineCount = 0;
+				while (true) {
+					String line = reader.readLine();
+					if (line == null) break;
+					if (lineCount > 0) {
+						String repoName = line.split(",")[1];
+						repositoryNames.put(repoName, true);
+					}
+					lineCount = lineCount + 1;
+				}
+			} catch (IOException ex) {
+				ex.printStackTrace();
+			}
+		}
+		return repositoryNames.keySet();
 	}
 
 }

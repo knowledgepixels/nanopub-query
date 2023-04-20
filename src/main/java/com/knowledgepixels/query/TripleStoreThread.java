@@ -76,7 +76,6 @@ public class TripleStoreThread extends Thread {
 		return repo.getConnection();
 	}
 
-
 	private void createRepository(String name) {
 		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
 			HttpUriRequest request = RequestBuilder.put()

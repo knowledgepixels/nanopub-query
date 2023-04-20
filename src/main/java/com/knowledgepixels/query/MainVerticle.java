@@ -117,6 +117,10 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 		proxyRouter.route(HttpMethod.GET, "/").handler(req -> {
+			String repos = "";
+			for (String s : QueryApplication.get().getRepositoryNames()) {
+				repos += "<li>" + s + "</li>";
+			}
 			req.response()
 			.putHeader("content-type", "text/html")
 			.end("<!DOCTYPE html>\n"
@@ -126,7 +130,8 @@ public class MainVerticle extends AbstractVerticle {
 					+ "<meta charset='utf-8'>\n"
 					+ "</head>\n"
 					+ "<body>\n"
-					+ "This is a test"
+					+ "<p>Repos:</p>"
+					+ "<ul>" + repos + "</ul>"
 					+ "</body>\n"
 					+ "</html>");
 		});
