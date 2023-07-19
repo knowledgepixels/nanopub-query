@@ -15,18 +15,23 @@
 
 ## Planned repo types:
 
+Fixed repos:
+
+- index (all nanopub in index)
+- single nanopub (not sure if needed/useful?)
+
 Monotonic repos:
 
 - main (everything)
 - user (everything linked to user; approved and unapproved)
 - pubkey (hashed to make it short enough for a nice URL)
 - pubkey set (hashed sorted pubkeys)
+- intro (fixed forward to pubkey set)
+
+Dynamic repos:
+
+- approved-user (dynamic forward to approved pubkey set)
 - group (tbd...)
-
-Repo shortcuts that forward to repos above:
-
-- intro: takes intro nanopub ID and forwards to respective pubkey set
-- approved-user: takes user ID and forwards to pubkey set of all approved keys
 
 All repos above have these variants:
 
