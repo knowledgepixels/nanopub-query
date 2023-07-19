@@ -1,6 +1,9 @@
 package com.knowledgepixels.query;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import org.apache.http.HttpStatus;
 import org.eclipse.rdf4j.rio.RDFFormat;
@@ -116,10 +119,38 @@ public class MainVerticle extends AbstractVerticle {
 					.end("not found");
 			}
 		});
+		proxyRouter.route(HttpMethod.GET, "/page/*").handler(req -> {
+			if (req.normalizedPath().matches("^/page/([a-zA-z0-9\\-_]+)$")) {
+				String repo = req.normalizedPath().replaceFirst("^/page/([^/]+)", "$1");
+				req.response()
+					.putHeader("content-type", "text/html")
+					.end("<!DOCTYPE html>\n"
+							+ "<html lang=\"en\">\n"
+							+ "<head>\n"
+							+ "<meta charset=\"utf-8\">\n"
+							+ "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
+							+ "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+							+ "<title>Nanopub Query repo: " + repo + "</title>\n"
+							+ "</head>\n"
+							+ "<body>\n"
+							+ "<h3>Nanopub Query repo: " + repo + "</h3>\n"
+							+ "<p>Endpoint: <a href=\"/repo/" + repo + "\">/repo/" + repo + "</a></p>"
+							+ "<p>YASGUI: <a href=\"/tools/" + repo + "/yasgui.html\">/tools/" + repo + "/yasgui.hml</a></p>"
+							+ "</body>\n"
+							+ "</html>");
+			} else {
+				req.response()
+					.putHeader("content-type", "text/plain")
+					.setStatusCode(404)
+					.end("not found");
+			}
+		});
 		proxyRouter.route(HttpMethod.GET, "/").handler(req -> {
 			String repos = "";
-			for (String s : QueryApplication.get().getRepositoryNames()) {
-				repos += "<li>" + s + "</li>";
+			List<String> repoList = new ArrayList<>(QueryApplication.get().getRepositoryNames());
+			Collections.sort(repoList);
+			for (String s : repoList) {
+				repos += "<li><a href=\"/page/" + s + "\">" + s + "</a></li>";
 			}
 			req.response()
 			.putHeader("content-type", "text/html")
