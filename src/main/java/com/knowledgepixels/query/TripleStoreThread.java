@@ -78,7 +78,18 @@ public class TripleStoreThread extends Thread {
 
 	private void createRepository(String name) {
 		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-			HttpUriRequest request = RequestBuilder.put()
+			HttpUriRequest headRequest = RequestBuilder.head()
+					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + name)
+					.build();
+			HttpResponse headResponse = httpclient.execute(headRequest);
+			int headStatusCode = headResponse.getStatusLine().getStatusCode();
+			if (headStatusCode >= 400 && headStatusCode < 500) {
+				System.err.println("Repo already exists: " + name);
+				return;
+			}
+
+			System.err.println("Creating repo " + name);
+			HttpUriRequest createRepoRequest = RequestBuilder.put()
 					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + name)
 					.addHeader("Content-Type", "text/turtle")
 					.setEntity(new StringEntity(
@@ -101,14 +112,13 @@ public class TripleStoreThread extends Thread {
 						))
 					.build();
 
-			System.out.println("Executing PUT request... ");
-			HttpResponse response = httpclient.execute(request);
+			HttpResponse response = httpclient.execute(createRepoRequest);
 
-			System.out.println("Status code: " + response.getStatusLine().getStatusCode());
+			System.err.println("Status code: " + response.getStatusLine().getStatusCode());
 
 			String responseString = new BasicResponseHandler().handleResponse(response);
 
-			System.out.println("Response: " + responseString);
+			System.err.println("Response: " + responseString);
 		} catch (IOException ex) {
 			ex.printStackTrace();
 		}

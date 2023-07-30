@@ -91,7 +91,7 @@ public class QueryApplication {
 		}
 
 		System.err.println("Loading the local list of nanopubs...");
-		LocalListLoader.load();
+		LocalNanopubLoader.load();
 	}
 
 	public TripleStoreThread getTripleStoreThread() {

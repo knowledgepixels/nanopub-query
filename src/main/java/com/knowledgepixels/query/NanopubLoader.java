@@ -1,6 +1,7 @@
 package com.knowledgepixels.query;
 
 import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashSet;
@@ -17,7 +18,6 @@ import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
-import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.SimpleTimestampPattern;
 import org.nanopub.extra.security.IntroNanopub;
 import org.nanopub.extra.security.KeyDeclaration;
@@ -27,6 +27,7 @@ import org.nanopub.extra.security.SignatureUtils;
 import org.nanopub.extra.server.GetNanopub;
 
 import net.trustyuri.TrustyUriUtils;
+import net.trustyuri.rdf.RdfHasher;
 
 public class NanopubLoader {
 
@@ -39,7 +40,7 @@ public class NanopubLoader {
 		load(np);
 	}
 
-	public static void load( Nanopub np) throws RDF4JException {
+	public static void load(Nanopub np) throws RDF4JException {
 		System.err.println("Loading: " + ++loadCount + " " + np.getUri());
 
 		RepositoryConnection conn = QueryApplication.get().getRepositoryConnection("main");
@@ -64,13 +65,20 @@ public class NanopubLoader {
 		if (!hasValidSignature(el)) {
 			return;
 		}
-		for (IRI s : SimpleCreatorPattern.getCreators(np)) {
-			if (s.stringValue().startsWith("https://orcid.org")) {
-				String repoName = "user_" + s.stringValue().replaceFirst("^.*/([0-9\\-X]*)$", "$1");
-				System.err.println("Loading to repo: " + repoName);
-				QueryApplication.get().getRepositoryConnection(repoName).add(NanopubUtils.getStatements(np));
-			}
-		}
+
+		MessageDigest md = RdfHasher.getDigest();
+		md.update(el.getPublicKeyString().getBytes());
+		String pubkeyHash = TrustyUriUtils.getBase64(md.digest());
+		System.err.println("Loading to repo: pubkey_" + pubkeyHash);
+		loadToRepo(np, "pubkey_" + pubkeyHash);
+
+//		for (IRI s : SimpleCreatorPattern.getCreators(np)) {
+//			if (s.stringValue().startsWith("https://orcid.org")) {
+//				String repoName = "user_" + s.stringValue().replaceFirst("^.*/([0-9\\-X]*)$", "$1");
+//				System.err.println("Loading to repo: " + repoName);
+//				loadToRepo(np, repoName);
+//			}
+//		}
 
 		Set<IRI> subIris = new HashSet<>();
 		Set<IRI> otherNps = new HashSet<>();
@@ -149,6 +157,21 @@ public class NanopubLoader {
 			statements = statements.subList(1000, statements.size());
 		}
 		conn.add(statements);
+	}
+
+	public static void loadToRepo(Nanopub np, String repoName) {
+		boolean success = false;
+		int count = 0;
+		while (!success && count < 5) {
+			count++;
+			try {
+				QueryApplication.get().getRepositoryConnection(repoName).add(NanopubUtils.getStatements(np));
+				success = true;
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				System.err.println("Retrying...");
+			}
+		}
 	}
 
 	private static boolean hasValidSignature(NanopubSignatureElement el) {
