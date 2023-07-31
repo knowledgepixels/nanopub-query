@@ -62,7 +62,7 @@ public class MainVerticle extends AbstractVerticle {
 			@Override
 			public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
 				ProxyRequest request = context.request();
-				request.setURI(request.getURI().replaceFirst("^/repo/", "/rdf4j-server/repositories/"));
+				request.setURI(request.getURI().replaceAll("/", "_").replaceFirst("^_repo_", "/rdf4j-server/repositories/"));
 				return ProxyInterceptor.super.handleProxyRequest(context);
 			}
 
@@ -86,8 +86,9 @@ public class MainVerticle extends AbstractVerticle {
 		proxyRouter.route(HttpMethod.HEAD, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.OPTIONS, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.GET, "/tools/*").handler(req -> {
-			if (req.normalizedPath().matches("^/tools/([a-zA-z0-9\\-_]+)/yasgui.html$")) {
-				String repo = req.normalizedPath().replaceFirst("^/tools/([^/]+)/.*$", "$1");
+			final String yasguiPattern = "^/tools/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?/yasgui\\.html$";
+			if (req.normalizedPath().matches(yasguiPattern)) {
+				String repo = req.normalizedPath().replaceFirst(yasguiPattern, "$1$2");
 				req.response()
 					.putHeader("content-type", "text/html")
 					.end("<!DOCTYPE html>\n"
@@ -120,8 +121,9 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 		proxyRouter.route(HttpMethod.GET, "/page/*").handler(req -> {
-			if (req.normalizedPath().matches("^/page/([a-zA-z0-9\\-_]+)$")) {
-				String repo = req.normalizedPath().replaceFirst("^/page/([^/]+)", "$1");
+			final String pagePattern = "^/page/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?$";
+			if (req.normalizedPath().matches(pagePattern)) {
+				String repo = req.normalizedPath().replaceFirst(pagePattern, "$1$2");
 				req.response()
 					.putHeader("content-type", "text/html")
 					.end("<!DOCTYPE html>\n"
@@ -150,6 +152,7 @@ public class MainVerticle extends AbstractVerticle {
 			List<String> repoList = new ArrayList<>(QueryApplication.get().getRepositoryNames());
 			Collections.sort(repoList);
 			for (String s : repoList) {
+				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
 				repos += "<li><a href=\"/page/" + s + "\">" + s + "</a></li>";
 			}
 			req.response()
