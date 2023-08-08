@@ -160,6 +160,7 @@ public class NanopubLoader {
 			statements = statements.subList(1000, statements.size());
 		}
 		conn.add(statements);
+		conn.close();
 	}
 
 	public static void loadToRepo(Nanopub np, String repoName) {
@@ -171,8 +172,7 @@ public class NanopubLoader {
 			try {
 				RepositoryConnection conn = QueryApplication.get().getRepositoryConnection(repoName);
 				conn.add(NanopubUtils.getStatements(np));
-				//conn.commit();
-				//conn.close();
+				conn.close();
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
