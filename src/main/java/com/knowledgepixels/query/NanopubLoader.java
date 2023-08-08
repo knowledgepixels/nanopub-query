@@ -19,12 +19,12 @@ import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
 import org.nanopub.SimpleTimestampPattern;
-import org.nanopub.extra.security.IntroNanopub;
 import org.nanopub.extra.security.KeyDeclaration;
 import org.nanopub.extra.security.MalformedCryptoElementException;
 import org.nanopub.extra.security.NanopubSignatureElement;
 import org.nanopub.extra.security.SignatureUtils;
 import org.nanopub.extra.server.GetNanopub;
+import org.nanopub.extra.setting.IntroNanopub;
 
 import net.trustyuri.TrustyUriUtils;
 import net.trustyuri.rdf.RdfHasher;
