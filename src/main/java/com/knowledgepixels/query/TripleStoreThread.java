@@ -83,7 +83,7 @@ public class TripleStoreThread extends Thread {
 					.build();
 			HttpResponse headResponse = httpclient.execute(headRequest);
 			int headStatusCode = headResponse.getStatusLine().getStatusCode();
-			if (headStatusCode >= 400 && headStatusCode < 500) {
+			if (headStatusCode >= 200 && headStatusCode < 300) {
 				System.err.println("Repo already exists: " + name);
 				return;
 			}
