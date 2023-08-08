@@ -105,7 +105,7 @@
     </dependency>
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
-      <artifactId>rdf4j-sail-memory</artifactId>
+      <artifactId>rdf4j-sail-nativerdf</artifactId>
       <version>4.3.5</version>
     </dependency>
   </dependencies>

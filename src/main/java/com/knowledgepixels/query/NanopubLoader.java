@@ -16,6 +16,7 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.sail.nativerdf.NativeStore;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
 import org.nanopub.SimpleTimestampPattern;
@@ -69,8 +70,10 @@ public class NanopubLoader {
 		MessageDigest md = RdfHasher.getDigest();
 		md.update(el.getPublicKeyString().getBytes());
 		String pubkeyHash = TrustyUriUtils.getBase64(md.digest());
-		System.err.println("Loading to repo: pubkey_" + pubkeyHash);
-		loadToRepo(np, "pubkey_" + pubkeyHash);
+		loadToRepo(np, "pubkey_" + getBase64Hash(el.getPublicKeyString()));
+		for (IRI typeIri : NanopubUtils.getTypes(np)) {
+			loadToRepo(np, "type_" + getBase64Hash(typeIri.stringValue()));
+		}
 
 //		for (IRI s : SimpleCreatorPattern.getCreators(np)) {
 //			if (s.stringValue().startsWith("https://orcid.org")) {
@@ -160,12 +163,16 @@ public class NanopubLoader {
 	}
 
 	public static void loadToRepo(Nanopub np, String repoName) {
+		System.err.println("Loading to repo: " + repoName);
 		boolean success = false;
 		int count = 0;
 		while (!success && count < 5) {
 			count++;
 			try {
-				QueryApplication.get().getRepositoryConnection(repoName).add(NanopubUtils.getStatements(np));
+				RepositoryConnection conn = QueryApplication.get().getRepositoryConnection(repoName);
+				conn.add(NanopubUtils.getStatements(np));
+				//conn.commit();
+				//conn.close();
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
@@ -215,5 +222,11 @@ public class NanopubLoader {
 	public static final IRI HAS_ARTIFACT_CODE = vf.createIRI("http://purl.org/nanopub/admin/artifactCode");
 	public static final IRI IS_INTRO_OF = vf.createIRI("http://purl.org/nanopub/admin/isIntroductionOf");
 	public static final IRI DECLARES_KEY = vf.createIRI("http://purl.org/nanopub/admin/declaresPubkey");
+
+	public static String getBase64Hash(String s) {
+		MessageDigest md = RdfHasher.getDigest();
+		md.update(s.getBytes());
+		return TrustyUriUtils.getBase64(md.digest());
+	}
 
 }

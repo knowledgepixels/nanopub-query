@@ -78,17 +78,7 @@ public class TripleStoreThread extends Thread {
 
 	private void createRepository(String name) {
 		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-			HttpUriRequest headRequest = RequestBuilder.head()
-					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + name)
-					.build();
-			HttpResponse headResponse = httpclient.execute(headRequest);
-			int headStatusCode = headResponse.getStatusLine().getStatusCode();
-			if (headStatusCode >= 200 && headStatusCode < 300) {
-				System.err.println("Repo already exists: " + name);
-				return;
-			}
-
-			System.err.println("Creating repo " + name);
+			System.err.println("Trying to creating repo " + name);
 			HttpUriRequest createRepoRequest = RequestBuilder.put()
 					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + name)
 					.addHeader("Content-Type", "text/turtle")
@@ -104,21 +94,23 @@ public class TripleStoreThread extends Thread {
 							"  rep:repositoryImpl [\n" +
 							"    rep:repositoryType \"openrdf:SailRepository\" ;\n" +
 							"    sr:sailImpl [\n" +
-							"      sail:sailType \"openrdf:MemoryStore\" ;\n" +
-							"      ms:persist true ;\n" +
-							"      ms:syncDelay 120\n" +
+							"      sail:sailType \"openrdf:NativeStore\" \n" +
 							"    ]\n" +
 							"  ]."
 						))
 					.build();
 
 			HttpResponse response = httpclient.execute(createRepoRequest);
-
-			System.err.println("Status code: " + response.getStatusLine().getStatusCode());
-
-			String responseString = new BasicResponseHandler().handleResponse(response);
-
-			System.err.println("Response: " + responseString);
+			int statusCode = response.getStatusLine().getStatusCode();
+			if (statusCode == 409) {
+				System.err.println("Already exists.");
+			} else if (statusCode == 204) {
+				System.err.println("Successfully created.");
+			} else {
+				System.err.println("Status code: " + response.getStatusLine().getStatusCode());
+				String responseString = new BasicResponseHandler().handleResponse(response);
+				System.err.println("Response: " + responseString);
+			}
 		} catch (IOException ex) {
 			ex.printStackTrace();
 		}
