@@ -174,7 +174,6 @@ public class MainVerticle extends AbstractVerticle {
 
 		vertx.createHttpServer().requestHandler(req -> {
 			try {
-				req.setExpectMultipart(true);
 				final StringBuilder payload = new StringBuilder();
 				req.handler(data -> {
 					payload.append(data.toString("UTF-8"));
