@@ -66,9 +66,6 @@ public class NanopubLoader {
 			return;
 		}
 
-		MessageDigest md = RdfHasher.getDigest();
-		md.update(el.getPublicKeyString().getBytes());
-		String pubkeyHash = TrustyUriUtils.getBase64(md.digest());
 		loadToRepo(np, "pubkey_" + getBase64Hash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			loadToRepo(np, "type_" + getBase64Hash(typeIri.stringValue()));
