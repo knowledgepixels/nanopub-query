@@ -101,12 +101,12 @@
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-repository-http</artifactId>
-      <version>4.3.5</version>
+      <version>5.0.0-M1</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-sail-nativerdf</artifactId>
-      <version>4.3.5</version>
+      <version>5.0.0-M1</version>
     </dependency>
   </dependencies>
 
