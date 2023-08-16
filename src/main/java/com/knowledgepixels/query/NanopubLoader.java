@@ -10,6 +10,7 @@ import java.util.Set;
 
 import org.eclipse.rdf4j.common.exception.RDF4JException;
 import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Resource;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -43,15 +44,13 @@ public class NanopubLoader {
 	public static void load(Nanopub np) throws RDF4JException {
 		System.err.println("Loading: " + ++loadCount + " " + np.getUri());
 
-		RepositoryConnection conn = QueryApplication.get().getRepositoryConnection("main");
-
 		// TODO: Check for null characters ("\0"), which can cause problems in Virtuoso.
 
 		List<Statement> statements = new ArrayList<>();
 		String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());
 		if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) ||
 				!np.getProvenanceUri().toString().contains(ac) || !np.getPubinfoUri().toString().contains(ac)) {
-			conn.add(vf.createStatement(np.getUri(), NOTE, vf.createLiteral("could not load nanopub as not all graphs contained the artifact code"), ADMIN_GRAPH));
+			loadToRepo(np.getUri(), NOTE, vf.createLiteral("could not load nanopub as not all graphs contained the artifact code"), ADMIN_GRAPH, "main");
 			return;
 		}
 
@@ -59,25 +58,11 @@ public class NanopubLoader {
 		try {
 			el = SignatureUtils.getSignatureElement(np);
 		} catch (MalformedCryptoElementException ex) {
-			System.err.println("Signature error for " + np.getUri());
-			ex.printStackTrace();
+			loadToRepo(np.getUri(), NOTE, vf.createLiteral("Signature error"), ADMIN_GRAPH, "main");
 		}
 		if (!hasValidSignature(el)) {
 			return;
 		}
-
-		loadToRepo(np, "pubkey_" + getBase64Hash(el.getPublicKeyString()));
-		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			loadToRepo(np, "type_" + getBase64Hash(typeIri.stringValue()));
-		}
-
-//		for (IRI s : SimpleCreatorPattern.getCreators(np)) {
-//			if (s.stringValue().startsWith("https://orcid.org")) {
-//				String repoName = "user_" + s.stringValue().replaceFirst("^.*/([0-9\\-X]*)$", "$1");
-//				System.err.println("Loading to repo: " + repoName);
-//				loadToRepo(np, repoName);
-//			}
-//		}
 
 		Set<IRI> subIris = new HashSet<>();
 		Set<IRI> otherNps = new HashSet<>();
@@ -144,22 +129,22 @@ public class NanopubLoader {
 		try {
 			timestamp = SimpleTimestampPattern.getCreationTime(np);
 		} catch (IllegalArgumentException ex) {
-			System.err.println("Illegal date/time for nanopublication " + np.getUri());
+			loadToRepo(np.getUri(), NOTE, vf.createLiteral("Illegal date/time"), ADMIN_GRAPH, "main");
 		}
 		if (timestamp != null) {
 			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
 		} else {
 			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(""), ADMIN_GRAPH));
 		}
-		while (statements.size() > 1000) {
-			conn.add(statements.subList(0, 1000));
-			statements = statements.subList(1000, statements.size());
+
+		loadToRepo(statements, "main");
+		loadToRepo(statements, "pubkey_" + getBase64Hash(el.getPublicKeyString()));
+		for (IRI typeIri : NanopubUtils.getTypes(np)) {
+			loadToRepo(statements, "type_" + getBase64Hash(typeIri.stringValue()));
 		}
-		conn.add(statements);
-		conn.close();
 	}
 
-	public static void loadToRepo(Nanopub np, String repoName) {
+	public static void loadToRepo(List<Statement> statements, String repoName) {
 		System.err.println("Loading to repo: " + repoName);
 		boolean success = false;
 		int count = 0;
@@ -167,7 +152,11 @@ public class NanopubLoader {
 			count++;
 			try {
 				RepositoryConnection conn = QueryApplication.get().getRepositoryConnection(repoName);
-				conn.add(NanopubUtils.getStatements(np));
+				while (statements.size() > 1000) {
+					conn.add(statements.subList(0, 1000));
+					statements = statements.subList(1000, statements.size());
+				}
+				conn.add(statements);
 				conn.close();
 				success = true;
 			} catch (Exception ex) {
@@ -175,6 +164,12 @@ public class NanopubLoader {
 				System.err.println("Retrying...");
 			}
 		}
+	}
+
+	public static void loadToRepo(Resource subj, IRI pred, Value obj, Resource context, String repoName) {
+		List<Statement> statements = new ArrayList<>();
+		statements.add(vf.createStatement(subj, pred, obj, context));
+		loadToRepo(statements, repoName);
 	}
 
 	private static boolean hasValidSignature(NanopubSignatureElement el) {
