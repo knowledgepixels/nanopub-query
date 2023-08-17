@@ -12,8 +12,8 @@ services:
     environment:
 #      - ENDPOINT_TYPE=virtuoso
 #      - ENDPOINT=virtuoso:1111
-      - USERNAME=dba
-      - PASSWORD=dba
+#      - USERNAME=dba
+#      - PASSWORD=dba
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/ 
       - INIT_WAIT_SECONDS=30

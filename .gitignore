@@ -6,3 +6,6 @@
 *.log
 /docker-compose.override.yml
 /bin/
+/testing/data
+/testing/load
+/testing/docker-compose.override.yml
