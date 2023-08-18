@@ -1,7 +1,6 @@
 package com.knowledgepixels.query;
 
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashSet;
@@ -28,7 +27,6 @@ import org.nanopub.extra.server.GetNanopub;
 import org.nanopub.extra.setting.IntroNanopub;
 
 import net.trustyuri.TrustyUriUtils;
-import net.trustyuri.rdf.RdfHasher;
 
 public class NanopubLoader {
 
@@ -138,9 +136,9 @@ public class NanopubLoader {
 		}
 
 		loadToRepo(statements, "main");
-		loadToRepo(statements, "pubkey_" + getBase64Hash(el.getPublicKeyString()));
+		loadToRepo(statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			loadToRepo(statements, "type_" + getBase64Hash(typeIri.stringValue()));
+			loadToRepo(statements, "type_" + Utils.createHash(typeIri.stringValue()));
 		}
 	}
 
@@ -213,11 +211,5 @@ public class NanopubLoader {
 	public static final IRI HAS_ARTIFACT_CODE = vf.createIRI("http://purl.org/nanopub/admin/artifactCode");
 	public static final IRI IS_INTRO_OF = vf.createIRI("http://purl.org/nanopub/admin/isIntroductionOf");
 	public static final IRI DECLARES_KEY = vf.createIRI("http://purl.org/nanopub/admin/declaresPubkey");
-
-	public static String getBase64Hash(String s) {
-		MessageDigest md = RdfHasher.getDigest();
-		md.update(s.getBytes());
-		return TrustyUriUtils.getBase64(md.digest());
-	}
 
 }

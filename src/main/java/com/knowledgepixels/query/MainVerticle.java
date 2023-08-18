@@ -152,8 +152,16 @@ public class MainVerticle extends AbstractVerticle {
 			List<String> repoList = new ArrayList<>(QueryApplication.get().getRepositoryNames());
 			Collections.sort(repoList);
 			for (String s : repoList) {
+				String hash = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$2");
+				Object hashObj = Utils.getObjectForHash(hash);
+				String label;
+				if (hashObj == null) {
+					label = "";
+				} else {
+					label = " (" + hashObj + ")";
+				}
 				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
-				repos += "<li><a href=\"/page/" + s + "\">" + s + "</a></li>";
+				repos += "<li><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</li>";
 			}
 			req.response()
 			.putHeader("content-type", "text/html")
