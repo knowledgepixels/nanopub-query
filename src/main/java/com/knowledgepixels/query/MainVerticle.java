@@ -18,6 +18,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
 import io.vertx.httpproxy.HttpProxy;
 import io.vertx.httpproxy.ProxyContext;
@@ -82,6 +83,9 @@ public class MainVerticle extends AbstractVerticle {
 
 		HttpServer proxyServer = vertx.createHttpServer();
 		Router proxyRouter = Router.router(vertx);
+		proxyRouter.route(HttpMethod.GET, "/repo").handler(req -> {
+			handleRedirect(req, "/repo");
+		});
 		proxyRouter.route(HttpMethod.GET, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.POST, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.HEAD, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
@@ -120,6 +124,9 @@ public class MainVerticle extends AbstractVerticle {
 					.setStatusCode(404)
 					.end("not found");
 			}
+		});
+		proxyRouter.route(HttpMethod.GET, "/page").handler(req -> {
+			handleRedirect(req, "/page");
 		});
 		proxyRouter.route(HttpMethod.GET, "/page/*").handler(req -> {
 			final String pagePattern = "^/page/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?$";
@@ -223,4 +230,21 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 	}
+
+	public static void handleRedirect(RoutingContext req, String path) {
+		if (req.queryParam("for-type").size() == 1) {
+			String type = req.queryParam("for-type").get(0);
+			req.response().putHeader("location", path + "/type/" + Utils.createHash(type));
+			req.response().setStatusCode(301).end();
+		} else if (req.queryParam("for-pubkey").size() == 1) {
+			String type = req.queryParam("for-pubkey").get(0);
+			req.response().putHeader("location", path + "/pubkey/" + Utils.createHash(type));
+			req.response().setStatusCode(301).end();
+		} else if (req.queryParam("for-user").size() == 1) {
+			String type = req.queryParam("for-user").get(0);
+			req.response().putHeader("location", path + "/user/" + Utils.createHash(type));
+			req.response().setStatusCode(301).end();
+		}
+	}
+
 }
