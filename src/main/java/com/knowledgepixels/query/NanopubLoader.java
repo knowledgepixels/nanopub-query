@@ -15,6 +15,7 @@ import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
+import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
@@ -65,15 +66,30 @@ public class NanopubLoader {
 
 		Set<IRI> subIris = new HashSet<>();
 		Set<IRI> otherNps = new HashSet<>();
+		Set<IRI> invalidated = new HashSet<>();
+		Set<IRI> retracted = new HashSet<>();
+		Set<IRI> superseded = new HashSet<>();
 		for (Statement st : NanopubUtils.getStatements(np)) {
 			statements.add(st);
+
+			if (st.getSubject().equals(np.getUri()))
+
 			if (st.getPredicate().toString().contains(ac)) {
 				subIris.add(st.getPredicate());
 			} else {
 				IRI b = getBaseTrustyUri(st.getPredicate());
 				if (b != null) otherNps.add(b);
 			}
+			if (st.getPredicate().equals(RETRACTS) && st.getObject() instanceof IRI) {
+				retracted.add((IRI) st.getObject());
+			}
+			if (st.getPredicate().equals(INVALIDATES) && st.getObject() instanceof IRI) {
+				retracted.add((IRI) st.getObject());
+			}
 			if (st.getSubject().equals(np.getUri()) && st.getObject() instanceof IRI) {
+				if (st.getPredicate().equals(SUPERSEDES)) {
+					superseded.add((IRI) st.getObject());
+				}
 				if (st.getObject().toString().matches(".*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}")) {
 					statements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_NETWORK_GRAPH));
 					continue;
@@ -103,6 +119,17 @@ public class NanopubLoader {
 		}
 		for (IRI i : otherNps) {
 			statements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));
+		}
+		for (IRI i : invalidated) {
+			statements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
+		}
+		for (IRI i : retracted) {
+			statements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
+			statements.add(vf.createStatement(np.getUri(), RETRACTS, i, ADMIN_GRAPH));
+		}
+		for (IRI i : superseded) {
+			statements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
+			statements.add(vf.createStatement(np.getUri(), SUPERSEDES, i, ADMIN_GRAPH));
 		}
 
 		statements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
@@ -136,6 +163,13 @@ public class NanopubLoader {
 			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(""), ADMIN_GRAPH));
 		}
 
+		for (IRI typeIri : NanopubUtils.getTypes(np)) {
+			statements.add(vf.createStatement(np.getUri(), vf.createIRI("http://purl.org/nanopub/x/hasNanopubType"), typeIri, ADMIN_GRAPH));
+		}
+		String label = NanopubUtils.getLabel(np);
+		if (label == null) label = "";
+		statements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
+
 		loadToRepo(statements, "main");
 		loadToRepo(statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
@@ -147,7 +181,7 @@ public class NanopubLoader {
 	}
 
 	public static void loadToRepo(List<Statement> statements, String repoName) {
-		System.err.println("Loading to repo: " + repoName);
+		//System.err.println("Loading to repo: " + repoName);
 		boolean success = false;
 		int count = 0;
 		while (!success && count < 5) {
@@ -215,5 +249,8 @@ public class NanopubLoader {
 	public static final IRI HAS_ARTIFACT_CODE = vf.createIRI("http://purl.org/nanopub/admin/artifactCode");
 	public static final IRI IS_INTRO_OF = vf.createIRI("http://purl.org/nanopub/admin/isIntroductionOf");
 	public static final IRI DECLARES_KEY = vf.createIRI("http://purl.org/nanopub/admin/declaresPubkey");
+	public static final IRI SUPERSEDES = vf.createIRI("http://purl.org/nanopub/x/supersedes");
+	public static final IRI RETRACTS = vf.createIRI("http://purl.org/nanopub/x/retracts");
+	public static final IRI INVALIDATES = vf.createIRI("http://purl.org/nanopub/x/invalidates");
 
 }

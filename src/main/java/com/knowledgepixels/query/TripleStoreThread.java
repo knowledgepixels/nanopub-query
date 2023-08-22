@@ -78,7 +78,7 @@ public class TripleStoreThread extends Thread {
 
 	private void createRepository(String name) {
 		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-			System.err.println("Trying to creating repo " + name);
+			//System.err.println("Trying to creating repo " + name);
 			HttpUriRequest createRepoRequest = RequestBuilder.put()
 					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + name)
 					.addHeader("Content-Type", "text/turtle")
@@ -103,9 +103,9 @@ public class TripleStoreThread extends Thread {
 			HttpResponse response = httpclient.execute(createRepoRequest);
 			int statusCode = response.getStatusLine().getStatusCode();
 			if (statusCode == 409) {
-				System.err.println("Already exists.");
+				//System.err.println("Already exists.");
 			} else if (statusCode == 204) {
-				System.err.println("Successfully created.");
+				//System.err.println("Successfully created.");
 			} else {
 				System.err.println("Status code: " + response.getStatusLine().getStatusCode());
 				String responseString = new BasicResponseHandler().handleResponse(response);
