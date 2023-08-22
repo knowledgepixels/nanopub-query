@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 
 import org.apache.http.HttpStatus;
+import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.Nanopub;
@@ -153,12 +154,12 @@ public class MainVerticle extends AbstractVerticle {
 			Collections.sort(repoList);
 			for (String s : repoList) {
 				String hash = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$2");
-				Object hashObj = Utils.getObjectForHash(hash);
+				Value hashObj = Utils.getObjectForHash(hash);
 				String label;
 				if (hashObj == null) {
 					label = "";
 				} else {
-					label = " (" + hashObj + ")";
+					label = " (" + hashObj.stringValue() + ")";
 				}
 				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
 				repos += "<li><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</li>";

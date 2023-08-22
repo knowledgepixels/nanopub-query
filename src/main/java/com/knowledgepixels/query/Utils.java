@@ -27,9 +27,9 @@ public class Utils {
 	public static final IRI IS_HASH_OF = vf.createIRI("http://purl.org/nanopub/admin/isHashOf");
 	public static final IRI HASH_PREFIX = vf.createIRI("http://purl.org/nanopub/admin/hash/");
 
-	public static Map<String,Object> hashToObjMap;
+	public static Map<String,Value> hashToObjMap;
 
-	private static Map<String,Object> getHashToObjectMap() {
+	private static Map<String,Value> getHashToObjectMap() {
 		if (hashToObjMap == null) {
 			hashToObjMap = new HashMap<>();
 			RepositoryConnection conn = QueryApplication.get().getRepositoryConnection("main");
@@ -41,16 +41,14 @@ public class Utils {
 				BindingSet b = r.next();
 				String hash = b.getBinding("s").getValue().stringValue();
 				hash = StringUtils.replace(hash, HASH_PREFIX.toString(), "");
-				Object thing = b.getBinding("o").getValue().stringValue();
-				if (thing.toString().startsWith("https?://")) thing = vf.createIRI(thing.toString());
-				hashToObjMap.put(hash, thing);
+				hashToObjMap.put(hash, b.getBinding("o").getValue());
 			}
 			conn.close();
 		}
 		return hashToObjMap;
 	}
 
-	public static Object getObjectForHash(String hash) {
+	public static Value getObjectForHash(String hash) {
 		return getHashToObjectMap().get(hash);
 	}
 
@@ -71,8 +69,8 @@ public class Utils {
 	}
 
 	private static Value getValue(Object obj) {
-		if (obj instanceof IRI) {
-			return (IRI) obj;
+		if (obj instanceof Value) {
+			return (Value) obj;
 		} else {
 			return vf.createLiteral(obj.toString());
 		}

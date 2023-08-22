@@ -138,7 +138,7 @@ public class NanopubLoader {
 		loadToRepo(statements, "main");
 		loadToRepo(statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			loadToRepo(statements, "type_" + Utils.createHash(typeIri.stringValue()));
+			loadToRepo(statements, "type_" + Utils.createHash(typeIri));
 		}
 	}
 

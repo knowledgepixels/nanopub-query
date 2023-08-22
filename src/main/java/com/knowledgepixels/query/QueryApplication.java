@@ -51,7 +51,6 @@ public class QueryApplication {
 
 	private boolean initialized = false;
 	private TripleStoreThread tripleStoreThread;
-	private Map<String,Boolean> repositoryNames = null;
 
 	private QueryApplication() {}
 
@@ -104,29 +103,29 @@ public class QueryApplication {
 	}
 
 	public Set<String> getRepositoryNames() {
-		if (repositoryNames == null) {
-			try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-				HttpResponse resp = httpclient.execute(RequestBuilder.get()
-						.setUri("http://rdf4j:8080/rdf4j-server/repositories")
-						.addHeader("Content-Type", "text/csv")
-						.build());
-				BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
-				int code = resp.getStatusLine().getStatusCode();
-				if (code < 200 || code >= 300) return null;
-				repositoryNames = new HashMap<>();
-				int lineCount = 0;
-				while (true) {
-					String line = reader.readLine();
-					if (line == null) break;
-					if (lineCount > 0) {
-						String repoName = line.split(",")[1];
-						repositoryNames.put(repoName, true);
-					}
-					lineCount = lineCount + 1;
+		Map<String,Boolean> repositoryNames = null;
+		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+			HttpResponse resp = httpclient.execute(RequestBuilder.get()
+					.setUri("http://rdf4j:8080/rdf4j-server/repositories")
+					.addHeader("Content-Type", "text/csv")
+					.build());
+			BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
+			int code = resp.getStatusLine().getStatusCode();
+			if (code < 200 || code >= 300) return null;
+			repositoryNames = new HashMap<>();
+			int lineCount = 0;
+			while (true) {
+				String line = reader.readLine();
+				if (line == null) break;
+				if (lineCount > 0) {
+					String repoName = line.split(",")[1];
+					repositoryNames.put(repoName, true);
 				}
-			} catch (IOException ex) {
-				ex.printStackTrace();
+				lineCount = lineCount + 1;
 			}
+		} catch (IOException ex) {
+			ex.printStackTrace();
+			return null;
 		}
 		return repositoryNames.keySet();
 	}
