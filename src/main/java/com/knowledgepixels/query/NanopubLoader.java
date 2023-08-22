@@ -18,6 +18,7 @@ import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
+import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.SimpleTimestampPattern;
 import org.nanopub.extra.security.KeyDeclaration;
 import org.nanopub.extra.security.MalformedCryptoElementException;
@@ -139,6 +140,9 @@ public class NanopubLoader {
 		loadToRepo(statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			loadToRepo(statements, "type_" + Utils.createHash(typeIri));
+		}
+		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
+			loadToRepo(statements, "user_" + Utils.createHash(creatorIri));
 		}
 	}
 

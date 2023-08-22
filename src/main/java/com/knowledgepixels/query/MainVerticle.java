@@ -159,7 +159,12 @@ public class MainVerticle extends AbstractVerticle {
 				if (hashObj == null) {
 					label = "";
 				} else {
-					label = " (" + hashObj.stringValue() + ")";
+					if (s.startsWith("pubkey_")) {
+						label = Utils.getShortPubkeyName(hashObj.stringValue());
+					} else {
+						label = hashObj.stringValue();
+					}
+					label = " (" + label + ")";
 				}
 				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
 				repos += "<li><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</li>";
