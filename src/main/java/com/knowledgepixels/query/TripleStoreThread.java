@@ -83,21 +83,42 @@ public class TripleStoreThread extends Thread {
 					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + name)
 					.addHeader("Content-Type", "text/turtle")
 					.setEntity(new StringEntity(
-							"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
-							"@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
-							"@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
-							"@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
-							"@prefix ms: <http://www.openrdf.org/config/sail/memory#>.\n" +
-							"[] a rep:Repository ;\n" +
-							"  rep:repositoryID \"" + name + "\" ;\n" +
-							"  rdfs:label \"" + name + " memory store\" ;\n" +
-							"  rep:repositoryImpl [\n" +
-							"    rep:repositoryType \"openrdf:SailRepository\" ;\n" +
-							"    sr:sailImpl [\n" +
-							"      sail:sailType \"openrdf:NativeStore\" \n" +
-							"    ]\n" +
-							"  ]."
+							"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n"
+							+ "@prefix rep: <http://www.openrdf.org/config/repository#>.\n"
+							+ "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n"
+							+ "@prefix sail: <http://www.openrdf.org/config/sail#>.\n"
+							+ "@prefix ns: <http://www.openrdf.org/config/sail/native#>.\n"
+							+ "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n"
+							+ "\n"
+							+ "[] a rep:Repository ;\n"
+							+ "    rep:repositoryID \"" + name + "\" ;\n"
+							+ "    rdfs:label \"" + name + " native store\" ;\n"
+							+ "    rep:repositoryImpl [\n"
+							+ "        rep:repositoryType \"openrdf:SailRepository\" ;\n"
+							+ "        sr:sailImpl [\n"
+							+ "            sail:sailType \"openrdf:NativeStore\" ;\n"
+							+ "            sail:iterationCacheSyncThreshold \"10000\";\n"
+							+ "            ns:tripleIndexes \"spoc,posc,ospc,opsc,psoc,sopc,spoc,cpos,cosp,cops,cpso,csop\" ;\n"
+							+ "            sb:defaultQueryEvaluationMode \"STANDARD\"\n"
+							+ "        ]\n"
+							+ "    ]."
 						))
+//					.setEntity(new StringEntity(
+//							"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
+//							"@prefix config: <tag:rdf4j.org,2023:config/>.\n" +
+//							"[] a config:Repository ;\n"
+//							+ "    config:rep.id \"" + name + "\" ;\n"
+//							+ "    rdfs:label \"" + name + " native store\" ;\n"
+//							+ "    config:rep.impl [\n"
+//							+ "        config:rep.type \"openrdf:SailRepository\" ;\n"
+//							+ "        config:sail.impl [\n"
+//							+ "            config:sail.type \"openrdf:NativeStore\" ;\n"
+//							+ "            config:sail.iterationCacheSyncThreshold \"10000\";\n"
+//							+ "            config:native.tripleIndexes \"spoc,posc,ospc,opsc,psoc,sopc,spoc,cpos,cosp,cops,cpso,csop\" ;\n"
+//							+ "            config:sail.defaultQueryEvaluationMode \"STANDARD\"\n"
+//							+ "        ]\n"
+//							+ "    ]."
+//						))
 					.build();
 
 			HttpResponse response = httpclient.execute(createRepoRequest);
