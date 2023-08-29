@@ -3,6 +3,7 @@ package com.knowledgepixels.query;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.http.HttpResponse;
@@ -12,6 +13,13 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import org.eclipse.rdf4j.common.transaction.IsolationLevels;
+import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.ValueFactory;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQuery;
+import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
@@ -20,11 +28,20 @@ import virtuoso.rdf4j.driver.VirtuosoRepository;
 
 public class TripleStoreThread extends Thread {
 
+	public static final String ADMIN_REPO = "admin";
+
+	private static ValueFactory vf = SimpleValueFactory.getInstance();
+
+	public static final IRI HAS_REPO_INIT_ID = vf.createIRI("http://purl.org/nanopub/admin/hasRepoInitId");
+	public static final IRI THIS_REPO_ID = vf.createIRI("http://purl.org/nanopub/admin/thisRepo");
+
 	private Map<String,Repository> repositories = new HashMap<>();
 	private String endpointBase = null;
 	private String endpointType = null;
 	private String username = null;
 	private String password = null;
+
+	private static String repoInitId;
 
 	volatile boolean terminated = false;
 
@@ -55,7 +72,6 @@ public class TripleStoreThread extends Thread {
 
 	private Repository getRepository(String name) {
 		if (!repositories.containsKey(name)) {
-			createRepository(name);
 			Repository repository = null;
 			if (endpointType == null || endpointType.equals("rdf4j")) {
 				repository = new HTTPRepository(endpointBase + name);
@@ -64,19 +80,24 @@ public class TripleStoreThread extends Thread {
 			} else {
 				throw new RuntimeException("Unknown repository type: " + endpointType);
 			}
-			repository.init();
 			repositories.put(name, repository);
+			createRepo(name);
+			RepositoryConnection conn = getRepoConnection(name);
+			conn.close();
 		}
 		return repositories.get(name);
 	}
 
-	public RepositoryConnection getRepositoryConnection(String name) {
+	public RepositoryConnection getRepoConnection(String name) {
 		Repository repo = getRepository(name);
 		if (repo == null) return null;
 		return repo.getConnection();
 	}
 
-	private void createRepository(String name) {
+	private void createRepo(String name) {
+		if (!name.equals(ADMIN_REPO)) {
+			getRepository(ADMIN_REPO);  // make sure admin repo is loaded first
+		}
 		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
 			//System.err.println("Trying to creating repo " + name);
 			HttpUriRequest createRepoRequest = RequestBuilder.put()
@@ -125,8 +146,18 @@ public class TripleStoreThread extends Thread {
 			int statusCode = response.getStatusLine().getStatusCode();
 			if (statusCode == 409) {
 				//System.err.println("Already exists.");
-			} else if (statusCode == 204) {
+				getRepository(name).init();
+				if (name.equals(ADMIN_REPO)) {
+					loadRepoId();
+				}
+			} else if (statusCode >= 200 && statusCode < 300) {
 				//System.err.println("Successfully created.");
+				getRepository(name).init();
+				if (name.equals(ADMIN_REPO)) {
+					initRepoId();
+				} else {
+					setRepoId(name);
+				}
 			} else {
 				System.err.println("Status code: " + response.getStatusLine().getStatusCode());
 				String responseString = new BasicResponseHandler().handleResponse(response);
@@ -143,6 +174,40 @@ public class TripleStoreThread extends Thread {
 				repo.shutDown();
 			}
 		}
+	}
+
+	public String getRepoInitId() {
+		return repoInitId;
+	}
+
+	private void initRepoId() {
+		repoInitId = new Random().nextLong() + "";
+		RepositoryConnection conn = getRepoConnection(ADMIN_REPO);
+		conn.begin(IsolationLevels.SNAPSHOT);
+		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
+		conn.commit();
+		conn.close();
+	}
+
+	private void setRepoId(String repoName) {
+		RepositoryConnection conn = getRepoConnection(repoName);
+		conn.begin(IsolationLevels.SNAPSHOT);
+		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
+		conn.commit();
+		conn.close();
+	}
+
+	private void loadRepoId() {
+		RepositoryConnection conn = getRepoConnection(ADMIN_REPO);
+		conn.begin(IsolationLevels.SNAPSHOT);
+		TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
+		query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
+		query.setBinding("s", THIS_REPO_ID);
+		query.setBinding("p", HAS_REPO_INIT_ID);
+		TupleQueryResult r = query.evaluate();
+		repoInitId = r.next().getBinding("o").getValue().stringValue();
+		conn.commit();
+		conn.close();
 	}
 
 }

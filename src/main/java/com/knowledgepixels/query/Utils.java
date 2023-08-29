@@ -27,12 +27,12 @@ public class Utils {
 	public static final IRI IS_HASH_OF = vf.createIRI("http://purl.org/nanopub/admin/isHashOf");
 	public static final IRI HASH_PREFIX = vf.createIRI("http://purl.org/nanopub/admin/hash/");
 
-	public static Map<String,Value> hashToObjMap;
+	private static Map<String,Value> hashToObjMap;
 
 	private static Map<String,Value> getHashToObjectMap() {
 		if (hashToObjMap == null) {
 			hashToObjMap = new HashMap<>();
-			RepositoryConnection conn = QueryApplication.get().getRepositoryConnection("main");
+			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
 			TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
 			query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
 			query.setBinding("p", IS_HASH_OF);
@@ -59,12 +59,14 @@ public class Utils {
 		md.update(s.getBytes());
 		String hash = TrustyUriUtils.getBase64(md.digest());
 
-		Value objV = getValue(obj);
-		RepositoryConnection conn = QueryApplication.get().getRepositoryConnection("main");
-		conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));
-		conn.close();
-
-		getHashToObjectMap().put(hash, objV);
+		if (!getHashToObjectMap().containsKey(hash)) {
+			Value objV = getValue(obj);
+			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
+			conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));
+			conn.close();
+	
+			getHashToObjectMap().put(hash, objV);
+		}
 		return hash;
 	}
 

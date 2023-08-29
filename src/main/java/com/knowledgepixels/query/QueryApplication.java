@@ -97,9 +97,13 @@ public class QueryApplication {
 		return tripleStoreThread;
 	}
 
-	public RepositoryConnection getRepositoryConnection(String name) {
+	public RepositoryConnection getRepoConnection(String name) {
 		if (tripleStoreThread == null) return null;
-		return tripleStoreThread.getRepositoryConnection(name);
+		return tripleStoreThread.getRepoConnection(name);
+	}
+
+	public RepositoryConnection getAdminRepoConnection() {
+		return getRepoConnection(TripleStoreThread.ADMIN_REPO);
 	}
 
 	public Set<String> getRepositoryNames() {

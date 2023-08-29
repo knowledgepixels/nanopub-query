@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.eclipse.rdf4j.common.exception.RDF4JException;
+import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Resource;
 import org.eclipse.rdf4j.model.Statement;
@@ -50,7 +51,7 @@ public class NanopubLoader {
 		String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());
 		if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) ||
 				!np.getProvenanceUri().toString().contains(ac) || !np.getPubinfoUri().toString().contains(ac)) {
-			loadToRepo(np.getUri(), NOTE, vf.createLiteral("could not load nanopub as not all graphs contained the artifact code"), ADMIN_GRAPH, "main");
+			loadNoteToRepo(np.getUri(), "could not load nanopub as not all graphs contained the artifact code");
 			return;
 		}
 
@@ -58,7 +59,7 @@ public class NanopubLoader {
 		try {
 			el = SignatureUtils.getSignatureElement(np);
 		} catch (MalformedCryptoElementException ex) {
-			loadToRepo(np.getUri(), NOTE, vf.createLiteral("Signature error"), ADMIN_GRAPH, "main");
+			loadNoteToRepo(np.getUri(), "Signature error");
 		}
 		if (!hasValidSignature(el)) {
 			return;
@@ -155,7 +156,7 @@ public class NanopubLoader {
 		try {
 			timestamp = SimpleTimestampPattern.getCreationTime(np);
 		} catch (IllegalArgumentException ex) {
-			loadToRepo(np.getUri(), NOTE, vf.createLiteral("Illegal date/time"), ADMIN_GRAPH, "main");
+			loadNoteToRepo(np.getUri(), "Illegal date/time");
 		}
 		if (timestamp != null) {
 			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
@@ -170,42 +171,58 @@ public class NanopubLoader {
 		if (label == null) label = "";
 		statements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
 
-		loadToRepo(statements, "main");
-		loadToRepo(statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+		loadNanopubsToRepo(statements, "main");
+		loadNanopubsToRepo(statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			loadToRepo(statements, "type_" + Utils.createHash(typeIri));
+			loadNanopubsToRepo(statements, "type_" + Utils.createHash(typeIri));
 		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
-			loadToRepo(statements, "user_" + Utils.createHash(creatorIri));
+			loadNanopubsToRepo(statements, "user_" + Utils.createHash(creatorIri));
 		}
 	}
 
-	public static void loadToRepo(List<Statement> statements, String repoName) {
-		//System.err.println("Loading to repo: " + repoName);
+	public static void loadNanopubsToRepo(List<Statement> statements, String repoName) {
 		boolean success = false;
-		int count = 0;
-		while (!success && count < 5) {
-			count++;
+		while (!success) {
 			try {
-				RepositoryConnection conn = QueryApplication.get().getRepositoryConnection(repoName);
+				RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
+				conn.begin(IsolationLevels.SNAPSHOT);
 				while (statements.size() > 1000) {
 					conn.add(statements.subList(0, 1000));
 					statements = statements.subList(1000, statements.size());
 				}
 				conn.add(statements);
+				conn.commit();
 				conn.close();
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
-				System.err.println("Retrying...");
+				System.err.println("Retrying in 10 second...");
+				try {
+					Thread.sleep(10000);
+				} catch (InterruptedException x) {}
 			}
 		}
 	}
 
-	public static void loadToRepo(Resource subj, IRI pred, Value obj, Resource context, String repoName) {
-		List<Statement> statements = new ArrayList<>();
-		statements.add(vf.createStatement(subj, pred, obj, context));
-		loadToRepo(statements, repoName);
+	public static void loadNoteToRepo(Resource subj, String note) {
+		boolean success = false;
+		while (!success) {
+			try {
+				RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
+				List<Statement> statements = new ArrayList<>();
+				statements.add(vf.createStatement(subj, NOTE, vf.createLiteral(note), ADMIN_GRAPH));
+				conn.add(statements);
+				conn.close();
+				success = true;
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				System.err.println("Retrying in 10 second...");
+				try {
+					Thread.sleep(10000);
+				} catch (InterruptedException x) {}
+			}
+		}
 	}
 
 	private static boolean hasValidSignature(NanopubSignatureElement el) {
