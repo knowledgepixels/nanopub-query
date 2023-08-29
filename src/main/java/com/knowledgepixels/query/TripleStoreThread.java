@@ -146,18 +146,10 @@ public class TripleStoreThread extends Thread {
 			int statusCode = response.getStatusLine().getStatusCode();
 			if (statusCode == 409) {
 				//System.err.println("Already exists.");
-				getRepository(name).init();
-				if (name.equals(ADMIN_REPO)) {
-					loadRepoId();
-				}
+				initExistingRepo(name);
 			} else if (statusCode >= 200 && statusCode < 300) {
 				//System.err.println("Successfully created.");
-				getRepository(name).init();
-				if (name.equals(ADMIN_REPO)) {
-					initRepoId();
-				} else {
-					setRepoId(name);
-				}
+				initNewRepo(name);
 			} else {
 				System.err.println("Status code: " + response.getStatusLine().getStatusCode());
 				String responseString = new BasicResponseHandler().handleResponse(response);
@@ -180,16 +172,11 @@ public class TripleStoreThread extends Thread {
 		return repoInitId;
 	}
 
-	private void initRepoId() {
-		repoInitId = new Random().nextLong() + "";
-		RepositoryConnection conn = getRepoConnection(ADMIN_REPO);
-		conn.begin(IsolationLevels.SNAPSHOT);
-		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
-		conn.commit();
-		conn.close();
-	}
-
-	private void setRepoId(String repoName) {
+	private void initNewRepo(String repoName) {
+		if (repoName.equals(ADMIN_REPO)) {
+			repoInitId = new Random().nextLong() + "";
+		}
+		getRepository(repoName).init();
 		RepositoryConnection conn = getRepoConnection(repoName);
 		conn.begin(IsolationLevels.SNAPSHOT);
 		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
@@ -197,17 +184,20 @@ public class TripleStoreThread extends Thread {
 		conn.close();
 	}
 
-	private void loadRepoId() {
-		RepositoryConnection conn = getRepoConnection(ADMIN_REPO);
-		conn.begin(IsolationLevels.SNAPSHOT);
-		TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
-		query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
-		query.setBinding("s", THIS_REPO_ID);
-		query.setBinding("p", HAS_REPO_INIT_ID);
-		TupleQueryResult r = query.evaluate();
-		repoInitId = r.next().getBinding("o").getValue().stringValue();
-		conn.commit();
-		conn.close();
+	private void initExistingRepo(String repoName) {
+		getRepository(repoName).init();
+		if (repoName.equals(ADMIN_REPO)) {
+			RepositoryConnection conn = getRepoConnection(ADMIN_REPO);
+			conn.begin(IsolationLevels.SNAPSHOT);
+			TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
+			query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
+			query.setBinding("s", THIS_REPO_ID);
+			query.setBinding("p", HAS_REPO_INIT_ID);
+			TupleQueryResult r = query.evaluate();
+			repoInitId = r.next().getBinding("o").getValue().stringValue();
+			conn.commit();
+			conn.close();
+		}
 	}
 
 }
