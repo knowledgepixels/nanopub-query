@@ -192,7 +192,7 @@ public class NanopubLoader {
 		while (!success) {
 			try {
 				RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
-				conn.begin(IsolationLevels.SNAPSHOT);
+				conn.begin(IsolationLevels.SERIALIZABLE);
 				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStoreThread.HAS_LOAD_NUMBER) != null) {
 					System.err.println("Already loaded: " + npId);
 				} else {

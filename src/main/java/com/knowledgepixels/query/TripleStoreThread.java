@@ -108,6 +108,7 @@ public class TripleStoreThread extends Thread {
 							+ "@prefix rep: <http://www.openrdf.org/config/repository#>.\n"
 							+ "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n"
 							+ "@prefix sail: <http://www.openrdf.org/config/sail#>.\n"
+							+ "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n"
 							+ "@prefix ns: <http://www.openrdf.org/config/sail/native#>.\n"
 							+ "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n"
 							+ "\n"
@@ -122,7 +123,24 @@ public class TripleStoreThread extends Thread {
 							+ "            ns:tripleIndexes \"spoc,posc,ospc,opsc,psoc,sopc,spoc,cpos,cosp,cops,cpso,csop\" ;\n"
 							+ "            sb:defaultQueryEvaluationMode \"STANDARD\"\n"
 							+ "        ]\n"
-							+ "    ]."
+							+ "    ].\n"
+							+ "\n"
+//							+ "[] a rep:Repository ;\n"
+//							+ "    rep:repositoryID \"" + name + "\" ;\n"
+//							+ "    rdfs:label \"" + name + " store\" ;\n"
+//							+ "    rep:repositoryImpl [\n"
+//							+ "        rep:repositoryType \"openrdf:SailRepository\" ;\n"
+//							+ "        sr:sailImpl [\n"
+//							+ "            sail:sailType \"openrdf:LuceneSail\" ;\n"
+//							+ "            sail-luc:indexDir \"index/\" ;\n"
+//							+ "            sail:delegate ["
+//							+ "              sail:sailType \"openrdf:NativeStore\" ;\n"
+//							+ "              sail:iterationCacheSyncThreshold \"10000\";\n"
+//							+ "              ns:tripleIndexes \"spoc,posc,ospc,opsc,psoc,sopc,spoc,cpos,cosp,cops,cpso,csop\" ;\n"
+//							+ "              sb:defaultQueryEvaluationMode \"STANDARD\"\n"
+//							+ "            ]\n"
+//							+ "        ]\n"
+//							+ "    ]."
 						))
 //					.setEntity(new StringEntity(
 //							"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
@@ -172,7 +190,7 @@ public class TripleStoreThread extends Thread {
 		String repoInitId = new Random().nextLong() + "";
 		getRepository(repoName).init();
 		RepositoryConnection conn = getRepoConnection(repoName);
-		conn.begin(IsolationLevels.SNAPSHOT);
+		conn.begin(IsolationLevels.SERIALIZABLE);
 		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
 		conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
 		conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(TrustyUriUtils.getBase64(new byte[32])), NanopubLoader.ADMIN_GRAPH);
