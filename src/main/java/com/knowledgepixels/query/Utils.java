@@ -82,4 +82,10 @@ public class Utils {
 		return pubkey.replaceFirst("^(.).{39}(.{5}).*$", "$1..$2..");
 	}
 
+	public static Value getObjectForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
+		TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + graph.stringValue() + "> { <" + subj.stringValue() + "> <" + pred.stringValue() + "> ?o } }").evaluate();
+		if (!r.hasNext()) return null;
+		return r.next().getBinding("o").getValue();
+	}
+
 }

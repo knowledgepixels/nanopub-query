@@ -21,6 +21,7 @@ import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
 
+import net.trustyuri.TrustyUriUtils;
 import virtuoso.rdf4j.driver.VirtuosoRepository;
 
 public class TripleStoreThread extends Thread {
@@ -31,7 +32,9 @@ public class TripleStoreThread extends Thread {
 
 	public static final IRI HAS_REPO_INIT_ID = vf.createIRI("http://purl.org/nanopub/admin/hasRepoInitId");
 	public static final IRI HAS_NANOPUB_COUNT = vf.createIRI("http://purl.org/nanopub/admin/hasNanpubCount");
+	public static final IRI HAS_NANOPUB_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasNanopubChecksum");
 	public static final IRI HAS_LOAD_NUMBER = vf.createIRI("http://purl.org/nanopub/admin/hasLoadNumber");
+	public static final IRI HAS_LOAD_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasLoadChecksum");
 	public static final IRI THIS_REPO_ID = vf.createIRI("http://purl.org/nanopub/admin/thisRepo");
 
 	private Map<String,Repository> repositories = new HashMap<>();
@@ -172,6 +175,7 @@ public class TripleStoreThread extends Thread {
 		conn.begin(IsolationLevels.SNAPSHOT);
 		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
 		conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
+		conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(TrustyUriUtils.getBase64(new byte[32])), NanopubLoader.ADMIN_GRAPH);
 		conn.commit();
 		conn.close();
 	}

@@ -19,8 +19,6 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
-import org.eclipse.rdf4j.query.QueryLanguage;
-import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
@@ -175,32 +173,40 @@ public class NanopubLoader {
 		if (label == null) label = "";
 		statements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
 
-		loadNanopubToRepo(np, statements, "main");
-		loadNanopubToRepo(np, statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+		loadNanopubToRepo(np.getUri(), statements, "main");
+		loadNanopubToRepo(np.getUri(), statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			loadNanopubToRepo(np, statements, "type_" + Utils.createHash(typeIri));
+			loadNanopubToRepo(np.getUri(), statements, "type_" + Utils.createHash(typeIri));
 		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
-			loadNanopubToRepo(np, statements, "user_" + Utils.createHash(creatorIri));
+			loadNanopubToRepo(np.getUri(), statements, "user_" + Utils.createHash(creatorIri));
 		}
 	}
 
-	public static void loadNanopubToRepo(Nanopub np, List<Statement> statements, String repoName) {
+	public static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
 		boolean success = false;
 		while (!success) {
 			try {
 				RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
 				conn.begin(IsolationLevels.SNAPSHOT);
-				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { <" + TripleStoreThread.THIS_REPO_ID + "> <" + TripleStoreThread.HAS_NANOPUB_COUNT + "> ?o } }").evaluate();
-				long count = Long.parseLong(r.next().getBinding("o").getValue().stringValue());
-				conn.add(np.getUri(), TripleStoreThread.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
-				conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
-				conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
-				while (statements.size() > 1000) {
-					conn.add(statements.subList(0, 1000));
-					statements = statements.subList(1000, statements.size());
+				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStoreThread.HAS_LOAD_NUMBER) != null) {
+					System.err.println("Already loaded: " + npId);
+				} else {
+					long count = Long.parseLong(Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT).stringValue());
+					String checksum = Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM).stringValue();
+					String newChecksum = updateXorChecksum(npId, checksum);
+					conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
+					conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);
+					conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
+					conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
+					conn.add(npId, TripleStoreThread.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
+					conn.add(npId, TripleStoreThread.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
+					while (statements.size() > 1000) {
+						conn.add(statements.subList(0, 1000));
+						statements = statements.subList(1000, statements.size());
+					}
+					conn.add(statements);
 				}
-				conn.add(statements);
 				conn.commit();
 				conn.close();
 				success = true;
