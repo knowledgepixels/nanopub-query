@@ -136,9 +136,13 @@ public class NanopubLoader {
 		}
 
 		statements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
 		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getAssertionUri(), ADMIN_GRAPH));
 		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getProvenanceUri(), ADMIN_GRAPH));
 		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_GRAPH));
+		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getPubinfoUri(), ADMIN_GRAPH));
 
 		String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
 		statements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));
@@ -162,8 +166,6 @@ public class NanopubLoader {
 		}
 		if (timestamp != null) {
 			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
-		} else {
-			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(""), ADMIN_GRAPH));
 		}
 
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
@@ -173,8 +175,10 @@ public class NanopubLoader {
 		if (label == null) label = "";
 		statements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
 
-		loadNanopubToRepo(np.getUri(), statements, "main");
-		loadNanopubToRepo(np.getUri(), statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+		loadNanopubToRepo(np.getUri(), statements, "full");
+		if (hasValidSignature(el)) {
+			loadNanopubToRepo(np.getUri(), statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+		}
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			loadNanopubToRepo(np.getUri(), statements, "type_" + Utils.createHash(typeIri));
 		}
@@ -288,6 +292,7 @@ public class NanopubLoader {
 	public static final IRI ADMIN_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/graph");
 	public static final IRI ADMIN_NETWORK_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/networkGraph");
 	public static final IRI HAS_HEAD_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasHeadGraph");
+	public static final IRI HAS_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasGraph");
 	public static final IRI NOTE = vf.createIRI("http://purl.org/nanopub/admin/note");
 	public static final IRI HAS_SUB_IRI = vf.createIRI("http://purl.org/nanopub/admin/hasSubIri");
 	public static final IRI REFERS_TO_NANOPUB = vf.createIRI("http://purl.org/nanopub/admin/refersToNanopub");
