@@ -7,6 +7,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import javax.xml.bind.DatatypeConverter;
+
 import org.eclipse.rdf4j.common.exception.RDF4JException;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
@@ -17,6 +19,8 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
@@ -171,22 +175,27 @@ public class NanopubLoader {
 		if (label == null) label = "";
 		statements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
 
-		loadNanopubsToRepo(statements, "main");
-		loadNanopubsToRepo(statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+		loadNanopubToRepo(np, statements, "main");
+		loadNanopubToRepo(np, statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			loadNanopubsToRepo(statements, "type_" + Utils.createHash(typeIri));
+			loadNanopubToRepo(np, statements, "type_" + Utils.createHash(typeIri));
 		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
-			loadNanopubsToRepo(statements, "user_" + Utils.createHash(creatorIri));
+			loadNanopubToRepo(np, statements, "user_" + Utils.createHash(creatorIri));
 		}
 	}
 
-	public static void loadNanopubsToRepo(List<Statement> statements, String repoName) {
+	public static void loadNanopubToRepo(Nanopub np, List<Statement> statements, String repoName) {
 		boolean success = false;
 		while (!success) {
 			try {
 				RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
 				conn.begin(IsolationLevels.SNAPSHOT);
+				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { <" + TripleStoreThread.THIS_REPO_ID + "> <" + TripleStoreThread.HAS_NANOPUB_COUNT + "> ?o } }").evaluate();
+				long count = Long.parseLong(r.next().getBinding("o").getValue().stringValue());
+				conn.add(np.getUri(), TripleStoreThread.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
+				conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
+				conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
 				while (statements.size() > 1000) {
 					conn.add(statements.subList(0, 1000));
 					statements = statements.subList(1000, statements.size());
@@ -203,6 +212,20 @@ public class NanopubLoader {
 				} catch (InterruptedException x) {}
 			}
 		}
+	}
+
+	public static byte[] getBase64Bytes(String trustyHashString) {
+		String hashBase64 = trustyHashString.replace('-', '+').replace('_', '/') + "=";
+		return DatatypeConverter.parseBase64Binary(hashBase64);
+	}
+
+	public static String updateXorChecksum(IRI nanopubId, String checksum) {
+		byte[] checksumBytes = getBase64Bytes(checksum);
+		byte[] addBytes = getBase64Bytes(TrustyUriUtils.getArtifactCode(nanopubId.stringValue()).substring(2));
+		for (int i = 0 ; i < 32 ; i++) {
+			checksumBytes[i] = (byte) (checksumBytes[i] ^ addBytes[i]);
+		}
+		return TrustyUriUtils.getBase64(checksumBytes);
 	}
 
 	public static void loadNoteToRepo(Resource subj, String note) {

@@ -17,9 +17,6 @@ import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
-import org.eclipse.rdf4j.query.QueryLanguage;
-import org.eclipse.rdf4j.query.TupleQuery;
-import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
@@ -33,6 +30,8 @@ public class TripleStoreThread extends Thread {
 	private static ValueFactory vf = SimpleValueFactory.getInstance();
 
 	public static final IRI HAS_REPO_INIT_ID = vf.createIRI("http://purl.org/nanopub/admin/hasRepoInitId");
+	public static final IRI HAS_NANOPUB_COUNT = vf.createIRI("http://purl.org/nanopub/admin/hasNanpubCount");
+	public static final IRI HAS_LOAD_NUMBER = vf.createIRI("http://purl.org/nanopub/admin/hasLoadNumber");
 	public static final IRI THIS_REPO_ID = vf.createIRI("http://purl.org/nanopub/admin/thisRepo");
 
 	private Map<String,Repository> repositories = new HashMap<>();
@@ -40,8 +39,6 @@ public class TripleStoreThread extends Thread {
 	private String endpointType = null;
 	private String username = null;
 	private String password = null;
-
-	private static String repoInitId;
 
 	volatile boolean terminated = false;
 
@@ -146,7 +143,7 @@ public class TripleStoreThread extends Thread {
 			int statusCode = response.getStatusLine().getStatusCode();
 			if (statusCode == 409) {
 				//System.err.println("Already exists.");
-				initExistingRepo(name);
+				getRepository(name).init();
 			} else if (statusCode >= 200 && statusCode < 300) {
 				//System.err.println("Successfully created.");
 				initNewRepo(name);
@@ -168,36 +165,15 @@ public class TripleStoreThread extends Thread {
 		}
 	}
 
-	public String getRepoInitId() {
-		return repoInitId;
-	}
-
 	private void initNewRepo(String repoName) {
-		if (repoName.equals(ADMIN_REPO)) {
-			repoInitId = new Random().nextLong() + "";
-		}
+		String repoInitId = new Random().nextLong() + "";
 		getRepository(repoName).init();
 		RepositoryConnection conn = getRepoConnection(repoName);
 		conn.begin(IsolationLevels.SNAPSHOT);
 		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
+		conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
 		conn.commit();
 		conn.close();
-	}
-
-	private void initExistingRepo(String repoName) {
-		getRepository(repoName).init();
-		if (repoName.equals(ADMIN_REPO)) {
-			RepositoryConnection conn = getRepoConnection(ADMIN_REPO);
-			conn.begin(IsolationLevels.SNAPSHOT);
-			TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
-			query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
-			query.setBinding("s", THIS_REPO_ID);
-			query.setBinding("p", HAS_REPO_INIT_ID);
-			TupleQueryResult r = query.evaluate();
-			repoInitId = r.next().getBinding("o").getValue().stringValue();
-			conn.commit();
-			conn.close();
-		}
 	}
 
 }
