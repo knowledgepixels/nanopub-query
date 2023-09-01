@@ -49,7 +49,6 @@ public class NanopubLoader {
 
 		// TODO: Check for null characters ("\0"), which can cause problems in Virtuoso.
 
-		List<Statement> statements = new ArrayList<>();
 		String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());
 		if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) ||
 				!np.getProvenanceUri().toString().contains(ac) || !np.getPubinfoUri().toString().contains(ac)) {
@@ -66,6 +65,12 @@ public class NanopubLoader {
 		if (!hasValidSignature(el)) {
 			return;
 		}
+
+		List<Statement> statements = new ArrayList<>();
+		List<Statement> invalidateStatements = new ArrayList<>();
+
+		Statement pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);
+		statements.add(pubkeyStatement);
 
 		Set<IRI> subIris = new HashSet<>();
 		Set<IRI> otherNps = new HashSet<>();
@@ -124,14 +129,14 @@ public class NanopubLoader {
 			statements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));
 		}
 		for (IRI i : invalidated) {
-			statements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
+			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
 		}
 		for (IRI i : retracted) {
-			statements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
+			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
 			statements.add(vf.createStatement(np.getUri(), RETRACTS, i, ADMIN_GRAPH));
 		}
 		for (IRI i : superseded) {
-			statements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
+			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
 			statements.add(vf.createStatement(np.getUri(), SUPERSEDES, i, ADMIN_GRAPH));
 		}
 
@@ -147,17 +152,14 @@ public class NanopubLoader {
 		String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
 		statements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));
 
-		if (hasValidSignature(el)) {
-			statements.add(vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH));
-
-			if (isIntroNanopub(np)) {
-				IntroNanopub introNp = new IntroNanopub(np);
-				statements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));
-				for (KeyDeclaration kc : introNp.getKeyDeclarations()) {
-					statements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));
-				}
+		if (isIntroNanopub(np)) {
+			IntroNanopub introNp = new IntroNanopub(np);
+			statements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));
+			for (KeyDeclaration kc : introNp.getKeyDeclarations()) {
+				statements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));
 			}
 		}
+	
 		Calendar timestamp = null;
 		try {
 			timestamp = SimpleTimestampPattern.getCreationTime(np);
@@ -175,6 +177,10 @@ public class NanopubLoader {
 		if (label == null) label = "";
 		statements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
 
+		statements.addAll(invalidateStatements);
+
+		// TODO Get all known nanopubs that invalidate this one, and add invalidates-statements
+
 		loadNanopubToRepo(np.getUri(), statements, "full");
 		if (hasValidSignature(el)) {
 			loadNanopubToRepo(np.getUri(), statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
@@ -185,6 +191,10 @@ public class NanopubLoader {
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
 			loadNanopubToRepo(np.getUri(), statements, "user_" + Utils.createHash(creatorIri));
 		}
+
+		//for (Statement st : invalidateStatements) {
+			// TODO Write these to all affected graphs
+		//}
 	}
 
 	public static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
