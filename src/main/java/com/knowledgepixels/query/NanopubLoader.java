@@ -87,7 +87,7 @@ public class NanopubLoader {
 				retracted.add((IRI) st.getObject());
 			}
 			if (st.getPredicate().equals(INVALIDATES) && st.getObject() instanceof IRI) {
-				retracted.add((IRI) st.getObject());
+				invalidated.add((IRI) st.getObject());
 			}
 			if (st.getSubject().equals(np.getUri()) && st.getObject() instanceof IRI) {
 				if (st.getPredicate().equals(SUPERSEDES)) {
