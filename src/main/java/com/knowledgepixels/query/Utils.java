@@ -1,6 +1,5 @@
 package com.knowledgepixels.query;
 
-import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -16,7 +15,6 @@ import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
 import net.trustyuri.TrustyUriUtils;
-import net.trustyuri.rdf.RdfHasher;
 
 public class Utils {
 
@@ -54,10 +52,7 @@ public class Utils {
 
 	public static String createHash(Object obj) {
 		String s = obj.toString();
-
-		MessageDigest md = RdfHasher.getDigest();
-		md.update(s.getBytes());
-		String hash = TrustyUriUtils.getBase64(md.digest());
+		String hash = TrustyUriUtils.getBase64Hash(s);
 
 		if (!getHashToObjectMap().containsKey(hash)) {
 			Value objV = getValue(obj);

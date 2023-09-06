@@ -7,8 +7,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import javax.xml.bind.DatatypeConverter;
-
 import org.eclipse.rdf4j.common.exception.RDF4JException;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
@@ -208,7 +206,7 @@ public class NanopubLoader {
 				} else {
 					long count = Long.parseLong(Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT).stringValue());
 					String checksum = Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM).stringValue();
-					String newChecksum = updateXorChecksum(npId, checksum);
+					String newChecksum = NanopubUtils.updateXorChecksum(npId, checksum);
 					conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
 					conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);
 					conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
@@ -232,20 +230,6 @@ public class NanopubLoader {
 				} catch (InterruptedException x) {}
 			}
 		}
-	}
-
-	public static byte[] getBase64Bytes(String trustyHashString) {
-		String hashBase64 = trustyHashString.replace('-', '+').replace('_', '/') + "=";
-		return DatatypeConverter.parseBase64Binary(hashBase64);
-	}
-
-	public static String updateXorChecksum(IRI nanopubId, String checksum) {
-		byte[] checksumBytes = getBase64Bytes(checksum);
-		byte[] addBytes = getBase64Bytes(TrustyUriUtils.getArtifactCode(nanopubId.stringValue()).substring(2));
-		for (int i = 0 ; i < 32 ; i++) {
-			checksumBytes[i] = (byte) (checksumBytes[i] ^ addBytes[i]);
-		}
-		return TrustyUriUtils.getBase64(checksumBytes);
 	}
 
 	public static void loadNoteToRepo(Resource subj, String note) {

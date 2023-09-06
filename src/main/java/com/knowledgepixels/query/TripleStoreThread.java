@@ -20,8 +20,8 @@ import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
+import org.nanopub.NanopubUtils;
 
-import net.trustyuri.TrustyUriUtils;
 import virtuoso.rdf4j.driver.VirtuosoRepository;
 
 public class TripleStoreThread extends Thread {
@@ -193,7 +193,7 @@ public class TripleStoreThread extends Thread {
 		conn.begin(IsolationLevels.SERIALIZABLE);
 		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
 		conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
-		conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(TrustyUriUtils.getBase64(new byte[32])), NanopubLoader.ADMIN_GRAPH);
+		conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
 		conn.commit();
 		conn.close();
 	}
