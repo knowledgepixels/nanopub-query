@@ -236,7 +236,7 @@ public class NanopubLoader {
 				ex.printStackTrace();
 				conn.rollback();
 			} finally {
-				//conn.close();
+				conn.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
@@ -304,8 +304,8 @@ public class NanopubLoader {
 				metaConn.rollback();
 				for (RepositoryConnection c : connections) c.rollback();
 			} finally {
-				//metaConn.close();
-				//for (RepositoryConnection c : connections) c.close();
+				metaConn.close();
+				for (RepositoryConnection c : connections) c.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
@@ -339,7 +339,7 @@ public class NanopubLoader {
 				ex.printStackTrace();
 				conn.rollback();
 			} finally {
-				//conn.close();
+				conn.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
@@ -363,7 +363,7 @@ public class NanopubLoader {
 			} catch (Exception ex) {
 				ex.printStackTrace();
 			} finally {
-				//conn.close();
+				conn.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
