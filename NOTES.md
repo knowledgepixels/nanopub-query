@@ -18,22 +18,16 @@
 Fixed repos:
 
 - index (all nanopub in index)
-- single nanopub (not sure if needed/useful?)
 
 Monotonic repos:
 
-- main (everything)
-- user (everything linked to user; approved and unapproved)
-- pubkey (hashed to make it short enough for a nice URL)
-- pubkey set (hashed sorted pubkeys)
+- full (everything) DONE
+- user (everything linked to user; approved and unapproved) DONE
+- pubkey (hashed to make it short enough for a nice URL) DONE
+- pubkey set (hashed sorted pubkeys) DONE
 - intro (fixed forward to pubkey set)
 
 Dynamic repos:
 
 - approved-user (dynamic forward to approved pubkey set)
 - group (tbd...)
-
-All repos above have these variants:
-
-- everything
-- assertion-only

@@ -1,0 +1,11 @@
+version: '2'
+services:
+  query:
+    build: .
+    image: !reset null
+  server:
+    deploy:
+      replicas: 0
+  mongodb:
+    deploy:
+      replicas: 0

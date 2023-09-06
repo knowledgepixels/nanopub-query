@@ -1,42 +1,42 @@
 version: '2'
 services:
   query:
-    build: .
-#   image: nanopub/query
+#   build: .
+    image: nanopub/query
     restart: unless-stopped
     ports:
-      - 9300:9300
+#     - 9300:9300
       - 9393:9393
     volumes:
       - ./load:/app/load
     environment:
-#      - ENDPOINT_TYPE=virtuoso
-#      - ENDPOINT=virtuoso:1111
-#      - USERNAME=dba
-#      - PASSWORD=dba
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/ 
       - INIT_WAIT_SECONDS=30
-#  virtuoso:
-#    image: openlink/virtuoso-opensource-7:latest
-#    restart: unless-stopped
-#    ports:
-#      - 8890:8890
-##     - 1111:1111
-#    environment:
-##     - SPARQL_UPDATE=true
-#      - DBA_PASSWORD=dba
-#      - VIRT_SPARQL_MaxQueryExecutionTime=600
-#      - VIRT_SPARQL_MaxQueryCostEstimationTime=0
-#    volumes:
-#      - ./data/virtuoso:/database
   rdf4j:
-    image: eclipse/rdf4j-workbench:latest
+    image: eclipse/rdf4j-workbench:4.3.6
     restart: unless-stopped
     environment:
       - JAVA_OPTS=-Xmx16g -Xms16g
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
-#    ports:
-#      - 8080:8080
+#   ports:
+#     - 8081:8080
+  server:
+    image: nanopub/server
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      - NPS_MONGODB_HOST=mongodb
+      - NPS_COLLECT_NANOPUBS_ENABLED=true
+      - NPS_POST_NEW_NANOPUBS_TO=http://query:9300
+#   ports:
+#     - 8080:8080
+  mongodb:
+    image: nanopub/mongo
+    #image: mongo
+    restart: unless-stopped
+    volumes:
+      - ./data/mongodb:/data/dbb
