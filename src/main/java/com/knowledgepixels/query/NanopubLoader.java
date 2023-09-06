@@ -209,8 +209,8 @@ public class NanopubLoader {
 	public static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
 		boolean success = false;
 		while (!success) {
+			RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
 			try {
-				RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
 				conn.begin(IsolationLevels.SERIALIZABLE);
 				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStoreThread.HAS_LOAD_NUMBER) != null) {
 					System.err.println("Already loaded: " + npId);
@@ -231,10 +231,14 @@ public class NanopubLoader {
 					conn.add(statements);
 				}
 				conn.commit();
-				conn.close();
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
+				conn.rollback();
+			} finally {
+				//conn.close();
+			}
+			if (!success) {
 				System.err.println("Retrying in 10 second...");
 				try {
 					Thread.sleep(10000);
@@ -247,10 +251,9 @@ public class NanopubLoader {
 		boolean success = false;
 		while (!success) {
 			List<RepositoryConnection> connections = new ArrayList<>();
-			RepositoryConnection metaConn;
+			RepositoryConnection metaConn = QueryApplication.get().getRepoConnection("meta");
 			try {
 				IRI invalidatedNpId = (IRI) invalidateStatement.getObject();
-				metaConn = QueryApplication.get().getRepoConnection("meta");
 				metaConn.begin(IsolationLevels.SERIALIZABLE);
 
 				Value pubkeyValue = Utils.getObjectForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY);
@@ -291,16 +294,20 @@ public class NanopubLoader {
 						}
 					}
 				}
-				
-				for (RepositoryConnection c : connections) {
-					c.commit();
-					c.close();
-				}
+
 				metaConn.commit();
-				metaConn.close();
+				// TODO handle case that some commits succeed and some fail
+				for (RepositoryConnection c : connections) c.commit();
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
+				metaConn.rollback();
+				for (RepositoryConnection c : connections) c.rollback();
+			} finally {
+				//metaConn.close();
+				//for (RepositoryConnection c : connections) c.close();
+			}
+			if (!success) {
 				System.err.println("Retrying in 10 second...");
 				try {
 					Thread.sleep(10000);
@@ -313,8 +320,8 @@ public class NanopubLoader {
 		List<Statement> invalidatingStatements = new ArrayList<>();
 		boolean success = false;
 		while (!success) {
+			RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
 			try {
-				RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
 				conn.begin(IsolationLevels.SERIALIZABLE);
 
 				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { "
@@ -327,10 +334,14 @@ public class NanopubLoader {
 				}
 
 				conn.commit();
-				conn.close();
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
+				conn.rollback();
+			} finally {
+				//conn.close();
+			}
+			if (!success) {
 				System.err.println("Retrying in 10 second...");
 				try {
 					Thread.sleep(10000);
@@ -343,15 +354,18 @@ public class NanopubLoader {
 	public static void loadNoteToRepo(Resource subj, String note) {
 		boolean success = false;
 		while (!success) {
+			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
 			try {
-				RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
 				List<Statement> statements = new ArrayList<>();
 				statements.add(vf.createStatement(subj, NOTE, vf.createLiteral(note), ADMIN_GRAPH));
 				conn.add(statements);
-				conn.close();
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
+			} finally {
+				//conn.close();
+			}
+			if (!success) {
 				System.err.println("Retrying in 10 second...");
 				try {
 					Thread.sleep(10000);
