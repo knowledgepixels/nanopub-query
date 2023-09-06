@@ -17,7 +17,7 @@ services:
     image: eclipse/rdf4j-workbench:4.3.6
     restart: unless-stopped
     environment:
-      - JAVA_OPTS=-Xmx16g -Xms16g
+      - JAVA_OPTS=-Xmx16g -Xms1g -Xss100m
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
