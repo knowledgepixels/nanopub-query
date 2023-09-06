@@ -1,6 +1,8 @@
 package com.knowledgepixels.query;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
@@ -81,6 +83,15 @@ public class Utils {
 		TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + graph.stringValue() + "> { <" + subj.stringValue() + "> <" + pred.stringValue() + "> ?o } }").evaluate();
 		if (!r.hasNext()) return null;
 		return r.next().getBinding("o").getValue();
+	}
+
+	public static List<Value> getObjectsForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
+		List<Value> values = new ArrayList<>();
+		TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + graph.stringValue() + "> { <" + subj.stringValue() + "> <" + pred.stringValue() + "> ?o } }").evaluate();
+		while (r.hasNext()) {
+			values.add(r.next().getBinding("o").getValue());
+		}
+		return values;
 	}
 
 }

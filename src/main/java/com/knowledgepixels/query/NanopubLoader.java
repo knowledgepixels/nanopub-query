@@ -17,6 +17,9 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
+import org.eclipse.rdf4j.query.BindingSet;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
@@ -64,11 +67,12 @@ public class NanopubLoader {
 			return;
 		}
 
-		List<Statement> statements = new ArrayList<>();
+		List<Statement> metaStatements = new ArrayList<>();
+		List<Statement> nanopubStatements = new ArrayList<>();
 		List<Statement> invalidateStatements = new ArrayList<>();
 
 		Statement pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);
-		statements.add(pubkeyStatement);
+		metaStatements.add(pubkeyStatement);
 
 		Set<IRI> subIris = new HashSet<>();
 		Set<IRI> otherNps = new HashSet<>();
@@ -76,7 +80,7 @@ public class NanopubLoader {
 		Set<IRI> retracted = new HashSet<>();
 		Set<IRI> superseded = new HashSet<>();
 		for (Statement st : NanopubUtils.getStatements(np)) {
-			statements.add(st);
+			nanopubStatements.add(st);
 
 			if (st.getSubject().equals(np.getUri()))
 
@@ -97,7 +101,7 @@ public class NanopubLoader {
 					superseded.add((IRI) st.getObject());
 				}
 				if (st.getObject().toString().matches(".*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}")) {
-					statements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_NETWORK_GRAPH));
+					metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_NETWORK_GRAPH));
 					continue;
 				}
 			}
@@ -121,40 +125,40 @@ public class NanopubLoader {
 		subIris.remove(np.getProvenanceUri());
 		subIris.remove(np.getPubinfoUri());
 		for (IRI i : subIris) {
-			statements.add(vf.createStatement(np.getUri(), HAS_SUB_IRI, i, ADMIN_GRAPH));
+			metaStatements.add(vf.createStatement(np.getUri(), HAS_SUB_IRI, i, ADMIN_GRAPH));
 		}
 		for (IRI i : otherNps) {
-			statements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));
+			metaStatements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));
 		}
 		for (IRI i : invalidated) {
 			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
 		}
 		for (IRI i : retracted) {
 			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
-			statements.add(vf.createStatement(np.getUri(), RETRACTS, i, ADMIN_GRAPH));
+			metaStatements.add(vf.createStatement(np.getUri(), RETRACTS, i, ADMIN_GRAPH));
 		}
 		for (IRI i : superseded) {
 			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
-			statements.add(vf.createStatement(np.getUri(), SUPERSEDES, i, ADMIN_GRAPH));
+			metaStatements.add(vf.createStatement(np.getUri(), SUPERSEDES, i, ADMIN_GRAPH));
 		}
 
-		statements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
-		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
-		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_GRAPH));
-		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getAssertionUri(), ADMIN_GRAPH));
-		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_GRAPH));
-		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getProvenanceUri(), ADMIN_GRAPH));
-		statements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_GRAPH));
-		statements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getPubinfoUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getAssertionUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getProvenanceUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getPubinfoUri(), ADMIN_GRAPH));
 
 		String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
-		statements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));
+		metaStatements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));
 
 		if (isIntroNanopub(np)) {
 			IntroNanopub introNp = new IntroNanopub(np);
-			statements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));
+			metaStatements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));
 			for (KeyDeclaration kc : introNp.getKeyDeclarations()) {
-				statements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));
+				metaStatements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));
 			}
 		}
 	
@@ -165,34 +169,41 @@ public class NanopubLoader {
 			loadNoteToRepo(np.getUri(), "Illegal date/time");
 		}
 		if (timestamp != null) {
-			statements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
+			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
 		}
 
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			statements.add(vf.createStatement(np.getUri(), vf.createIRI("http://purl.org/nanopub/x/hasNanopubType"), typeIri, ADMIN_GRAPH));
+			metaStatements.add(vf.createStatement(np.getUri(), HAS_NANOPUB_TYPE, typeIri, ADMIN_GRAPH));
 		}
 		String label = NanopubUtils.getLabel(np);
 		if (label == null) label = "";
-		statements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
-
-		statements.addAll(invalidateStatements);
-
-		// TODO Get all known nanopubs that invalidate this one, and add invalidates-statements
-
-		loadNanopubToRepo(np.getUri(), statements, "full");
-		if (hasValidSignature(el)) {
-			loadNanopubToRepo(np.getUri(), statements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+		metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
+		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
+			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATOR, creatorIri, ADMIN_GRAPH));
 		}
+
+		// Any statements that express that the currently processed nanopub is already invalidated:
+		List<Statement> invalidatingStatements = getInvalidatingStatements(np.getUri());
+
+		metaStatements.addAll(invalidateStatements);
+
+		List<Statement> allStatements = new ArrayList<>(nanopubStatements);
+		allStatements.addAll(metaStatements);
+		allStatements.addAll(invalidatingStatements);
+
+		loadNanopubToRepo(np.getUri(), metaStatements, "meta");
+		loadNanopubToRepo(np.getUri(), allStatements, "full");
+		loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
-			loadNanopubToRepo(np.getUri(), statements, "type_" + Utils.createHash(typeIri));
+			loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri));
 		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
-			loadNanopubToRepo(np.getUri(), statements, "user_" + Utils.createHash(creatorIri));
+			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(creatorIri));
 		}
 
-		//for (Statement st : invalidateStatements) {
-			// TODO Write these to all affected graphs
-		//}
+		for (Statement st : invalidateStatements) {
+			loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement);
+		}
 	}
 
 	public static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
@@ -230,6 +241,103 @@ public class NanopubLoader {
 				} catch (InterruptedException x) {}
 			}
 		}
+	}
+
+	public static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement) {
+		boolean success = false;
+		while (!success) {
+			List<RepositoryConnection> connections = new ArrayList<>();
+			RepositoryConnection metaConn;
+			try {
+				IRI invalidatedNpId = (IRI) invalidateStatement.getObject();
+				metaConn = QueryApplication.get().getRepoConnection("meta");
+				metaConn.begin(IsolationLevels.SERIALIZABLE);
+
+				Value pubkeyValue = Utils.getObjectForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY);
+				if (pubkeyValue != null) {
+					String pubkey = pubkeyValue.stringValue();
+
+					if (!pubkey.equals(thisPubkey)) {
+						//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for pubkey " + pubkey);
+						RepositoryConnection pubkeyConn = QueryApplication.get().getRepoConnection("pubkey_" + Utils.createHash(pubkey));
+						pubkeyConn.begin(IsolationLevels.SERIALIZABLE);
+						connections.add(pubkeyConn);
+						pubkeyConn.add(invalidateStatement);
+						pubkeyConn.add(pubkeyStatement);
+					}
+	
+					for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_NANOPUB_TYPE)) {
+						IRI typeIri = (IRI) v;
+						// TODO Avoid calling getTypes and getCreators multiple times:
+						if (!NanopubUtils.getTypes(thisNp).contains(typeIri)) {
+							//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for type " + typeIri);
+							RepositoryConnection typeConn = QueryApplication.get().getRepoConnection("type_" + Utils.createHash(typeIri));
+							typeConn.begin(IsolationLevels.SERIALIZABLE);
+							connections.add(typeConn);
+							typeConn.add(invalidateStatement);
+							typeConn.add(pubkeyStatement);
+						}
+					}
+	
+					for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, DCTERMS.CREATOR)) {
+						IRI creatorIri = (IRI) v;
+						if (!SimpleCreatorPattern.getCreators(thisNp).contains(creatorIri)) {
+							//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for user " + creatorIri);
+							RepositoryConnection userConn = QueryApplication.get().getRepoConnection("user_" + Utils.createHash(creatorIri));
+							userConn.begin(IsolationLevels.SERIALIZABLE);
+							connections.add(userConn);
+							userConn.add(invalidateStatement);
+							userConn.add(pubkeyStatement);
+						}
+					}
+				}
+				
+				for (RepositoryConnection c : connections) {
+					c.commit();
+					c.close();
+				}
+				metaConn.commit();
+				metaConn.close();
+				success = true;
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				System.err.println("Retrying in 10 second...");
+				try {
+					Thread.sleep(10000);
+				} catch (InterruptedException x) {}
+			}
+		}
+	}
+
+	public static List<Statement> getInvalidatingStatements(IRI npId) {
+		List<Statement> invalidatingStatements = new ArrayList<>();
+		boolean success = false;
+		while (!success) {
+			try {
+				RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
+				conn.begin(IsolationLevels.SERIALIZABLE);
+
+				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { "
+						+ "?np <" + INVALIDATES + "> <" + npId + "> ; <" + HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . "
+						+ "} }").evaluate();
+				while (r.hasNext()) {
+					BindingSet b = r.next();
+					invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), INVALIDATES, npId, ADMIN_GRAPH));
+					invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, b.getBinding("pubkey").getValue(), ADMIN_GRAPH));
+				}
+
+				conn.commit();
+				conn.close();
+				success = true;
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				System.err.println("Retrying in 10 second...");
+				try {
+					Thread.sleep(10000);
+				} catch (InterruptedException x) {}
+			}
+		}
+		return invalidatingStatements;
 	}
 
 	public static void loadNoteToRepo(Resource subj, String note) {
@@ -297,5 +405,6 @@ public class NanopubLoader {
 	public static final IRI SUPERSEDES = vf.createIRI("http://purl.org/nanopub/x/supersedes");
 	public static final IRI RETRACTS = vf.createIRI("http://purl.org/nanopub/x/retracts");
 	public static final IRI INVALIDATES = vf.createIRI("http://purl.org/nanopub/x/invalidates");
+	public static final IRI HAS_NANOPUB_TYPE = vf.createIRI("http://purl.org/nanopub/x/hasNanopubType");
 
 }
