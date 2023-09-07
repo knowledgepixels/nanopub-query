@@ -3,6 +3,7 @@ package com.knowledgepixels.query;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -10,6 +11,7 @@ import java.util.Set;
 import org.eclipse.rdf4j.common.exception.RDF4JException;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.model.Resource;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
@@ -19,6 +21,7 @@ import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.query.BindingSet;
 import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
@@ -176,8 +179,9 @@ public class NanopubLoader {
 			metaStatements.add(vf.createStatement(np.getUri(), HAS_NANOPUB_TYPE, typeIri, ADMIN_GRAPH));
 		}
 		String label = NanopubUtils.getLabel(np);
-		if (label == null) label = "";
-		metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
+		if (label != null) {
+			metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
+		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATOR, creatorIri, ADMIN_GRAPH));
 		}
@@ -191,6 +195,12 @@ public class NanopubLoader {
 		allStatements.addAll(metaStatements);
 		allStatements.addAll(invalidatingStatements);
 
+		if (timestamp != null) {
+			if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
+				loadNanopubToLatest(allStatements);
+			}
+		}
+
 		loadNanopubToRepo(np.getUri(), metaStatements, "meta");
 		loadNanopubToRepo(np.getUri(), allStatements, "full");
 		loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
@@ -203,6 +213,61 @@ public class NanopubLoader {
 
 		for (Statement st : invalidateStatements) {
 			loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement);
+		}
+	}
+
+	private static Long lastUpdateOfLatestRepo = null;
+	private static long THIRTY_DAYS = 1000l * 60 * 60 * 24 * 30;
+	private static long ONE_HOUR = 1000l * 60 * 60;
+
+	public static void loadNanopubToLatest(List<Statement> statements) {
+		boolean success = false;
+		while (!success) {
+			RepositoryConnection conn = QueryApplication.get().getRepoConnection("last30d");
+			try {
+				conn.begin(IsolationLevels.SERIALIZABLE);
+				while (statements.size() > 1000) {
+					conn.add(statements.subList(0, 1000));
+					statements = statements.subList(1000, statements.size());
+				}
+				conn.add(statements);
+				if (lastUpdateOfLatestRepo == null || new Date().getTime() - lastUpdateOfLatestRepo > ONE_HOUR) {
+					//System.err.println("Remove old nanopubs...");
+					Literal thirtyDaysAgo = vf.createLiteral(new Date(new Date().getTime() - THIRTY_DAYS));
+					TupleQuery q = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { "
+							+ "?np <" + DCTERMS.CREATED + "> ?date . "
+							+ "filter ( ?date < ?thirtydaysago ) "
+						+ "} }");
+					q.setBinding("thirtydaysago",  thirtyDaysAgo);
+					TupleQueryResult r = q.evaluate();
+					while (r.hasNext()) {
+						BindingSet b = r.next();
+						IRI oldNpId = (IRI) b.getBinding("np").getValue();
+						//System.err.println("Remove old nanopub: " + oldNpId);
+						for (Value v : Utils.getObjectsForPattern(conn, ADMIN_GRAPH, oldNpId, HAS_GRAPH)) {
+							// Remove all four nanopub graphs:
+							conn.remove((Resource) null, (IRI) null, (Value) null, (IRI) v);
+						}
+						// Remove nanopubs in admin graphs:
+						conn.remove(oldNpId, null, null, ADMIN_GRAPH);
+						conn.remove(oldNpId, null, null, ADMIN_NETWORK_GRAPH);
+					}
+					lastUpdateOfLatestRepo = new Date().getTime();
+				}
+				conn.commit();
+				success = true;
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				conn.rollback();
+			} finally {
+				conn.close();
+			}
+			if (!success) {
+				System.err.println("Retrying in 10 second...");
+				try {
+					Thread.sleep(10000);
+				} catch (InterruptedException x) {}
+			}
 		}
 	}
 
