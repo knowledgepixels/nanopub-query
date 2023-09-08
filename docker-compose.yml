@@ -39,4 +39,4 @@ services:
     #image: mongo
     restart: unless-stopped
     volumes:
-      - ./data/mongodb:/data/dbb
+      - ./data/mongodb:/data/db
