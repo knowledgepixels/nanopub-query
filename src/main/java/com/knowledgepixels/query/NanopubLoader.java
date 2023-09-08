@@ -72,6 +72,7 @@ public class NanopubLoader {
 
 		List<Statement> metaStatements = new ArrayList<>();
 		List<Statement> nanopubStatements = new ArrayList<>();
+		List<Statement> literalStatements = new ArrayList<>();
 		List<Statement> invalidateStatements = new ArrayList<>();
 
 		Statement pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);
@@ -84,8 +85,6 @@ public class NanopubLoader {
 		Set<IRI> superseded = new HashSet<>();
 		for (Statement st : NanopubUtils.getStatements(np)) {
 			nanopubStatements.add(st);
-
-			if (st.getSubject().equals(np.getUri()))
 
 			if (st.getPredicate().toString().contains(ac)) {
 				subIris.add(st.getPredicate());
@@ -120,6 +119,12 @@ public class NanopubLoader {
 				} else {
 					IRI b = getBaseTrustyUri(st.getObject());
 					if (b != null) otherNps.add(b);
+				}
+			} else {
+				if (st.getSubject().equals(np.getUri())) {
+					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));
+				} else {
+					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), ADMIN_GRAPH));
 				}
 			}
 		}
@@ -185,6 +190,9 @@ public class NanopubLoader {
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATOR, creatorIri, ADMIN_GRAPH));
 		}
+		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
+			metaStatements.add(vf.createStatement(np.getUri(), SimpleCreatorPattern.PAV_AUTHOREDBY, authorIri, ADMIN_GRAPH));
+		}
 
 		// Any statements that express that the currently processed nanopub is already invalidated:
 		List<Statement> invalidatingStatements = getInvalidatingStatements(np.getUri());
@@ -195,6 +203,10 @@ public class NanopubLoader {
 		allStatements.addAll(metaStatements);
 		allStatements.addAll(invalidatingStatements);
 
+		List<Statement> textStatements = new ArrayList<>(literalStatements);
+		textStatements.addAll(metaStatements);
+		textStatements.addAll(invalidatingStatements);
+
 		if (timestamp != null) {
 			if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
 				loadNanopubToLatest(allStatements);
@@ -203,12 +215,16 @@ public class NanopubLoader {
 
 		loadNanopubToRepo(np.getUri(), metaStatements, "meta");
 		loadNanopubToRepo(np.getUri(), allStatements, "full");
+		loadNanopubToRepo(np.getUri(), textStatements, "text");
 		loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri));
 		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
 			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(creatorIri));
+		}
+		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
+			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(authorIri));
 		}
 
 		for (Statement st : invalidateStatements) {
@@ -485,5 +501,6 @@ public class NanopubLoader {
 	public static final IRI RETRACTS = vf.createIRI("http://purl.org/nanopub/x/retracts");
 	public static final IRI INVALIDATES = vf.createIRI("http://purl.org/nanopub/x/invalidates");
 	public static final IRI HAS_NANOPUB_TYPE = vf.createIRI("http://purl.org/nanopub/x/hasNanopubType");
+	public static final IRI HAS_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasLiteral");
 
 }
