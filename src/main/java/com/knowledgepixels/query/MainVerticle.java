@@ -1,9 +1,11 @@
 package com.knowledgepixels.query;
 
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Scanner;
 
 import org.apache.http.HttpStatus;
 import org.eclipse.rdf4j.model.Value;
@@ -30,6 +32,8 @@ public class MainVerticle extends AbstractVerticle {
 
 	private boolean server1Started = false;
 	private boolean server2Started = false;
+
+	private static String css = null;
 
 	private boolean allServersStarted() {
 		return server1Started && server2Started;
@@ -103,6 +107,7 @@ public class MainVerticle extends AbstractVerticle {
 							+ "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
 							+ "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
 							+ "<title>Nanopub Query SPARQL Editor for repository: " + repo + "</title>\n"
+							+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
 							+ "<link href='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.css' rel='stylesheet' type='text/css'/>\n"
 							+ "<style>.yasgui .endpointText {display:none !important;}</style>\n"
 							+ "<script type=\"text/javascript\">localStorage.clear();</script>\n"
@@ -141,6 +146,7 @@ public class MainVerticle extends AbstractVerticle {
 							+ "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
 							+ "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
 							+ "<title>Nanopub Query repo: " + repo + "</title>\n"
+							+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
 							+ "</head>\n"
 							+ "<body>\n"
 							+ "<h3>Nanopub Query repo: " + repo + "</h3>\n"
@@ -183,12 +189,19 @@ public class MainVerticle extends AbstractVerticle {
 					+ "<head>\n"
 					+ "<title>Nanopub Query</title>\n"
 					+ "<meta charset='utf-8'>\n"
+					+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
 					+ "</head>\n"
 					+ "<body>\n"
 					+ "<p>Repos:</p>"
 					+ "<ul>" + repos + "</ul>"
 					+ "</body>\n"
 					+ "</html>");
+		});
+		proxyRouter.route(HttpMethod.GET, "/style.css").handler(req -> {
+			if (css == null) {
+				css = getResourceAsString("style.css");
+			}
+			req.response().end(css);
 		});
 		proxyServer.requestHandler(proxyRouter);
 		proxyServer.listen(9393);
@@ -229,6 +242,14 @@ public class MainVerticle extends AbstractVerticle {
 				startPromise.fail(http.cause());
 			}
 		});
+	}
+
+	public String getResourceAsString(String file) {
+		InputStream is = getClass().getClassLoader().getResourceAsStream("com/knowledgepixels/query/" + file);
+		try (Scanner s = new Scanner(is).useDelimiter("\\A")) {
+			String fileContent = s.hasNext() ? s.next() : "";
+			return fileContent;
+		}
 	}
 
 	public static void handleRedirect(RoutingContext req, String path) {
