@@ -34,6 +34,9 @@ services:
       - NPS_POST_NEW_NANOPUBS_TO=http://query:9300
 #   ports:
 #     - 8080:8080
+  servernudger:
+    image: alpine
+    command: sh -c 'while true; do wget server:8080; sleep 1; done'
   mongodb:
     image: nanopub/mongo
     #image: mongo
