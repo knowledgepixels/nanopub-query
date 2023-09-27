@@ -34,6 +34,10 @@ services:
       - NPS_POST_NEW_NANOPUBS_TO=http://query:9300
 #   ports:
 #     - 8080:8080
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
   servernudger:
     image: alpine
     restart: unless-stopped
