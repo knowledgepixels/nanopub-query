@@ -35,6 +35,7 @@ public class TripleStoreThread extends Thread {
 	public static final IRI HAS_NANOPUB_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasNanopubChecksum");
 	public static final IRI HAS_LOAD_NUMBER = vf.createIRI("http://purl.org/nanopub/admin/hasLoadNumber");
 	public static final IRI HAS_LOAD_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasLoadChecksum");
+	public static final IRI HAS_LOAD_TIMESTAMP = vf.createIRI("http://purl.org/nanopub/admin/hasLoadTimestamp");
 	public static final IRI THIS_REPO_ID = vf.createIRI("http://purl.org/nanopub/admin/thisRepo");
 
 	private Map<String,Repository> repositories = new HashMap<>();

@@ -314,6 +314,7 @@ public class NanopubLoader {
 					conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
 					conn.add(npId, TripleStoreThread.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
 					conn.add(npId, TripleStoreThread.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
+					conn.add(npId, TripleStoreThread.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), ADMIN_GRAPH);
 					while (statements.size() > 1000) {
 						conn.add(statements.subList(0, 1000));
 						statements = statements.subList(1000, statements.size());
