@@ -218,12 +218,21 @@ public class NanopubLoader {
 		loadNanopubToRepo(np.getUri(), textStatements, "text");
 		loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
+			// Exclude locally minted IRIs:
+			if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+			if (!typeIri.stringValue().matches("https?://.*")) continue;
 			loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri));
 		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
+			// Exclude locally minted IRIs:
+			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+			if (!creatorIri.stringValue().matches("https?://.*")) continue;
 			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(creatorIri));
 		}
 		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
+			// Exclude locally minted IRIs:
+			if (authorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+			if (!authorIri.stringValue().matches("https?://.*")) continue;
 			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(authorIri));
 		}
 
