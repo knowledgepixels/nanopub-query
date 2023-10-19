@@ -180,7 +180,7 @@ public class MainVerticle extends AbstractVerticle {
 					label = " (" + label + ")";
 				}
 				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
-				repos += "<li><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</li>";
+				repos += "<li><code><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</code></li>";
 			}
 			req.response()
 			.putHeader("content-type", "text/html")
@@ -192,6 +192,7 @@ public class MainVerticle extends AbstractVerticle {
 					+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
 					+ "</head>\n"
 					+ "<body>\n"
+					+ "<h1>Nanopub Query</h1>"
 					+ "<p>Repos:</p>"
 					+ "<ul>" + repos + "</ul>"
 					+ "</body>\n"
