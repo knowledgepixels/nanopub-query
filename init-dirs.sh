@@ -8,4 +8,4 @@ mkdir -p data/rdf4j/logs
 mkdir -p data/mongodb
 mkdir -p data/virtuoso
 
-sudo chmod -R +rwX data
+sudo chmod -R 777 data
