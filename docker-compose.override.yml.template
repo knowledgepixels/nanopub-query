@@ -1,8 +1,5 @@
 version: '3'
 services:
-  query:
-    build: .
-    image: !reset null
   server:
     deploy:
       replicas: 0
