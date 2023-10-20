@@ -25,6 +25,7 @@ services:
 #     - 8081:8080
   server:
     image: nanopub/server
+    #image: nanopub/server:mongo7
     restart: unless-stopped
     environment:
       - NPS_MONGODB_HOST=mongodb
