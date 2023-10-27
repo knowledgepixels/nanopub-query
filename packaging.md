@@ -58,7 +58,7 @@ Remove lock files again, if any, and diagnostic data:
 
 Making new archive:
 
-    $ tar -czvf mongodb7x.tar.gz data/mongodb
+    $ tar -czvf mongodb7-x.tar.gz data/mongodb
 
 
 ## Adding date to file names
@@ -66,7 +66,7 @@ Making new archive:
 To clarify versions:
 
    $ mv rdf4j.tar.gz rdf4j-20231027.tar.gz
-   $ mv mongodb7x.tar.gz mongodb7x-20231027.tar.gz
+   $ mv mongodb7-x.tar.gz mongodb7-x-20231027.tar.gz
 
 
 ## Using packages
