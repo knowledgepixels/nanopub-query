@@ -13,6 +13,10 @@ services:
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/ 
       - INIT_WAIT_SECONDS=30
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
   rdf4j:
     image: eclipse/rdf4j-workbench:4.3.6
     restart: unless-stopped
@@ -24,8 +28,7 @@ services:
 #   ports:
 #     - 8081:8080
   server:
-    image: nanopub/server
-    #image: nanopub/server:mongo7
+    image: nanopub/server:mongo7
     restart: unless-stopped
     environment:
       - NPS_MONGODB_HOST=mongodb
@@ -40,10 +43,9 @@ services:
   servernudger:
     image: alpine
     restart: unless-stopped
-    command: sh -c 'while true; do echo "Nudging server..."; wget -q server:8080 -O /dev/null; sleep 10; done'
+    command: sh -c 'while true; do wget -q server:8080 -O /dev/null; sleep 10; done'
   mongodb:
-    image: nanopub/mongo
-    #image: mongo:7
+    image: mongo:7
     restart: unless-stopped
     volumes:
       - ./data/mongodb:/data/db
