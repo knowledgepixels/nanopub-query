@@ -122,6 +122,7 @@ public class NanopubLoader {
 				}
 			} else {
 				if (st.getSubject().equals(np.getUri())) {
+					// TODO: Load these into a different graph, so the admin graph does not get polluted:
 					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));
 				} else {
 					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), ADMIN_GRAPH));
