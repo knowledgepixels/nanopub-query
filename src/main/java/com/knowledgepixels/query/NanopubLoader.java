@@ -41,15 +41,13 @@ public class NanopubLoader {
 
 	private NanopubLoader() {}  // no instances allowed
 
-	private static int loadCount = 0;
-
 	public static synchronized void load(String nanopubUri) {
 		Nanopub np = GetNanopub.get(nanopubUri);
 		load(np);
 	}
 
 	public static synchronized void load(Nanopub np) throws RDF4JException {
-		System.err.println("Loading: " + ++loadCount + " " + np.getUri());
+		System.err.println("Loading: " + np.getUri());
 
 		// TODO: Check for null characters ("\0"), which can cause problems in Virtuoso.
 
@@ -83,6 +81,7 @@ public class NanopubLoader {
 		Set<IRI> invalidated = new HashSet<>();
 		Set<IRI> retracted = new HashSet<>();
 		Set<IRI> superseded = new HashSet<>();
+		String combinedLiterals = "";
 		for (Statement st : NanopubUtils.getStatements(np)) {
 			nanopubStatements.add(st);
 
@@ -121,11 +120,11 @@ public class NanopubLoader {
 					if (b != null) otherNps.add(b);
 				}
 			} else {
-				if (st.getSubject().equals(np.getUri())) {
-					// TODO: Load these into a different graph, so the admin graph does not get polluted:
-					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));
+				combinedLiterals += st.getObject().stringValue().replaceAll("\\s+", " ") + "\n";
+				if (st.getSubject().equals(np.getUri()) && ! st.getSubject().equals(HAS_FILTER_LITERAL)) {
+					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), LITERAL_GRAPH));
 				} else {
-					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), ADMIN_GRAPH));
+					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), LITERAL_GRAPH));
 				}
 			}
 		}
@@ -181,8 +180,10 @@ public class NanopubLoader {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
 		}
 
+		String literalFilter = "_pubkey_" + Utils.createHash(el.getPublicKeyString()).replace("-", "_");
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), HAS_NANOPUB_TYPE, typeIri, ADMIN_GRAPH));
+			literalFilter += " _type_" + Utils.createHash(typeIri).replace("-", "_");
 		}
 		String label = NanopubUtils.getLabel(np);
 		if (label != null) {
@@ -193,6 +194,10 @@ public class NanopubLoader {
 		}
 		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), SimpleCreatorPattern.PAV_AUTHOREDBY, authorIri, ADMIN_GRAPH));
+		}
+
+		if (!combinedLiterals.isEmpty()) {
+			literalStatements.add(vf.createStatement(np.getUri(), HAS_FILTER_LITERAL, vf.createLiteral(literalFilter + "\n" + combinedLiterals), LITERAL_GRAPH));
 		}
 
 		// Any statements that express that the currently processed nanopub is already invalidated:
@@ -218,24 +223,28 @@ public class NanopubLoader {
 		loadNanopubToRepo(np.getUri(), allStatements, "full");
 		loadNanopubToRepo(np.getUri(), textStatements, "text");
 		loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+//		loadNanopubToRepo(np.getUri(), textStatements, "text-pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			// Exclude locally minted IRIs:
 			if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;
 			if (!typeIri.stringValue().matches("https?://.*")) continue;
 			loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri));
+//			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
 		}
-		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
-			// Exclude locally minted IRIs:
-			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-			if (!creatorIri.stringValue().matches("https?://.*")) continue;
-			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(creatorIri));
-		}
-		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
-			// Exclude locally minted IRIs:
-			if (authorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-			if (!authorIri.stringValue().matches("https?://.*")) continue;
-			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(authorIri));
-		}
+//		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
+//			// Exclude locally minted IRIs:
+//			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+//			if (!creatorIri.stringValue().matches("https?://.*")) continue;
+//			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(creatorIri));
+//			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(creatorIri));
+//		}
+//		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
+//			// Exclude locally minted IRIs:
+//			if (authorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+//			if (!authorIri.stringValue().matches("https?://.*")) continue;
+//			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(authorIri));
+//			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(authorIri));
+//		}
 
 		for (Statement st : invalidateStatements) {
 			loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement);
@@ -354,11 +363,8 @@ public class NanopubLoader {
 
 					if (!pubkey.equals(thisPubkey)) {
 						//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for pubkey " + pubkey);
-						RepositoryConnection pubkeyConn = QueryApplication.get().getRepoConnection("pubkey_" + Utils.createHash(pubkey));
-						pubkeyConn.begin(IsolationLevels.SERIALIZABLE);
-						connections.add(pubkeyConn);
-						pubkeyConn.add(invalidateStatement);
-						pubkeyConn.add(pubkeyStatement);
+						connections.add(loadStatements("pubkey_" + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement));
+//						connections.add(loadStatements("text-pubkey_" + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement));
 					}
 	
 					for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_NANOPUB_TYPE)) {
@@ -366,25 +372,19 @@ public class NanopubLoader {
 						// TODO Avoid calling getTypes and getCreators multiple times:
 						if (!NanopubUtils.getTypes(thisNp).contains(typeIri)) {
 							//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for type " + typeIri);
-							RepositoryConnection typeConn = QueryApplication.get().getRepoConnection("type_" + Utils.createHash(typeIri));
-							typeConn.begin(IsolationLevels.SERIALIZABLE);
-							connections.add(typeConn);
-							typeConn.add(invalidateStatement);
-							typeConn.add(pubkeyStatement);
+							connections.add(loadStatements("type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
+//							connections.add(loadStatements("text-type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
 						}
 					}
 	
-					for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, DCTERMS.CREATOR)) {
-						IRI creatorIri = (IRI) v;
-						if (!SimpleCreatorPattern.getCreators(thisNp).contains(creatorIri)) {
-							//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for user " + creatorIri);
-							RepositoryConnection userConn = QueryApplication.get().getRepoConnection("user_" + Utils.createHash(creatorIri));
-							userConn.begin(IsolationLevels.SERIALIZABLE);
-							connections.add(userConn);
-							userConn.add(invalidateStatement);
-							userConn.add(pubkeyStatement);
-						}
-					}
+//					for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, DCTERMS.CREATOR)) {
+//						IRI creatorIri = (IRI) v;
+//						if (!SimpleCreatorPattern.getCreators(thisNp).contains(creatorIri)) {
+//							//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for user " + creatorIri);
+//							connections.add(loadStatements("user_" + Utils.createHash(creatorIri), invalidateStatement, pubkeyStatement));
+//							connections.add(loadStatements("text-user_" + Utils.createHash(creatorIri), invalidateStatement, pubkeyStatement));
+//						}
+//					}
 				}
 
 				metaConn.commit();
@@ -406,6 +406,15 @@ public class NanopubLoader {
 				} catch (InterruptedException x) {}
 			}
 		}
+	}
+
+	private static RepositoryConnection loadStatements(String repoName, Statement... statements) {
+		RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
+		conn.begin(IsolationLevels.SERIALIZABLE);
+		for (Statement st : statements) {
+			conn.add(st);
+		}
+		return conn;
 	}
 
 	public static synchronized List<Statement> getInvalidatingStatements(IRI npId) {
@@ -499,6 +508,7 @@ public class NanopubLoader {
 
 	public static final IRI ADMIN_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/graph");
 	public static final IRI ADMIN_NETWORK_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/networkGraph");
+	public static final IRI LITERAL_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/literalGraph");
 	public static final IRI HAS_HEAD_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasHeadGraph");
 	public static final IRI HAS_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasGraph");
 	public static final IRI NOTE = vf.createIRI("http://purl.org/nanopub/admin/note");
@@ -513,5 +523,6 @@ public class NanopubLoader {
 	public static final IRI INVALIDATES = vf.createIRI("http://purl.org/nanopub/x/invalidates");
 	public static final IRI HAS_NANOPUB_TYPE = vf.createIRI("http://purl.org/nanopub/x/hasNanopubType");
 	public static final IRI HAS_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasLiteral");
+	public static final IRI HAS_FILTER_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasFilterLiteral");
 
 }

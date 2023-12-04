@@ -172,7 +172,7 @@ public class MainVerticle extends AbstractVerticle {
 				if (hashObj == null) {
 					label = "";
 				} else {
-					if (s.startsWith("pubkey_")) {
+					if (s.startsWith("pubkey_") || s.startsWith("text-pubkey_")) {
 						label = Utils.getShortPubkeyName(hashObj.stringValue());
 					} else {
 						label = hashObj.stringValue();
