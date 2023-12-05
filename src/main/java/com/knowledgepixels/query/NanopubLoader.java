@@ -180,10 +180,10 @@ public class NanopubLoader {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
 		}
 
-		String literalFilter = "_pubkey_" + Utils.createHash(el.getPublicKeyString()).replace("-", "_");
+		String literalFilter = "_pubkey_" + Utils.createHash(el.getPublicKeyString());
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), HAS_NANOPUB_TYPE, typeIri, ADMIN_GRAPH));
-			literalFilter += " _type_" + Utils.createHash(typeIri).replace("-", "_");
+			literalFilter += " _type_" + Utils.createHash(typeIri);
 		}
 		String label = NanopubUtils.getLabel(np);
 		if (label != null) {

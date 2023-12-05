@@ -1,5 +1,6 @@
 package com.knowledgepixels.query;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +17,7 @@ import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
-import net.trustyuri.TrustyUriUtils;
+import com.google.common.hash.Hashing;
 
 public class Utils {
 
@@ -53,8 +54,7 @@ public class Utils {
 	}
 
 	public static String createHash(Object obj) {
-		String s = obj.toString();
-		String hash = TrustyUriUtils.getBase64Hash(s);
+		String hash = Hashing.sha256().hashString(obj.toString(), StandardCharsets.UTF_8).toString();
 
 		if (!getHashToObjectMap().containsKey(hash)) {
 			Value objV = getValue(obj);
