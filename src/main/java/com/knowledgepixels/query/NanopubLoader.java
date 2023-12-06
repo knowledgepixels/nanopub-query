@@ -121,11 +121,11 @@ public class NanopubLoader {
 				}
 			} else {
 				combinedLiterals += st.getObject().stringValue().replaceAll("\\s+", " ") + "\n";
-				if (st.getSubject().equals(np.getUri()) && ! st.getSubject().equals(HAS_FILTER_LITERAL)) {
-					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), LITERAL_GRAPH));
-				} else {
-					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), LITERAL_GRAPH));
-				}
+//				if (st.getSubject().equals(np.getUri()) && !st.getSubject().equals(HAS_FILTER_LITERAL)) {
+//					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), LITERAL_GRAPH));
+//				} else {
+//					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), LITERAL_GRAPH));
+//				}
 			}
 		}
 		subIris.remove(np.getUri());
@@ -189,6 +189,10 @@ public class NanopubLoader {
 		if (label != null) {
 			metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
 		}
+		String description = NanopubUtils.getDescription(np);
+		if (description != null) {
+			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.DESCRIPTION, vf.createLiteral(description), ADMIN_GRAPH));
+		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATOR, creatorIri, ADMIN_GRAPH));
 		}
@@ -197,7 +201,7 @@ public class NanopubLoader {
 		}
 
 		if (!combinedLiterals.isEmpty()) {
-			literalStatements.add(vf.createStatement(np.getUri(), HAS_FILTER_LITERAL, vf.createLiteral(literalFilter + "\n" + combinedLiterals), LITERAL_GRAPH));
+			literalStatements.add(vf.createStatement(np.getUri(), HAS_FILTER_LITERAL, vf.createLiteral(literalFilter + "\n" + combinedLiterals), ADMIN_GRAPH));
 		}
 
 		// Any statements that express that the currently processed nanopub is already invalidated:
@@ -508,7 +512,6 @@ public class NanopubLoader {
 
 	public static final IRI ADMIN_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/graph");
 	public static final IRI ADMIN_NETWORK_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/networkGraph");
-	public static final IRI LITERAL_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/literalGraph");
 	public static final IRI HAS_HEAD_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasHeadGraph");
 	public static final IRI HAS_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasGraph");
 	public static final IRI NOTE = vf.createIRI("http://purl.org/nanopub/admin/note");
@@ -522,7 +525,6 @@ public class NanopubLoader {
 	public static final IRI RETRACTS = vf.createIRI("http://purl.org/nanopub/x/retracts");
 	public static final IRI INVALIDATES = vf.createIRI("http://purl.org/nanopub/x/invalidates");
 	public static final IRI HAS_NANOPUB_TYPE = vf.createIRI("http://purl.org/nanopub/x/hasNanopubType");
-	public static final IRI HAS_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasLiteral");
 	public static final IRI HAS_FILTER_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasFilterLiteral");
 
 }

@@ -170,9 +170,9 @@
       <attribute value="jar:file:/home/tk/.m2/repository/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/nanopub/nanopub/1.51/nanopub-1.51.jar" sourcepath="M2_REPO/org/nanopub/nanopub/1.51/nanopub-1.51-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/org/nanopub/nanopub/1.53/nanopub-1.53.jar" sourcepath="M2_REPO/org/nanopub/nanopub/1.53/nanopub-1.53-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/nanopub/nanopub/1.51/nanopub-1.51-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/nanopub/nanopub/1.53/nanopub-1.53-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trig/5.0.0-M1/rdf4j-rio-trig-5.0.0-M1.jar" sourcepath="M2_REPO/org/eclipse/rdf4j/rdf4j-rio-trig/5.0.0-M1/rdf4j-rio-trig-5.0.0-M1-sources.jar">
@@ -471,9 +471,9 @@
       <attribute value="jar:file:/home/tk/.m2/repository/org/mongodb/mongo-java-driver/3.12.14/mongo-java-driver-3.12.14-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/apache/commons/commons-compress/1.23.0/commons-compress-1.23.0.jar" sourcepath="M2_REPO/org/apache/commons/commons-compress/1.23.0/commons-compress-1.23.0-sources.jar">
+  <classpathentry kind="var" path="M2_REPO/org/apache/commons/commons-compress/1.24.0/commons-compress-1.24.0.jar" sourcepath="M2_REPO/org/apache/commons/commons-compress/1.24.0/commons-compress-1.24.0-sources.jar">
     <attributes>
-      <attribute value="jar:file:/home/tk/.m2/repository/org/apache/commons/commons-compress/1.23.0/commons-compress-1.23.0-javadoc.jar!/" name="javadoc_location"/>
+      <attribute value="jar:file:/home/tk/.m2/repository/org/apache/commons/commons-compress/1.24.0/commons-compress-1.24.0-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/com/opencsv/opencsv/5.8/opencsv-5.8.jar" sourcepath="M2_REPO/com/opencsv/opencsv/5.8/opencsv-5.8-sources.jar">
