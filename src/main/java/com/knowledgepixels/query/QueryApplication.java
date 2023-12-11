@@ -89,6 +89,9 @@ public class QueryApplication {
 			ex.printStackTrace();
 		}
 
+		// Ensure empty repo exists:
+		getRepoConnection("empty");
+
 		System.err.println("Loading the local list of nanopubs...");
 		LocalNanopubLoader.load();
 	}

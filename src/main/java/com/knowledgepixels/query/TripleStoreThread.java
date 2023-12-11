@@ -230,13 +230,15 @@ public class TripleStoreThread extends Thread {
 	private void initNewRepo(String repoName) {
 		String repoInitId = new Random().nextLong() + "";
 		getRepository(repoName).init();
-		RepositoryConnection conn = getRepoConnection(repoName);
-		conn.begin(IsolationLevels.SERIALIZABLE);
-		conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
-		conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
-		conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
-		conn.commit();
-		conn.close();
+		if (!repoName.equals("empty")) {
+			RepositoryConnection conn = getRepoConnection(repoName);
+			conn.begin(IsolationLevels.SERIALIZABLE);
+			conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
+			conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
+			conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
+			conn.commit();
+			conn.close();
+		}
 	}
 
 }
