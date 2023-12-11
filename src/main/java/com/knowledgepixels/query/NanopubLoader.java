@@ -103,7 +103,11 @@ public class NanopubLoader {
 				}
 				if (st.getObject().toString().matches(".*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}")) {
 					metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_NETWORK_GRAPH));
-					continue;
+				}
+				if (st.getContext().equals(np.getPubinfoUri())) {
+					if (st.getPredicate().equals(INTRODUCES) || st.getPredicate().equals(DESCRIBES)) {
+						metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));
+					}
 				}
 			}
 			if (st.getSubject().toString().contains(ac)) {
@@ -526,5 +530,7 @@ public class NanopubLoader {
 	public static final IRI INVALIDATES = vf.createIRI("http://purl.org/nanopub/x/invalidates");
 	public static final IRI HAS_NANOPUB_TYPE = vf.createIRI("http://purl.org/nanopub/x/hasNanopubType");
 	public static final IRI HAS_FILTER_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasFilterLiteral");
+	public static final IRI INTRODUCES = vf.createIRI("http://purl.org/nanopub/x/introduces");
+	public static final IRI DESCRIBES = vf.createIRI("http://purl.org/nanopub/x/describes");
 
 }
