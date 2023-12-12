@@ -37,6 +37,9 @@ public class TripleStoreThread extends Thread {
 	public static final IRI HAS_LOAD_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasLoadChecksum");
 	public static final IRI HAS_LOAD_TIMESTAMP = vf.createIRI("http://purl.org/nanopub/admin/hasLoadTimestamp");
 	public static final IRI THIS_REPO_ID = vf.createIRI("http://purl.org/nanopub/admin/thisRepo");
+	public static final IRI HAS_COVERAGE_ITEM = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageItem");
+	public static final IRI HAS_COVERAGE_HASH = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageHash");
+	public static final IRI HAS_COVERAGE_FILTER = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageFilter");
 
 	private Map<String,Repository> repositories = new HashMap<>();
 	private String endpointBase = null;
@@ -236,6 +239,12 @@ public class TripleStoreThread extends Thread {
 			conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
 			conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
 			conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
+			if (repoName.startsWith("pubkey_") || repoName.startsWith("type_")) {
+				String h = repoName.replaceFirst("^[^_]+_", "");
+				conn.add(THIS_REPO_ID, HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NanopubLoader.ADMIN_GRAPH);
+				conn.add(THIS_REPO_ID, HAS_COVERAGE_HASH, vf.createLiteral(h), NanopubLoader.ADMIN_GRAPH);
+				conn.add(THIS_REPO_ID, HAS_COVERAGE_FILTER, vf.createLiteral("_" + repoName), NanopubLoader.ADMIN_GRAPH);
+			}
 			conn.commit();
 			conn.close();
 		}
