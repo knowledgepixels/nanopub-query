@@ -1,6 +1,7 @@
 package com.knowledgepixels.query;
 
 import java.io.InputStream;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -13,6 +14,8 @@ import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
+
+import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
@@ -254,17 +257,19 @@ public class MainVerticle extends AbstractVerticle {
 	}
 
 	public static void handleRedirect(RoutingContext req, String path) {
+		String queryString = "";
+		if (!req.queryParam("query").isEmpty()) queryString = "?query=" + URLEncoder.encode(req.queryParam("query").get(0), Charsets.UTF_8);
 		if (req.queryParam("for-type").size() == 1) {
 			String type = req.queryParam("for-type").get(0);
-			req.response().putHeader("location", path + "/type/" + Utils.createHash(type));
+			req.response().putHeader("location", path + "/type/" + Utils.createHash(type) + queryString);
 			req.response().setStatusCode(301).end();
 		} else if (req.queryParam("for-pubkey").size() == 1) {
 			String type = req.queryParam("for-pubkey").get(0);
-			req.response().putHeader("location", path + "/pubkey/" + Utils.createHash(type));
+			req.response().putHeader("location", path + "/pubkey/" + Utils.createHash(type) + queryString);
 			req.response().setStatusCode(301).end();
 		} else if (req.queryParam("for-user").size() == 1) {
 			String type = req.queryParam("for-user").get(0);
-			req.response().putHeader("location", path + "/user/" + Utils.createHash(type));
+			req.response().putHeader("location", path + "/user/" + Utils.createHash(type) + queryString);
 			req.response().setStatusCode(301).end();
 		}
 	}
