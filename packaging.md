@@ -63,8 +63,8 @@ Making new archive:
 
 To clarify versions:
 
-   $ mv rdf4j.tar.gz rdf4j-20231027.tar.gz
-   $ mv mongodb7-x.tar.gz mongodb7-x-20231027.tar.gz
+    $ mv rdf4j.tar.gz rdf4j-20231027.tar.gz
+    $ mv mongodb7-x.tar.gz mongodb7-x-20231027.tar.gz
 
 
 ## Using packages
