@@ -1,24 +1,22 @@
 # Packaging DBs
 
-Sometimes, the commands below might need `sudo`.
-
 ## Building packages
 
 Stop all services:
 
-    $ docker compose stop
+    $ sudo docker compose stop
 
 Create zip file of mongodb:
 
-    $ tar -czvf mongodb7.tar.gz data/mongodb
+    $ sudo tar -czvf mongodb7.tar.gz data/mongodb
 
 Create zip file of rdf4j:
 
-    $ tar --exclude='data/rdf4j/logs/*' --exclude='data/rdf4j/data/server/logs/*' -czvf rdf4j.tar.gz data/rdf4j
+    $ sudo tar --exclude='data/rdf4j/logs/*' --exclude='data/rdf4j/data/server/logs/*' -czvf rdf4j.tar.gz data/rdf4j
 
 Start the services again:
 
-    $ docker-compose start
+    $ sudo docker-compose start
 
 
 ## Removing journal ID in MongoDB
@@ -33,7 +31,7 @@ Remove lock files, if any (might need sudo):
 
 Run MongoDB:
 
-    $ docker run -v $(pwd)/data/mongodb:/data/db -p 27017:27017 -d mongo:7
+    $ sudo docker run -v $(pwd)/data/mongodb:/data/db -p 27017:27017 -d mongo:7
 
 Check journal ID (`mongosh` might have to installed via `apt install mongodb-org` and installation sources added first):
 
@@ -49,24 +47,24 @@ Check again:
 
 Stopping MongoDB:
 
-    $ docker stop DOCKER-CONTAINER-ID
+    $ sudo docker stop DOCKER-CONTAINER-ID
 
 Remove lock files again, if any, and diagnostic data:
 
-    $ rm -f data/mongodb/*.lock
-    $ rm -rf data/mongodb/diagnostic.data
+    $ sudo rm -f data/mongodb/*.lock
+    $ sudo rm -rf data/mongodb/diagnostic.data
 
 Making new archive:
 
-    $ tar -czvf mongodb7-x.tar.gz data/mongodb
+    $ sudo tar -czvf mongodb7-x.tar.gz data/mongodb
 
 
 ## Adding date to file names
 
 To clarify versions:
 
-   $ mv rdf4j.tar.gz rdf4j-20231027.tar.gz
-   $ mv mongodb7-x.tar.gz mongodb7-x-20231027.tar.gz
+    $ mv rdf4j.tar.gz rdf4j-20231027.tar.gz
+    $ mv mongodb7-x.tar.gz mongodb7-x-20231027.tar.gz
 
 
 ## Using packages
