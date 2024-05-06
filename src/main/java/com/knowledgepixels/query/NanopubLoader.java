@@ -73,8 +73,14 @@ public class NanopubLoader {
 		List<Statement> literalStatements = new ArrayList<>();
 		List<Statement> invalidateStatements = new ArrayList<>();
 
-		Statement pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);
+		final Statement pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);
 		metaStatements.add(pubkeyStatement);
+		final Statement pubkeyStatementX = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, vf.createLiteral(Utils.createHash(el.getPublicKeyString())), ADMIN_GRAPH);
+		metaStatements.add(pubkeyStatementX);
+
+		if (el.getSigners().size() == 1) {  // > 1 is deprecated
+			metaStatements.add(vf.createStatement(np.getUri(), NanopubSignatureElement.SIGNED_BY, el.getSigners().iterator().next(), ADMIN_GRAPH));
+		}
 
 		Set<IRI> subIris = new HashSet<>();
 		Set<IRI> otherNps = new HashSet<>();
@@ -255,7 +261,7 @@ public class NanopubLoader {
 //		}
 
 		for (Statement st : invalidateStatements) {
-			loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement);
+			loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX);
 		}
 	}
 
@@ -356,7 +362,7 @@ public class NanopubLoader {
 		}
 	}
 
-	public static synchronized void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement) {
+	public static synchronized void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
 		boolean success = false;
 		while (!success) {
 			List<RepositoryConnection> connections = new ArrayList<>();
@@ -371,7 +377,7 @@ public class NanopubLoader {
 
 					if (!pubkey.equals(thisPubkey)) {
 						//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for pubkey " + pubkey);
-						connections.add(loadStatements("pubkey_" + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement));
+						connections.add(loadStatements("pubkey_" + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement, pubkeyStatementX));
 //						connections.add(loadStatements("text-pubkey_" + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement));
 					}
 	
@@ -380,7 +386,7 @@ public class NanopubLoader {
 						// TODO Avoid calling getTypes and getCreators multiple times:
 						if (!NanopubUtils.getTypes(thisNp).contains(typeIri)) {
 							//System.err.println("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for type " + typeIri);
-							connections.add(loadStatements("type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
+							connections.add(loadStatements("type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement, pubkeyStatementX));
 //							connections.add(loadStatements("text-type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
 						}
 					}
@@ -522,6 +528,7 @@ public class NanopubLoader {
 	public static final IRI HAS_SUB_IRI = vf.createIRI("http://purl.org/nanopub/admin/hasSubIri");
 	public static final IRI REFERS_TO_NANOPUB = vf.createIRI("http://purl.org/nanopub/admin/refersToNanopub");
 	public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY = vf.createIRI("http://purl.org/nanopub/admin/hasValidSignatureForPublicKey");
+	public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH = vf.createIRI("http://purl.org/nanopub/admin/hasValidSignatureForPublicKeyHash");
 	public static final IRI HAS_ARTIFACT_CODE = vf.createIRI("http://purl.org/nanopub/admin/artifactCode");
 	public static final IRI IS_INTRO_OF = vf.createIRI("http://purl.org/nanopub/admin/isIntroductionOf");
 	public static final IRI DECLARES_KEY = vf.createIRI("http://purl.org/nanopub/admin/declaresPubkey");
