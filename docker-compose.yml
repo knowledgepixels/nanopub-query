@@ -14,7 +14,7 @@ services:
     environment:
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/ 
-      - INIT_WAIT_SECONDS=60
+      - INIT_WAIT_SECONDS=120
     logging:
       options:
         max-size: "10m"
