@@ -13,7 +13,7 @@ COPY src src
 
 RUN mvn install -o && \
     mkdir $APP_DIR && \
-    mv target/nanopub-query-*-SNAPSHOT-fat.jar $APP_DIR/nanopub-query.jar && \
+    mv target/nanopub-query-*-fat.jar $APP_DIR/nanopub-query.jar && \
     rm -rf $TMP_DIR
 
 WORKDIR $APP_DIR
