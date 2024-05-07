@@ -21,6 +21,10 @@ echo "New version to be released: $NEW_VERSION"
 echo "Next version: $NEXT_VERSION"
 echo
 
+echo "Testing docker compose..."
+docker compose ps
+echo
+
 if [ -z $1 ] || [[ "$1" != "-" ]]; then
   echo "Perform release with:"
   echo "./release.sh -"
