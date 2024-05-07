@@ -14,11 +14,17 @@ services:
     environment:
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/ 
-      - INIT_WAIT_SECONDS=30
+      - INIT_WAIT_SECONDS=60
     logging:
       options:
         max-size: "10m"
         max-file: "3"
+  autofetch:
+    image: alpine
+    volumes:
+      - ./load:/app/load
+      - ./scripts:/app/scripts
+    command: /app/scripts/autofetch.sh
   rdf4j:
     image: eclipse/rdf4j-workbench:4.3.6
     restart: unless-stopped

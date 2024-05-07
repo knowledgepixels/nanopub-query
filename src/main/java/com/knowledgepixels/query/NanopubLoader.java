@@ -42,8 +42,12 @@ public class NanopubLoader {
 	private NanopubLoader() {}  // no instances allowed
 
 	public static synchronized void load(String nanopubUri) {
-		Nanopub np = GetNanopub.get(nanopubUri);
-		load(np);
+		if (isNanopubLoaded(nanopubUri)) {
+			System.err.println("Already loaded: " + nanopubUri);
+		} else {
+			Nanopub np = GetNanopub.get(nanopubUri);
+			load(np);
+		}
 	}
 
 	public static synchronized void load(Nanopub np) throws RDF4JException {
@@ -516,6 +520,21 @@ public class NanopubLoader {
 			if (st.getPredicate().equals(KeyDeclaration.DECLARED_BY)) return true;
 		}
 		return false;
+	}
+
+	private static boolean isNanopubLoaded(String npId) {
+		boolean loaded = false;
+		RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
+		try {
+			if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, vf.createIRI(npId), TripleStoreThread.HAS_LOAD_NUMBER) != null) {
+				loaded = true;
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		} finally {
+			conn.close();
+		}
+		return loaded;
 	}
 
 	private static ValueFactory vf = SimpleValueFactory.getInstance();
