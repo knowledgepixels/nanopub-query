@@ -95,18 +95,19 @@ public class Utils {
 		return values;
 	}
 
-	public static String getEnvString(String envVarName) {
+	public static String getEnvString(String envVarName, String defaultValue) {
 		try {
-			return EnvironmentUtils.getProcEnvironment().get(envVarName);
+			String s = EnvironmentUtils.getProcEnvironment().get(envVarName);
+			if (s != null && !s.isEmpty()) return s;
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
-		return null;
+		return defaultValue;
 	}
 
 	public static int getEnvInt(String envVarName, int defaultValue) {
 		try {
-			String s = getEnvString(envVarName);
+			String s = getEnvString(envVarName, null);
 			if (s != null && !s.isEmpty()) return Integer.parseInt(s);
 		} catch (Exception ex) {
 			ex.printStackTrace();

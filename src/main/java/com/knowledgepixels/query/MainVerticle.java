@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Scanner;
 
 import org.apache.http.HttpStatus;
@@ -19,6 +20,7 @@ import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
@@ -207,15 +209,25 @@ public class MainVerticle extends AbstractVerticle {
 			}
 			req.response().end(css);
 		});
+
+		final String grlcUrl = Utils.getEnvString("GRLC_URL", "https://grlc.knowledgepixels.com/");
+		final String nanodashUrl = Utils.getEnvString("NANODASH_URL", "https://nanodash.knowledgepixels.com/");
+
 		proxyRouter.route(HttpMethod.GET, "/api/*").handler(req -> {
 			final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)$";
 			if (req.normalizedPath().matches(apiPattern)) {
 				String artifactCode = req.normalizedPath().replaceFirst(apiPattern, "$1");
 				String queryName = req.normalizedPath().replaceFirst(apiPattern, "$2");
-				String url = "https://grlc.knowledgepixels.com/api-url/" + queryName + "?specUrl=https://nanodash.knowledgepixels.com/grlc-spec/" + artifactCode + "/";
+				String urlParams = "";
+				MultiMap pm = req.queryParams();
+				for (Entry<String,String> e : pm) {
+					urlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+				}
+				String url = grlcUrl + "api-url/" + queryName + "?specUrl=" + nanodashUrl + "grlc-spec/" + artifactCode + "/" + urlParams;
 				req.response().putHeader("Location", url).setStatusCode(307).end();
 			}
 		});
+
 		proxyServer.requestHandler(proxyRouter);
 		proxyServer.listen(9393);
 
