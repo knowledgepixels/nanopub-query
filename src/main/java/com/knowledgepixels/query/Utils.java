@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
@@ -92,6 +93,25 @@ public class Utils {
 			values.add(r.next().getBinding("o").getValue());
 		}
 		return values;
+	}
+
+	public static String getEnvString(String envVarName) {
+		try {
+			return EnvironmentUtils.getProcEnvironment().get(envVarName);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		return null;
+	}
+
+	public static int getEnvInt(String envVarName, int defaultValue) {
+		try {
+			String s = getEnvString(envVarName);
+			if (s != null && !s.isEmpty()) return Integer.parseInt(s);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		return defaultValue;
 	}
 
 }

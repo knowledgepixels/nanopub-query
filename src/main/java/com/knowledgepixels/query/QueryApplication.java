@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.RequestBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -35,19 +34,7 @@ public class QueryApplication {
 		}.start();
 	}
 
-	private static int waitSeconds = 60;
-
-	static {
-		try {
-			Map<String,String> env = EnvironmentUtils.getProcEnvironment();
-			String s = env.get("INIT_WAIT_SECONDS");
-			if (s != null && !s.isEmpty()) {
-				waitSeconds = Integer.parseInt(s);
-			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
-		}
-	}
+	private static int waitSeconds = Utils.getEnvInt("INIT_WAIT_SECONDS", 120);
 
 	private boolean initialized = false;
 	private TripleStoreThread tripleStoreThread;

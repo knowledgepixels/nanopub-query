@@ -207,6 +207,15 @@ public class MainVerticle extends AbstractVerticle {
 			}
 			req.response().end(css);
 		});
+		proxyRouter.route(HttpMethod.GET, "/api/*").handler(req -> {
+			final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)$";
+			if (req.normalizedPath().matches(apiPattern)) {
+				String artifactCode = req.normalizedPath().replaceFirst(apiPattern, "$1");
+				String queryName = req.normalizedPath().replaceFirst(apiPattern, "$2");
+				String url = "https://grlc.knowledgepixels.com/api-url/" + queryName + "?specUrl=https://nanodash.knowledgepixels.com/grlc-spec/" + artifactCode + "/";
+				req.response().putHeader("Location", url).setStatusCode(307).end();
+			}
+		});
 		proxyServer.requestHandler(proxyRouter);
 		proxyServer.listen(9393);
 
