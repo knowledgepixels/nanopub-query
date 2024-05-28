@@ -74,6 +74,11 @@ public class MainVerticle extends AbstractVerticle {
 			public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
 				ProxyRequest request = context.request();
 				request.setURI(request.getURI().replaceAll("/", "_").replaceFirst("^_repo_", "/rdf4j-server/repositories/"));
+				// For later to try to get HTML tables out:
+//				if (request.headers().get("Accept") == null) {
+//					request.putHeader("Accept", "text/html");
+//				}
+//				request.putHeader("Accept", "application/json");
 				return ProxyInterceptor.super.handleProxyRequest(context);
 			}
 
@@ -82,6 +87,12 @@ public class MainVerticle extends AbstractVerticle {
 				ProxyResponse resp = context.response();
 				resp.putHeader("Access-Control-Allow-Origin", "*");
 				resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+				// For later to try to get HTML tables out:
+//				String acceptHeader = context.request().headers().get("Accept");
+//				if (acceptHeader != null && acceptHeader.contains("text/html")) {
+//					resp.putHeader("Content-Type", "text/html");
+//					resp.setBody(Body.body(Buffer.buffer("<html><body><strong>test</strong></body></html>")));
+//				}
 				return ProxyInterceptor.super.handleProxyResponse(context);
 			}
 
