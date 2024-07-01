@@ -1,5 +1,8 @@
-version: '3'
 services:
+  query:load
+    environment:
+      - GRLC_URL=https://grlc.knowledgepixels.com/
+      - NANODASH_URL=https://nanodash.knowledgepixels.com/
   server:
     deploy:
       replicas: 0
