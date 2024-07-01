@@ -1,5 +1,5 @@
 services:
-  query:load
+  query:
     environment:
       - GRLC_URL=https://grlc.knowledgepixels.com/
       - NANODASH_URL=https://nanodash.knowledgepixels.com/
