@@ -224,7 +224,7 @@ public class MainVerticle extends AbstractVerticle {
 		final String grlcUrl = Utils.getEnvString("GRLC_URL", "https://grlc.knowledgepixels.com/");
 		final String nanodashUrl = Utils.getEnvString("NANODASH_URL", "https://nanodash.knowledgepixels.com/");
 
-		proxyRouter.route(HttpMethod.GET, "/api/*").handler(req -> {
+		proxyRouter.route("/api/*").handler(req -> {
 			final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)$";
 			if (req.normalizedPath().matches(apiPattern)) {
 				String artifactCode = req.normalizedPath().replaceFirst(apiPattern, "$1");
