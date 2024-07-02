@@ -1,0 +1,7 @@
+services:
+  server:
+    deploy:
+      replicas: 0
+  mongodb:
+    deploy:
+      replicas: 0
