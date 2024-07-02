@@ -229,12 +229,17 @@ public class MainVerticle extends AbstractVerticle {
 			if (req.normalizedPath().matches(apiPattern)) {
 				String artifactCode = req.normalizedPath().replaceFirst(apiPattern, "$1");
 				String queryName = req.normalizedPath().replaceFirst(apiPattern, "$2");
-				String urlParams = "";
+				String grlcUrlParams = "";
+				String nanodashUrlParams = "";
 				MultiMap pm = req.queryParams();
 				for (Entry<String,String> e : pm) {
-					urlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+					if (e.getKey().equals("api-version")) {
+						nanodashUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+					} else {
+						grlcUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+					}
 				}
-				String url = grlcUrl + "api-url/" + queryName + "?specUrl=" + nanodashUrl + "grlc-spec/" + artifactCode + "/" + urlParams;
+				String url = grlcUrl + "api-url/" + queryName + "?specUrl=" +  URLEncoder.encode(nanodashUrl + "grlc-spec/" + artifactCode + "/?" + nanodashUrlParams, Charsets.UTF_8) + grlcUrlParams;
 				req.response().putHeader("Location", url).setStatusCode(307).end();
 			}
 		});
