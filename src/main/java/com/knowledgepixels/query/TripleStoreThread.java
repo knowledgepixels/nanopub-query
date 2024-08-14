@@ -86,8 +86,7 @@ public class TripleStoreThread extends Thread {
 			}
 			repositories.put(name, repository);
 			createRepo(name);
-			RepositoryConnection conn = getRepoConnection(name);
-			conn.close();
+			getRepoConnection(name).close();
 		}
 		return repositories.get(name);
 	}
@@ -235,18 +234,19 @@ public class TripleStoreThread extends Thread {
 		getRepository(repoName).init();
 		if (!repoName.equals("empty")) {
 			RepositoryConnection conn = getRepoConnection(repoName);
-			conn.begin(IsolationLevels.SERIALIZABLE);
-			conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
-			conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
-			conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
-			if (repoName.startsWith("pubkey_") || repoName.startsWith("type_")) {
-				String h = repoName.replaceFirst("^[^_]+_", "");
-				conn.add(THIS_REPO_ID, HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NanopubLoader.ADMIN_GRAPH);
-				conn.add(THIS_REPO_ID, HAS_COVERAGE_HASH, vf.createLiteral(h), NanopubLoader.ADMIN_GRAPH);
-				conn.add(THIS_REPO_ID, HAS_COVERAGE_FILTER, vf.createLiteral("_" + repoName), NanopubLoader.ADMIN_GRAPH);
+			try (conn) {
+				conn.begin(IsolationLevels.SERIALIZABLE);
+				conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
+				conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);
+				conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
+				if (repoName.startsWith("pubkey_") || repoName.startsWith("type_")) {
+					String h = repoName.replaceFirst("^[^_]+_", "");
+					conn.add(THIS_REPO_ID, HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NanopubLoader.ADMIN_GRAPH);
+					conn.add(THIS_REPO_ID, HAS_COVERAGE_HASH, vf.createLiteral(h), NanopubLoader.ADMIN_GRAPH);
+					conn.add(THIS_REPO_ID, HAS_COVERAGE_FILTER, vf.createLiteral("_" + repoName), NanopubLoader.ADMIN_GRAPH);
+				}
+				conn.commit();
 			}
-			conn.commit();
-			conn.close();
 		}
 	}
 

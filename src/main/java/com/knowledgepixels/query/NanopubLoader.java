@@ -277,7 +277,7 @@ public class NanopubLoader {
 		boolean success = false;
 		while (!success) {
 			RepositoryConnection conn = QueryApplication.get().getRepoConnection("last30d");
-			try {
+			try (conn) {
 				conn.begin(IsolationLevels.SERIALIZABLE);
 				while (statements.size() > 1000) {
 					conn.add(statements.subList(0, 1000));
@@ -312,8 +312,6 @@ public class NanopubLoader {
 			} catch (Exception ex) {
 				ex.printStackTrace();
 				conn.rollback();
-			} finally {
-				conn.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
@@ -328,7 +326,7 @@ public class NanopubLoader {
 		boolean success = false;
 		while (!success) {
 			RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
-			try {
+			try (conn) {
 				conn.begin(IsolationLevels.SERIALIZABLE);
 				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStoreThread.HAS_LOAD_NUMBER) != null) {
 					System.err.println("Already loaded: " + npId);
@@ -354,8 +352,6 @@ public class NanopubLoader {
 			} catch (Exception ex) {
 				ex.printStackTrace();
 				conn.rollback();
-			} finally {
-				conn.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
@@ -440,7 +436,7 @@ public class NanopubLoader {
 		boolean success = false;
 		while (!success) {
 			RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
-			try {
+			try (conn) {
 				conn.begin(IsolationLevels.SERIALIZABLE);
 
 				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { "
@@ -457,8 +453,6 @@ public class NanopubLoader {
 			} catch (Exception ex) {
 				ex.printStackTrace();
 				conn.rollback();
-			} finally {
-				conn.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
@@ -474,15 +468,13 @@ public class NanopubLoader {
 		boolean success = false;
 		while (!success) {
 			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
-			try {
+			try (conn) {
 				List<Statement> statements = new ArrayList<>();
 				statements.add(vf.createStatement(subj, NOTE, vf.createLiteral(note), ADMIN_GRAPH));
 				conn.add(statements);
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
-			} finally {
-				conn.close();
 			}
 			if (!success) {
 				System.err.println("Retrying in 10 second...");
@@ -525,14 +517,12 @@ public class NanopubLoader {
 	private static boolean isNanopubLoaded(String npId) {
 		boolean loaded = false;
 		RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
-		try {
+		try (conn) {
 			if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, vf.createIRI(npId), TripleStoreThread.HAS_LOAD_NUMBER) != null) {
 				loaded = true;
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace();
-		} finally {
-			conn.close();
 		}
 		return loaded;
 	}

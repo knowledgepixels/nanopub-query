@@ -34,18 +34,18 @@ public class Utils {
 	private static Map<String,Value> getHashToObjectMap() {
 		if (hashToObjMap == null) {
 			hashToObjMap = new HashMap<>();
-			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
-			TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
-			query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
-			query.setBinding("p", IS_HASH_OF);
-			TupleQueryResult r = query.evaluate();
-			while (r.hasNext()) {
-				BindingSet b = r.next();
-				String hash = b.getBinding("s").getValue().stringValue();
-				hash = StringUtils.replace(hash, HASH_PREFIX.toString(), "");
-				hashToObjMap.put(hash, b.getBinding("o").getValue());
+			try (RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection()) {
+				TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
+				query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
+				query.setBinding("p", IS_HASH_OF);
+				TupleQueryResult r = query.evaluate();
+				while (r.hasNext()) {
+					BindingSet b = r.next();
+					String hash = b.getBinding("s").getValue().stringValue();
+					hash = StringUtils.replace(hash, HASH_PREFIX.toString(), "");
+					hashToObjMap.put(hash, b.getBinding("o").getValue());
+				}
 			}
-			conn.close();
 		}
 		return hashToObjMap;
 	}
@@ -59,10 +59,9 @@ public class Utils {
 
 		if (!getHashToObjectMap().containsKey(hash)) {
 			Value objV = getValue(obj);
-			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
-			conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));
-			conn.close();
-	
+			try (RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection()) {
+				conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));
+			}
 			getHashToObjectMap().put(hash, objV);
 		}
 		return hash;
