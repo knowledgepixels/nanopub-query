@@ -13,7 +13,7 @@ services:
     environment:
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/
-#     - INIT_WAIT_SECONDS=120
+      - INIT_WAIT_SECONDS=40
 #     - GRLC_URL=https://grlc.knowledgepixels.com/
 #     - NANODASH_URL=https://nanodash.knowledgepixels.com/
     logging:

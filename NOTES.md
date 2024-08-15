@@ -13,21 +13,12 @@
 
     $ curl -H "Accept: text/csv" 'http://localhost:8080/rdf4j-server/repositories/test?query=select%20%2A%20%7B%20%3Fa%20%3Fb%20%3Fc%20%7D&queryLn=sparql'
 
-## Planned repo types:
+## Count open connections
 
-Fixed repos:
+All:
 
-- index (all nanopub in index)
+    $ netstat -an | wc -l
 
-Monotonic repos:
+By nanopub-query:
 
-- full (everything) DONE
-- user (everything linked to user; approved and unapproved) DONE
-- pubkey (hashed to make it short enough for a nice URL) DONE
-- pubkey set (hashed sorted pubkeys) DONE
-- intro (fixed forward to pubkey set)
-
-Dynamic repos:
-
-- approved-user (dynamic forward to approved pubkey set)
-- group (tbd...)
+    $ sudo nsenter -t $(sudo docker inspect -f "{{.State.Pid}}" nanopub-query-query-1) -n netstat -an | wc -l

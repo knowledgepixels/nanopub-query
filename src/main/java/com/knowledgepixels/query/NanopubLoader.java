@@ -8,6 +8,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.CookieSpecs;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.eclipse.rdf4j.common.exception.RDF4JException;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
@@ -41,11 +45,23 @@ public class NanopubLoader {
 
 	private NanopubLoader() {}  // no instances allowed
 
+	private static HttpClient httpClient;
+
+	private static HttpClient getHttpClient() {
+		if (httpClient == null) {
+			RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000)
+					.setConnectionRequestTimeout(100).setSocketTimeout(1000)
+					.setCookieSpec(CookieSpecs.STANDARD).build();
+			httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
+		}
+		return httpClient;
+	}
+
 	public static synchronized void load(String nanopubUri) {
 		if (isNanopubLoaded(nanopubUri)) {
 			System.err.println("Already loaded: " + nanopubUri);
 		} else {
-			Nanopub np = GetNanopub.get(nanopubUri);
+			Nanopub np = GetNanopub.get(nanopubUri, getHttpClient());
 			load(np);
 		}
 	}

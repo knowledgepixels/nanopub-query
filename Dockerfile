@@ -1,4 +1,4 @@
-FROM maven:3-openjdk-17
+FROM maven:3-openjdk-18
 
 ENV APP_DIR /app
 ENV TMP_DIR /tmp

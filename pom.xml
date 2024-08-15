@@ -18,8 +18,8 @@
     <maven-surefire-plugin.version>3.1.2</maven-surefire-plugin.version>
     <exec-maven-plugin.version>3.1.0</exec-maven-plugin.version>
 
-    <vertx.version>4.5.7</vertx.version>
-    <junit-jupiter.version>5.11.0-M1</junit-jupiter.version>
+    <vertx.version>4.5.9</vertx.version>
+    <junit-jupiter.version>5.11.0</junit-jupiter.version>
 
     <main.verticle>com.knowledgepixels.query.MainVerticle</main.verticle>
     <launcher.class>io.vertx.core.Launcher</launcher.class>
@@ -80,7 +80,7 @@
     <dependency>
       <groupId>org.nanopub</groupId>
       <artifactId>nanopub</artifactId>
-      <version>1.56</version>
+      <version>1.60</version>
     </dependency>
     <dependency>
       <groupId>com.openlinksw</groupId>
@@ -101,12 +101,12 @@
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-repository-http</artifactId>
-      <version>5.0.0-M2</version>
+      <version>5.0.2</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-sail-nativerdf</artifactId>
-      <version>5.0.0-M2</version>
+      <version>5.0.2</version>
     </dependency>
   </dependencies>
 
