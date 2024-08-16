@@ -74,11 +74,15 @@ public class TripleStoreThread extends Thread {
 		shutdownRepositories();
 	}
 
+	private CloseableHttpClient httpclient = HttpClients.createDefault();
+
 	private Repository getRepository(String name) {
 		if (!repositories.containsKey(name)) {
 			Repository repository = null;
 			if (endpointType == null || endpointType.equals("rdf4j")) {
-				repository = new HTTPRepository(endpointBase + name);
+				HTTPRepository hr = new HTTPRepository(endpointBase + name);
+				hr.setHttpClient(httpclient);
+				repository = hr;
 			} else if (endpointType.equals("virtuoso")) {
 				repository = new VirtuosoRepository(endpointBase + name, username, password);
 			} else {
