@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-curl --silent 'https://nanodash.knowledgepixels.com/userlist' \
-  | grep -Po 'https://orcid.org/[0-9X-]+' \
-  | sed 's_^_echo -n "."; curl --silent --output /dev/null https://nanodash.knowledgepixels.com/user?id=_' \
+curl --silent 'https://query.np.kpxl.org/' \
+  | grep -Po '/page/[a-zA-Z0-9/]+' \
+  | sed -r 's_^/page(.*)$_echo -n "."; curl --silent --output /dev/null https://query.np.kpxl.org/repo\1?query=select%20%2A%20where%20%7B%20graph%20%3Chttps%3A%2F%2Fw3id.org%2Fnp%2FRAdxdsL5vtExmiaydCI0yJCCoE5lkNksGr46KPEJUR37k%23assertion%3E%20%7B%20%3Fs%20%3Fp%20%3Fo%20%7D%20%7D_' \
   | bash
 
 echo ""
