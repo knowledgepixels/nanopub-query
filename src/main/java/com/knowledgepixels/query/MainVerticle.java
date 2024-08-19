@@ -22,6 +22,7 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.ext.web.Router;
@@ -65,7 +66,9 @@ public class MainVerticle extends AbstractVerticle {
 //			}
 //		});
 
-		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(vertx.createHttpClient());
+		HttpClient httpClient = vertx.createHttpClient();
+
+		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
 		rdf4jProxy.origin(8080, "rdf4j");
 
 		rdf4jProxy.addInterceptor(new ProxyInterceptor() {
@@ -97,9 +100,6 @@ public class MainVerticle extends AbstractVerticle {
 			}
 
 		});
-
-		HttpProxy nginxProxy = HttpProxy.reverseProxy(vertx.createHttpClient());
-		nginxProxy.origin(80, "nginx");
 
 		HttpServer proxyServer = vertx.createHttpServer();
 		Router proxyRouter = Router.router(vertx);

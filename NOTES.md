@@ -22,3 +22,8 @@ All:
 By nanopub-query:
 
     $ sudo nsenter -t $(sudo docker inspect -f "{{.State.Pid}}" nanopub-query-query-1) -n netstat -an | wc -l
+
+Test internal connection from query to rdf4j container:
+
+    $ sudo docker compose exec -it query bash 
+    # curl rdf4j:8080/rdf4j-server/repositories/full?query=select%20%2A%20where%20%7B%20graph%20%3Chttps%3A%2F%2Fw3id.org%2Fnp%2FRAdxdsL5vtExmiaydCI0yJCCoE5lkNksGr46KPEJUR37k%23assertion%3E%20%7B%20%3Fs%20%3Fp%20%3Fo%20%7D%20%7D
