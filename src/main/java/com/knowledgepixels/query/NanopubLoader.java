@@ -57,7 +57,7 @@ public class NanopubLoader {
 		return httpClient;
 	}
 
-	public static synchronized void load(String nanopubUri) {
+	public static void load(String nanopubUri) {
 		if (isNanopubLoaded(nanopubUri)) {
 			System.err.println("Already loaded: " + nanopubUri);
 		} else {
@@ -66,10 +66,12 @@ public class NanopubLoader {
 		}
 	}
 
-	public static synchronized void load(Nanopub np) throws RDF4JException {
+	public static void load(Nanopub np) throws RDF4JException {
 		System.err.println("Loading: " + np.getUri());
 
-		// TODO: Check for null characters ("\0"), which can cause problems in Virtuoso.
+		// TODO Ensure proper synchronization and DB rollbacks
+
+		// TODO Check for null characters ("\0"), which can cause problems in Virtuoso.
 
 		String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());
 		if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) ||
@@ -289,7 +291,7 @@ public class NanopubLoader {
 	private static long THIRTY_DAYS = 1000l * 60 * 60 * 24 * 30;
 	private static long ONE_HOUR = 1000l * 60 * 60;
 
-	public static synchronized void loadNanopubToLatest(List<Statement> statements) {
+	private static void loadNanopubToLatest(List<Statement> statements) {
 		boolean success = false;
 		while (!success) {
 			RepositoryConnection conn = QueryApplication.get().getRepoConnection("last30d");
@@ -338,7 +340,7 @@ public class NanopubLoader {
 		}
 	}
 
-	public static synchronized void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
+	private static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
 		boolean success = false;
 		while (!success) {
 			RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
@@ -378,7 +380,7 @@ public class NanopubLoader {
 		}
 	}
 
-	public static synchronized void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
+	private static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
 		boolean success = false;
 		while (!success) {
 			List<RepositoryConnection> connections = new ArrayList<>();
@@ -447,7 +449,7 @@ public class NanopubLoader {
 		return conn;
 	}
 
-	public static synchronized List<Statement> getInvalidatingStatements(IRI npId) {
+	private static List<Statement> getInvalidatingStatements(IRI npId) {
 		List<Statement> invalidatingStatements = new ArrayList<>();
 		boolean success = false;
 		while (!success) {
@@ -480,7 +482,7 @@ public class NanopubLoader {
 		return invalidatingStatements;
 	}
 
-	public static synchronized void loadNoteToRepo(Resource subj, String note) {
+	private static void loadNoteToRepo(Resource subj, String note) {
 		boolean success = false;
 		while (!success) {
 			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
