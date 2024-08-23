@@ -28,3 +28,7 @@ Test internal connection from query to rdf4j container:
     $ sudo docker compose exec -it query bash 
     # curl rdf4j:8080/rdf4j-server/repositories/full?query=select%20%2A%20where%20%7B%20graph%20%3Chttps%3A%2F%2Fw3id.org%2Fnp%2FRAdxdsL5vtExmiaydCI0yJCCoE5lkNksGr46KPEJUR37k%23assertion%3E%20%7B%20%3Fs%20%3Fp%20%3Fo%20%7D%20%7D
     # curl -v -X OPTIONS query:9393/repo/full?query=select%20%2A%20where%20%7B%20graph%20%3Chttps%3A%2F%2Fw3id.org%2Fnp%2FRAdxdsL5vtExmiaydCI0yJCCoE5lkNksGr46KPEJUR37k%23assertion%3E%20%7B%20%3Fs%20%3Fp%20%3Fo%20%7D%20%7D
+
+Stresstest notes:
+
+    $ while (true); do curl -L 'https://query.np.trustyuri.net/api/RAsGgFwseoLaCgyxlP21dlGeqr8BrpRPHht_oLf_49ESQ/get-latest-bdj-nanopubs-by-author?author=https://orcid.org/0000-0002-2151-1278'; done

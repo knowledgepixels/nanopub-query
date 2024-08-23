@@ -68,15 +68,48 @@ public class MainVerticle extends AbstractVerticle {
 
 		HttpClient httpClient = vertx.createHttpClient();
 
+		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
+		rdf4jProxy.origin(8080, "rdf4j");
+
+		rdf4jProxy.addInterceptor(new ProxyInterceptor() {
+
+			@Override
+			public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
+				ProxyRequest request = context.request();
+				request.setURI(request.getURI().replaceAll("/", "_").replaceFirst("^_repo_", "/rdf4j-server/repositories/"));
+				// For later to try to get HTML tables out:
+//				if (request.headers().get("Accept") == null) {
+//					request.putHeader("Accept", "text/html");
+//				}
+//				request.putHeader("Accept", "application/json");
+				return ProxyInterceptor.super.handleProxyRequest(context);
+			}
+
+			@Override
+			public Future<Void> handleProxyResponse(ProxyContext context) {
+				ProxyResponse resp = context.response();
+				resp.putHeader("Access-Control-Allow-Origin", "*");
+				resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+				// For later to try to get HTML tables out:
+//				String acceptHeader = context.request().headers().get("Accept");
+//				if (acceptHeader != null && acceptHeader.contains("text/html")) {
+//					resp.putHeader("Content-Type", "text/html");
+//					resp.setBody(Body.body(Buffer.buffer("<html><body><strong>test</strong></body></html>")));
+//				}
+				return ProxyInterceptor.super.handleProxyResponse(context);
+			}
+
+		});
+
 		HttpServer proxyServer = vertx.createHttpServer();
 		Router proxyRouter = Router.router(vertx);
 		proxyRouter.route(HttpMethod.GET, "/repo").handler(req -> {
 			handleRedirect(req, "/repo");
 		});
-		proxyRouter.route(HttpMethod.GET, "/repo/*").handler(ProxyHandler.create(createRdf4JProxy(httpClient)));
-		proxyRouter.route(HttpMethod.POST, "/repo/*").handler(ProxyHandler.create(createRdf4JProxy(httpClient)));
-		proxyRouter.route(HttpMethod.HEAD, "/repo/*").handler(ProxyHandler.create(createRdf4JProxy(httpClient)));
-		proxyRouter.route(HttpMethod.OPTIONS, "/repo/*").handler(ProxyHandler.create(createRdf4JProxy(httpClient)));
+		proxyRouter.route(HttpMethod.GET, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.POST, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.HEAD, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
+		proxyRouter.route(HttpMethod.OPTIONS, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
 		proxyRouter.route(HttpMethod.GET, "/tools/*").handler(req -> {
 			final String yasguiPattern = "^/tools/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?/yasgui\\.html$";
 			if (req.normalizedPath().matches(yasguiPattern)) {
@@ -276,44 +309,6 @@ public class MainVerticle extends AbstractVerticle {
 			req.response().putHeader("location", path + "/user/" + Utils.createHash(type) + queryString);
 			req.response().setStatusCode(301).end();
 		}
-	}
-
-	private static HttpProxy createRdf4JProxy(HttpClient httpClient) {
-		// Making separate RDF4J proxy objects, to see whether this resolves the strange timeout issue we are having every once in a while...
-		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
-		rdf4jProxy.origin(8080, "rdf4j");
-
-		rdf4jProxy.addInterceptor(new ProxyInterceptor() {
-
-			@Override
-			public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
-				ProxyRequest request = context.request();
-				request.setURI(request.getURI().replaceAll("/", "_").replaceFirst("^_repo_", "/rdf4j-server/repositories/"));
-				// For later to try to get HTML tables out:
-//				if (request.headers().get("Accept") == null) {
-//					request.putHeader("Accept", "text/html");
-//				}
-//				request.putHeader("Accept", "application/json");
-				return ProxyInterceptor.super.handleProxyRequest(context);
-			}
-
-			@Override
-			public Future<Void> handleProxyResponse(ProxyContext context) {
-				ProxyResponse resp = context.response();
-				resp.putHeader("Access-Control-Allow-Origin", "*");
-				resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-				// For later to try to get HTML tables out:
-//				String acceptHeader = context.request().headers().get("Accept");
-//				if (acceptHeader != null && acceptHeader.contains("text/html")) {
-//					resp.putHeader("Content-Type", "text/html");
-//					resp.setBody(Body.body(Buffer.buffer("<html><body><strong>test</strong></body></html>")));
-//				}
-				return ProxyInterceptor.super.handleProxyResponse(context);
-			}
-
-		});
-
-		return rdf4jProxy;
 	}
 
 }
