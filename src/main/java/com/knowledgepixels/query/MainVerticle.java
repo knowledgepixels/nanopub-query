@@ -48,30 +48,11 @@ public class MainVerticle extends AbstractVerticle {
 		return server1Started && server2Started;
 	}
 
-	static {
-		System.err.println("Loading Nanopub Query verticle...");
-		QueryApplication.triggerInit();
-	}
-
 	@Override
 	public void start(Promise<Void> startPromise) throws Exception {
-//		vertx.createHttpServer().requestHandler(req -> {
-//			req.response()
-//				.putHeader("content-type", "text/plain")
-//				.end("Hello from Vert.x 9393!");
-//		}).listen(9393, http -> {
-//			if (http.succeeded()) {
-//				server1Started = true;
-//				if (allServersStarted()) startPromise.complete();
-//				System.out.println("HTTP server started on port 9393");
-//			} else {
-//				startPromise.fail(http.cause());
-//			}
-//		});
-
 		HttpClient httpClient = vertx.createHttpClient(
 				new HttpClientOptions().setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS).setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),
-				new PoolOptions().setHttp1MaxSize(20).setHttp2MaxSize(20)
+				new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
 			);
 
 		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
@@ -185,7 +166,7 @@ public class MainVerticle extends AbstractVerticle {
 		});
 		proxyRouter.route(HttpMethod.GET, "/").handler(req -> {
 			String repos = "";
-			List<String> repoList = new ArrayList<>(QueryApplication.get().getRepositoryNames());
+			List<String> repoList = new ArrayList<>(TripleStore.get().getRepositoryNames());
 			Collections.sort(repoList);
 			for (String s : repoList) {
 				String hash = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$2");
@@ -289,6 +270,25 @@ public class MainVerticle extends AbstractVerticle {
 				startPromise.fail(http.cause());
 			}
 		});
+
+		vertx.executeBlocking(() -> {
+			LocalNanopubLoader.init();
+			return null;
+		}).onComplete(res -> {
+		  System.err.println("Local nanopublication loading finished");
+		});
+
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+			try {
+				System.err.println("Gracefully shutting down...");
+				TripleStore.get().shutdownRepositories();
+				vertx.close() .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+				System.err.println("Graceful shutdown completed");
+			} catch (Exception ex) {
+				System.err.println("Graceful shutdown failed");
+				ex.printStackTrace();
+			}
+		}));
 	}
 
 	public String getResourceAsString(String file) {

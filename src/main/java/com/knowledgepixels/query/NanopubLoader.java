@@ -294,7 +294,7 @@ public class NanopubLoader {
 	private static void loadNanopubToLatest(List<Statement> statements) {
 		boolean success = false;
 		while (!success) {
-			RepositoryConnection conn = QueryApplication.get().getRepoConnection("last30d");
+			RepositoryConnection conn = TripleStore.get().getRepoConnection("last30d");
 			try (conn) {
 				conn.begin(IsolationLevels.SERIALIZABLE);
 				while (statements.size() > 1000) {
@@ -343,22 +343,22 @@ public class NanopubLoader {
 	private static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
 		boolean success = false;
 		while (!success) {
-			RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
+			RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
 			try (conn) {
 				conn.begin(IsolationLevels.SERIALIZABLE);
-				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStoreThread.HAS_LOAD_NUMBER) != null) {
+				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStore.HAS_LOAD_NUMBER) != null) {
 					System.err.println("Already loaded: " + npId);
 				} else {
-					long count = Long.parseLong(Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT).stringValue());
-					String checksum = Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM).stringValue();
+					long count = Long.parseLong(Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT).stringValue());
+					String checksum = Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM).stringValue();
 					String newChecksum = NanopubUtils.updateXorChecksum(npId, checksum);
-					conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
-					conn.remove(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);
-					conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
-					conn.add(TripleStoreThread.THIS_REPO_ID, TripleStoreThread.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
-					conn.add(npId, TripleStoreThread.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
-					conn.add(npId, TripleStoreThread.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
-					conn.add(npId, TripleStoreThread.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), ADMIN_GRAPH);
+					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
+					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);
+					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
+					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
+					conn.add(npId, TripleStore.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
+					conn.add(npId, TripleStore.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
+					conn.add(npId, TripleStore.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), ADMIN_GRAPH);
 					while (statements.size() > 1000) {
 						conn.add(statements.subList(0, 1000));
 						statements = statements.subList(1000, statements.size());
@@ -384,7 +384,7 @@ public class NanopubLoader {
 		boolean success = false;
 		while (!success) {
 			List<RepositoryConnection> connections = new ArrayList<>();
-			RepositoryConnection metaConn = QueryApplication.get().getRepoConnection("meta");
+			RepositoryConnection metaConn = TripleStore.get().getRepoConnection("meta");
 			try {
 				IRI invalidatedNpId = (IRI) invalidateStatement.getObject();
 				metaConn.begin(IsolationLevels.SERIALIZABLE);
@@ -441,7 +441,7 @@ public class NanopubLoader {
 	}
 
 	private static RepositoryConnection loadStatements(String repoName, Statement... statements) {
-		RepositoryConnection conn = QueryApplication.get().getRepoConnection(repoName);
+		RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
 		conn.begin(IsolationLevels.SERIALIZABLE);
 		for (Statement st : statements) {
 			conn.add(st);
@@ -453,7 +453,7 @@ public class NanopubLoader {
 		List<Statement> invalidatingStatements = new ArrayList<>();
 		boolean success = false;
 		while (!success) {
-			RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
+			RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
 			try (conn) {
 				conn.begin(IsolationLevels.SERIALIZABLE);
 
@@ -485,7 +485,7 @@ public class NanopubLoader {
 	private static void loadNoteToRepo(Resource subj, String note) {
 		boolean success = false;
 		while (!success) {
-			RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection();
+			RepositoryConnection conn = TripleStore.get().getAdminRepoConnection();
 			try (conn) {
 				List<Statement> statements = new ArrayList<>();
 				statements.add(vf.createStatement(subj, NOTE, vf.createLiteral(note), ADMIN_GRAPH));
@@ -534,9 +534,9 @@ public class NanopubLoader {
 
 	private static boolean isNanopubLoaded(String npId) {
 		boolean loaded = false;
-		RepositoryConnection conn = QueryApplication.get().getRepoConnection("meta");
+		RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
 		try (conn) {
-			if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, vf.createIRI(npId), TripleStoreThread.HAS_LOAD_NUMBER) != null) {
+			if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, vf.createIRI(npId), TripleStore.HAS_LOAD_NUMBER) != null) {
 				loaded = true;
 			}
 		} catch (Exception ex) {

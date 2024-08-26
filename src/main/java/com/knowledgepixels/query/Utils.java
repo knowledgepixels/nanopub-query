@@ -34,7 +34,7 @@ public class Utils {
 	private static Map<String,Value> getHashToObjectMap() {
 		if (hashToObjMap == null) {
 			hashToObjMap = new HashMap<>();
-			try (RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection()) {
+			try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {
 				TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
 				query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
 				query.setBinding("p", IS_HASH_OF);
@@ -59,7 +59,7 @@ public class Utils {
 
 		if (!getHashToObjectMap().containsKey(hash)) {
 			Value objV = getValue(obj);
-			try (RepositoryConnection conn = QueryApplication.get().getAdminRepoConnection()) {
+			try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {
 				conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));
 			}
 			getHashToObjectMap().put(hash, objV);

@@ -1,9 +1,12 @@
 package com.knowledgepixels.query;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.http.HttpResponse;
@@ -24,7 +27,7 @@ import org.nanopub.NanopubUtils;
 
 import virtuoso.rdf4j.driver.VirtuosoRepository;
 
-public class TripleStoreThread extends Thread {
+public class TripleStore {
 
 	public static final String ADMIN_REPO = "admin";
 
@@ -53,25 +56,26 @@ public class TripleStoreThread extends Thread {
 		this.terminated = true;
 	}
 
-	public TripleStoreThread() throws IOException {
+	private static TripleStore tripleStoreInstance;
+
+	public static TripleStore get() {
+		if (tripleStoreInstance == null) {
+			try {
+				tripleStoreInstance = new TripleStore();
+			} catch (IOException ex) {
+				ex.printStackTrace();
+			}
+		}
+		return tripleStoreInstance;
+	}
+
+	private TripleStore() throws IOException {
 		Map<String,String> env = EnvironmentUtils.getProcEnvironment();
 		endpointBase = env.get("ENDPOINT_BASE");
 		System.err.println("Endpoint base: " + endpointBase);
 		endpointType = env.get("ENDPOINT_TYPE");
 		username = env.get("USERNAME");
 		password = env.get("PASSWORD");
-	}
-
-	@Override
-	public void run() {
-		while(!terminated) {
-			try {
-				sleep(1000);
-			} catch (InterruptedException ex) {
-				ex.printStackTrace();
-			}
-		}
-		shutdownRepositories();
 	}
 
 	private CloseableHttpClient httpclient = HttpClients.createDefault();
@@ -225,12 +229,44 @@ public class TripleStoreThread extends Thread {
 		}
 	}
 
-	private void shutdownRepositories() {
+	public void shutdownRepositories() {
 		for (Repository repo : repositories.values()) {
 			if (repo != null && repo.isInitialized()) {
 				repo.shutDown();
 			}
 		}
+	}
+
+	public RepositoryConnection getAdminRepoConnection() {
+		return get().getRepoConnection(ADMIN_REPO);
+	}
+
+	public Set<String> getRepositoryNames() {
+		Map<String,Boolean> repositoryNames = null;
+		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+			HttpResponse resp = httpclient.execute(RequestBuilder.get()
+					.setUri("http://rdf4j:8080/rdf4j-server/repositories")
+					.addHeader("Content-Type", "text/csv")
+					.build());
+			BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
+			int code = resp.getStatusLine().getStatusCode();
+			if (code < 200 || code >= 300) return null;
+			repositoryNames = new HashMap<>();
+			int lineCount = 0;
+			while (true) {
+				String line = reader.readLine();
+				if (line == null) break;
+				if (lineCount > 0) {
+					String repoName = line.split(",")[1];
+					repositoryNames.put(repoName, true);
+				}
+				lineCount = lineCount + 1;
+			}
+		} catch (IOException ex) {
+			ex.printStackTrace();
+			return null;
+		}
+		return repositoryNames.keySet();
 	}
 
 	private void initNewRepo(String repoName) {

@@ -19,7 +19,24 @@ public class LocalNanopubLoader {
 	public final static File loadNanopubsFile = new File("load/nanopubs.trig.gz");
 	public final static File autofetchNanopubsFile = new File("load/nanopubs-autofetch.txt");
 
-	public static void load() {
+	private static int waitSeconds = Utils.getEnvInt("INIT_WAIT_SECONDS", 120);
+
+	public static void init() {
+		System.err.println("Waiting " + waitSeconds + " seconds to make sure the triple store is up...");
+		try {
+			for (int w = 0 ; w < waitSeconds ; w++) {
+				System.err.println("Waited " + w + " seconds...");
+				Thread.sleep(1000);
+			}
+		} catch (InterruptedException ex) {
+			ex.printStackTrace();
+		}
+
+		System.err.println("Loading the local list of nanopubs...");
+		load();
+	}
+
+	private static void load() {
 		if (!autofetchNanopubsFile.exists()) {
 			System.err.println("No local autofetch nanopub URI file found.");
 		} else {
