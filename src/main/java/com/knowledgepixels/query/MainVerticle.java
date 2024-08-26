@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.http.HttpStatus;
 import org.eclipse.rdf4j.model.Value;
@@ -23,8 +24,10 @@ import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.PoolOptions;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
@@ -66,7 +69,10 @@ public class MainVerticle extends AbstractVerticle {
 //			}
 //		});
 
-		HttpClient httpClient = vertx.createHttpClient();
+		HttpClient httpClient = vertx.createHttpClient(
+				new HttpClientOptions().setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS).setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),
+				new PoolOptions().setHttp1MaxSize(20).setHttp2MaxSize(20)
+			);
 
 		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
 		rdf4jProxy.origin(8080, "rdf4j");
