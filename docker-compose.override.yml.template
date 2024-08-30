@@ -3,3 +3,12 @@ services:
     environment:
       - GRLC_URL=https://grlc.knowledgepixels.com/
       - NANODASH_URL=https://nanodash.knowledgepixels.com/
+  server:
+    deploy:
+      replicas: 0
+  servernudger:
+    deploy:
+      replicas: 0
+  mongodb:
+    deploy:
+      replicas: 0
