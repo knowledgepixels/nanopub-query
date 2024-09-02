@@ -296,7 +296,9 @@ public class NanopubLoader {
 		while (!success) {
 			RepositoryConnection conn = TripleStore.get().getRepoConnection("last30d");
 			try (conn) {
-				conn.begin(IsolationLevels.SERIALIZABLE);
+				// TODO Using least strict isolation level, to see whether that's causing the blocking.
+				//      Consider changing it back here and elsewhere in the future.
+				conn.begin(IsolationLevels.READ_UNCOMMITTED);
 				while (statements.size() > 1000) {
 					conn.add(statements.subList(0, 1000));
 					statements = statements.subList(1000, statements.size());
@@ -345,7 +347,7 @@ public class NanopubLoader {
 		while (!success) {
 			RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
 			try (conn) {
-				conn.begin(IsolationLevels.SERIALIZABLE);
+				conn.begin(IsolationLevels.READ_UNCOMMITTED);
 				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStore.HAS_LOAD_NUMBER) != null) {
 					System.err.println("Already loaded: " + npId);
 				} else {
@@ -387,7 +389,7 @@ public class NanopubLoader {
 			RepositoryConnection metaConn = TripleStore.get().getRepoConnection("meta");
 			try {
 				IRI invalidatedNpId = (IRI) invalidateStatement.getObject();
-				metaConn.begin(IsolationLevels.SERIALIZABLE);
+				metaConn.begin(IsolationLevels.READ_UNCOMMITTED);
 
 				Value pubkeyValue = Utils.getObjectForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY);
 				if (pubkeyValue != null) {
@@ -442,7 +444,7 @@ public class NanopubLoader {
 
 	private static RepositoryConnection loadStatements(String repoName, Statement... statements) {
 		RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
-		conn.begin(IsolationLevels.SERIALIZABLE);
+		conn.begin(IsolationLevels.READ_UNCOMMITTED);
 		for (Statement st : statements) {
 			conn.add(st);
 		}
@@ -455,7 +457,7 @@ public class NanopubLoader {
 		while (!success) {
 			RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
 			try (conn) {
-				conn.begin(IsolationLevels.SERIALIZABLE);
+				conn.begin(IsolationLevels.READ_UNCOMMITTED);
 
 				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { "
 						+ "?np <" + INVALIDATES + "> <" + npId + "> ; <" + HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . "

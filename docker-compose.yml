@@ -27,7 +27,7 @@ services:
       - ./scripts:/app/scripts
     command: /app/scripts/autofetch.sh
   rdf4j:
-    image: eclipse/rdf4j-workbench:4.3.6
+    image: eclipse/rdf4j-workbench:5.0.2
     restart: unless-stopped
     environment:
       - JAVA_OPTS=-Xmx16g -Xms1g -Xss100m
