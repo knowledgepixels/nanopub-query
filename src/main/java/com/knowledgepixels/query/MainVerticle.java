@@ -55,6 +55,12 @@ public class MainVerticle extends AbstractVerticle {
 				new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
 			);
 
+		HttpServer proxyServer = vertx.createHttpServer();
+		Router proxyRouter = Router.router(vertx);
+
+		// ----------
+		// This part is only used if the redirection is not done through Nginx.
+		// See nginx.conf and this bug report: https://github.com/eclipse-rdf4j/rdf4j/discussions/5120
 		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
 		rdf4jProxy.origin(8080, "rdf4j");
 
@@ -87,9 +93,8 @@ public class MainVerticle extends AbstractVerticle {
 			}
 
 		});
+		// ----------
 
-		HttpServer proxyServer = vertx.createHttpServer();
-		Router proxyRouter = Router.router(vertx);
 		proxyRouter.route(HttpMethod.GET, "/repo").handler(req -> {
 			handleRedirect(req, "/repo");
 		});
