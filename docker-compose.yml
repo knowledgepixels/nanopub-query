@@ -27,10 +27,11 @@ services:
       - ./scripts:/app/scripts
     command: /app/scripts/autofetch.sh
   rdf4j:
-    image: eclipse/rdf4j-workbench:5.0.2
+#   image: eclipse/rdf4j-workbench:5.0.2
+    image: nanopub/rdf4j-workbench:5.0.3-SNAPSHOT
     restart: unless-stopped
     environment:
-      - JAVA_OPTS=-Xmx16g -Xms1g -Xss100m
+      - JAVA_OPTS=-Xmx16g -Xms1g -Xss100m -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
@@ -39,21 +40,15 @@ services:
 #   environment:
 #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
 #     - GRLC_URL=https://grlc.knowledgepixels.com/
-#   healthcheck:
-#     test: curl http://rdf4j:8080/rdf4j-server/repositories/empty | grep 'Missing parameter'
-#     interval: 5s
-#     retries: 2
-#     start_period: 30s
-#     timeout: 1s
-# grlc:
-#   image: clariah/grlc:v1.3.7
-#   restart: unless-stopped
+  grlc:
+    image: clariah/grlc:v1.3.9
+    restart: unless-stopped
 #   ports:
 #     - 8088:80
-#   logging:
-#     options:
-#       max-size: "10m"
-#       max-file: "3"
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
   server:
     image: nanopub/server:mongo7
     restart: unless-stopped
@@ -76,11 +71,3 @@ services:
     restart: unless-stopped
     volumes:
       - ./data/mongodb:/data/db
-#  autoheal:
-#    image: willfarrell/autoheal:1.2.0
-#    restart: always
-#    volumes:
-#      - '/var/run/docker.sock:/var/run/docker.sock'
-#    environment:
-#      - AUTOHEAL_INTERVAL=10
-#      - CURL_TIMEOUT=30

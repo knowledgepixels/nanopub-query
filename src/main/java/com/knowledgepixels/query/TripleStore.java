@@ -76,6 +76,8 @@ public class TripleStore {
 		endpointType = env.get("ENDPOINT_TYPE");
 		username = env.get("USERNAME");
 		password = env.get("PASSWORD");
+
+		getRepository("empty");  // Make sure empty repo exists
 	}
 
 	private CloseableHttpClient httpclient = HttpClients.createDefault();

@@ -228,6 +228,8 @@ public class MainVerticle extends AbstractVerticle {
 		proxyRouter.route("/api/*").handler(req -> {
 			final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)$";
 			if (req.normalizedPath().matches(apiPattern)) {
+				// TODO Make this an internal proxy pass instead of a 307 redirect
+
 				String artifactCode = req.normalizedPath().replaceFirst(apiPattern, "$1");
 				String queryName = req.normalizedPath().replaceFirst(apiPattern, "$2");
 				String grlcUrlParams = "";
@@ -249,6 +251,11 @@ public class MainVerticle extends AbstractVerticle {
 
 		proxyServer.requestHandler(proxyRouter);
 		proxyServer.listen(9393);
+
+		HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
+		grlcProxy.origin(80, "grlc");
+		proxyRouter.route("/api-url/*").handler(ProxyHandler.create(grlcProxy));
+		proxyRouter.route("/static/*").handler(ProxyHandler.create(grlcProxy));
 
 		vertx.createHttpServer().requestHandler(req -> {
 			try {
