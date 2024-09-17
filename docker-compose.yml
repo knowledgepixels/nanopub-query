@@ -15,7 +15,7 @@ services:
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/
 #     - INIT_WAIT_SECONDS=120
 #     - GRLC_URL=https://grlc.knowledgepixels.com/
-#     - NANODASH_URL=https://nanodash.knowledgepixels.com/
+#     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
     logging:
       options:
         max-size: "10m"
@@ -36,12 +36,24 @@ services:
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
     ports:
       - 8081:8080
+#   environment:
+#     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
+#     - GRLC_URL=https://grlc.knowledgepixels.com/
 #   healthcheck:
 #     test: curl http://rdf4j:8080/rdf4j-server/repositories/empty | grep 'Missing parameter'
 #     interval: 5s
 #     retries: 2
 #     start_period: 30s
 #     timeout: 1s
+# grlc:
+#   image: clariah/grlc:v1.3.7
+#   restart: unless-stopped
+#   ports:
+#     - 8088:80
+#   logging:
+#     options:
+#       max-size: "10m"
+#       max-file: "3"
   server:
     image: nanopub/server:mongo7
     restart: unless-stopped

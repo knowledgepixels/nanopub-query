@@ -213,8 +213,17 @@ public class MainVerticle extends AbstractVerticle {
 			req.response().end(css);
 		});
 
+		proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
+			GrlcSpecPage gsp = new GrlcSpecPage(req.normalizedPath(), req.queryParams());
+			String spec = gsp.getSpec();
+			if (spec == null) {
+				req.response().setStatusCode(404).end("query definition not found / not valid");
+			} else {
+				req.response().putHeader("content-type", "text/plain").end(spec);
+			}
+		});
+
 		final String grlcUrl = Utils.getEnvString("GRLC_URL", "https://grlc.knowledgepixels.com/");
-		final String nanodashUrl = Utils.getEnvString("NANODASH_URL", "https://nanodash.knowledgepixels.com/");
 
 		proxyRouter.route("/api/*").handler(req -> {
 			final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)$";
@@ -222,16 +231,18 @@ public class MainVerticle extends AbstractVerticle {
 				String artifactCode = req.normalizedPath().replaceFirst(apiPattern, "$1");
 				String queryName = req.normalizedPath().replaceFirst(apiPattern, "$2");
 				String grlcUrlParams = "";
-				String nanodashUrlParams = "";
+				String grlcSpecUrlParams = "";
 				MultiMap pm = req.queryParams();
 				for (Entry<String,String> e : pm) {
 					if (e.getKey().equals("api-version")) {
-						nanodashUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+						grlcSpecUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
 					} else {
 						grlcUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
 					}
 				}
-				String url = grlcUrl + "api-url/" + queryName + "?specUrl=" +  URLEncoder.encode(nanodashUrl + "grlc-spec/" + artifactCode + "/?" + nanodashUrlParams, Charsets.UTF_8) + grlcUrlParams;
+				String url = grlcUrl + "api-url/" + queryName +
+					"?specUrl=" +  URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
+					grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
 				req.response().putHeader("Location", url).setStatusCode(307).end();
 			}
 		});
