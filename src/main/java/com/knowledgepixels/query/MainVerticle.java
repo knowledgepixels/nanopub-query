@@ -223,8 +223,6 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 
-		final String grlcUrl = Utils.getEnvString("GRLC_URL", "https://grlc.knowledgepixels.com/");
-
 		proxyRouter.route("/api/*").handler(req -> {
 			final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)$";
 			if (req.normalizedPath().matches(apiPattern)) {
@@ -242,7 +240,7 @@ public class MainVerticle extends AbstractVerticle {
 						grlcUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
 					}
 				}
-				String url = grlcUrl + "api-url/" + queryName +
+				String url = GrlcSpecPage.nanopubQueryUrl + "api-url/" + queryName +
 					"?specUrl=" +  URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
 					grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
 				req.response().putHeader("Location", url).setStatusCode(307).end();

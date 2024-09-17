@@ -1,11 +1,10 @@
 services:
   query:
     environment:
-      - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
-      - GRLC_URL=https://grlc.knowledgepixels.com/
-# grlc:
-#   environment:
-#     - GRLC_SERVER_NAME=grlc.your.domain.com
+      - NANOPUB_QUERY_URL=https://query.your.domain.com/
+  grlc:
+    environment:
+      - GRLC_SERVER_NAME=query.your.domain.com
   server:
     deploy:
       replicas: 0
