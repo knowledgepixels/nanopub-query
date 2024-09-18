@@ -44,8 +44,10 @@ public class GrlcSpecPage {
 		queryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
 		requestUrlBase = requestUrl.replaceFirst("^/(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$1");
 
+		// TODO Get the nanopub from the local store:
 		np = GetNanopub.get(artifactCode);
 		if (parameters.get("api-version") != null && "latest".equals(parameters.get("api-version").toString())) {
+			// TODO Get the latest version from the local store:
 			np = GetNanopub.get(ApiAccess.getLatestVersionId(np.getUri().stringValue()));
 			artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
 		}
