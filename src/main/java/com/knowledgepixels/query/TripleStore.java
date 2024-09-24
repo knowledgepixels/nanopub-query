@@ -34,7 +34,7 @@ public class TripleStore {
 	private static ValueFactory vf = SimpleValueFactory.getInstance();
 
 	public static final IRI HAS_REPO_INIT_ID = vf.createIRI("http://purl.org/nanopub/admin/hasRepoInitId");
-	public static final IRI HAS_NANOPUB_COUNT = vf.createIRI("http://purl.org/nanopub/admin/hasNanpubCount");
+	public static final IRI HAS_NANOPUB_COUNT = vf.createIRI("http://purl.org/nanopub/admin/hasNanpubCount");  // TODO Typo "Nanpub" needs to be fixed!
 	public static final IRI HAS_NANOPUB_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasNanopubChecksum");
 	public static final IRI HAS_LOAD_NUMBER = vf.createIRI("http://purl.org/nanopub/admin/hasLoadNumber");
 	public static final IRI HAS_LOAD_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasLoadChecksum");
