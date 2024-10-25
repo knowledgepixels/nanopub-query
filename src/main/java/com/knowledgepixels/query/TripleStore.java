@@ -177,6 +177,8 @@ public class TripleStore {
 					+ "            sb:defaultQueryEvaluationMode \"STANDARD\"\n"
 					+ "        ]\n"
 					+ "    ].\n";
+
+			// TODO Index npa:hasFilterLiteral predicate too (see https://groups.google.com/g/rdf4j-users/c/epF4Af1jXGU):
 			String createTextRepoQueryString = "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n"
 					+ "@prefix rep: <http://www.openrdf.org/config/repository#>.\n"
 					+ "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n"
