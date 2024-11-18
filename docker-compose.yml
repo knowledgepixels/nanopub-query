@@ -37,8 +37,8 @@ services:
     ports:
       - 8081:8080
   grlc:
-#    image: clariah/grlc:v1.3.9  # can cause error "failed to register layer: failed to Lchown ..."
-    image: clariah/grlc:v1.3.8
+    image: clariah/grlc:v1.3.9  # causes error locally ("failed to register layer: failed to Lchown ..."), but seems to work on the servers
+#    image: clariah/grlc:v1.3.8  # works locally but leads to problems on the servers
     restart: unless-stopped
 #   ports:
 #     - 8088:80
