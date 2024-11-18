@@ -37,7 +37,8 @@ services:
     ports:
       - 8081:8080
   grlc:
-    image: clariah/grlc:v1.3.9
+#    image: clariah/grlc:v1.3.9  # can cause error "failed to register layer: failed to Lchown ..."
+    image: clariah/grlc:v1.3.8
     restart: unless-stopped
 #   ports:
 #     - 8088:80
@@ -45,25 +46,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-  server:
-    image: nanopub/server:mongo7
-    restart: unless-stopped
-    environment:
-      - NPS_MONGODB_HOST=mongodb
-      - NPS_COLLECT_NANOPUBS_ENABLED=true
-      - NPS_POST_NEW_NANOPUBS_TO=http://query:9300
-#   ports:
-#     - 8080:8080
-    logging:
-      options:
-        max-size: "10m"
-        max-file: "3"
-  servernudger:
-    image: alpine
-    restart: unless-stopped
-    command: sh -c 'while true; do wget -q server:8080 -O /dev/null; sleep 10; done'
-  mongodb:
-    image: mongo:7
-    restart: unless-stopped
-    volumes:
-      - ./data/mongodb:/data/db
