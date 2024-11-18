@@ -1,10 +1,10 @@
 # Nanopub Query
 
-Next-generation query service for nanopublications.
+Nanopub Query is the second-generation query service for nanopublications.
 
-## Setup
+## General Setup
 
-Get pre-Packaged Data:
+Get pre-packaged data (optional):
 
     $ wget https://zenodo.org/records/11125050/files/rdf4j-20240507.tar.gz
     $ tar -xvzf rdf4j-20240507.tar.gz
@@ -14,6 +14,27 @@ Init directories:
     $ ./init-dirs.sh
 
 Check `docker-compose.yml` and make any adjustments in a new file `docker-compose.override.yml`.
+
+
+## Connection to Publishing Layer
+
+In the near future, Nanopub Query will get its initial nanopublications and regular updates via the
+[Nanopub Registry](https://github.com/knowledgepixels/nanopub-registry), which isn't yet available.
+
+So, currently, it relies on a small [autofetch script](scripts/autofetch.sh) to get the initial
+nanopublications, and then needs to connect to a [nanopub-server](https://github.com/tkuhn/nanopub-server)
+instance to get regular updates.
+
+To receive updates from such a nanopub-server instance, e.g. via
+[signed-nanopub-services](https://github.com/peta-pico/signed-nanopub-services), that nanopub-server needs
+to be configured to send new nanopublications to the Nanopub Query instance like this:
+
+    services:
+      server:
+        environment:
+          - 'NPS_POST_NEW_NANOPUBS_TO=https://query.example1.com/ https://query.example2.com/'
+
+## Launch
 
 Start with Docker Compose:
 
