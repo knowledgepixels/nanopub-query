@@ -2,6 +2,16 @@
 
 Nanopub Query is the second-generation query service for nanopublications.
 
+
+## Available Instances
+
+You can check out Nanopub Query at these instances:
+
+- https://query.knowledgepixels.com/
+- https://query.np.trustyuri.net/
+- https://query.np.kpxl.org/
+
+
 ## General Setup
 
 Get pre-packaged data (optional):
