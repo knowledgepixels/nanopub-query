@@ -44,6 +44,14 @@ to be configured to send new nanopublications to the Nanopub Query instance like
         environment:
           - 'NPS_POST_NEW_NANOPUBS_TO=https://query.example1.com/ https://query.example2.com/'
 
+
+## Deadlock Problem Workaround
+
+There is a deadlock problem with RDF4J ([details](https://github.com/eclipse-rdf4j/rdf4j/discussions/5120)), which
+requires some specific web server configuration to work around it. Specifically, concurrent requests per repo have
+to be avoided, with a configuration like in [this nginx example](nginx.conf).
+
+
 ## Launch
 
 Start with Docker Compose:
