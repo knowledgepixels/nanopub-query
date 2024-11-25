@@ -282,7 +282,7 @@ public class MainVerticle extends AbstractVerticle {
 					.setStatusMessage(Arrays.toString(ex.getStackTrace()))
 					.end();
 			}
-		}).listen(9300, http -> {
+		}).listen(9300).onComplete(http -> {
 			if (http.succeeded()) {
 				server2Started = true;
 				if (allServersStarted()) startPromise.complete();
