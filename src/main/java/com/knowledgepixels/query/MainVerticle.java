@@ -174,21 +174,8 @@ public class MainVerticle extends AbstractVerticle {
 			List<String> repoList = new ArrayList<>(TripleStore.get().getRepositoryNames());
 			Collections.sort(repoList);
 			for (String s : repoList) {
-				String hash = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$2");
-				Value hashObj = Utils.getObjectForHash(hash);
-				String label;
-				if (hashObj == null) {
-					label = "";
-				} else {
-					if (s.startsWith("pubkey_") || s.startsWith("text-pubkey_")) {
-						label = Utils.getShortPubkeyName(hashObj.stringValue());
-					} else {
-						label = hashObj.stringValue();
-					}
-					label = " (" + label + ")";
-				}
-				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
-				repos += "<li><code><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</code></li>";
+				if (s.startsWith("pubkey_") || s.startsWith("type_")) continue;
+				repos += "<li><code><a href=\"/page/" + s + "\">" + s + "</a></code></li>";
 			}
 			req.response()
 			.putHeader("content-type", "text/html")
@@ -201,6 +188,77 @@ public class MainVerticle extends AbstractVerticle {
 					+ "</head>\n"
 					+ "<body>\n"
 					+ "<h1>Nanopub Query</h1>"
+					+ "<p>General repos:</p>"
+					+ "<ul>" + repos + "</ul>"
+					+ "<p>Specific repos:</p>"
+					+ "<ul>"
+					+ "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
+					+ "<li><a href=\"/types\">Type Repos</a></li>"
+					+ "</ul>"
+					+ "</body>\n"
+					+ "</html>");
+		});
+		proxyRouter.route(HttpMethod.GET, "/pubkeys").handler(req -> {
+			String repos = "";
+			List<String> repoList = new ArrayList<>(TripleStore.get().getRepositoryNames());
+			Collections.sort(repoList);
+			for (String s : repoList) {
+				if (!s.startsWith("pubkey_")) continue;
+				String hash = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$2");
+				Value hashObj = Utils.getObjectForHash(hash);
+				String label;
+				if (hashObj == null) {
+					label = "";
+				} else {
+					label = " (" + Utils.getShortPubkeyName(hashObj.stringValue()) + ")";
+				}
+				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
+				repos += "<li><code><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</code></li>";
+			}
+			req.response()
+			.putHeader("content-type", "text/html")
+			.end("<!DOCTYPE html>\n"
+					+ "<html lang='en'>\n"
+					+ "<head>\n"
+					+ "<title>Nanopub Query: Pubkey Repos</title>\n"
+					+ "<meta charset='utf-8'>\n"
+					+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+					+ "</head>\n"
+					+ "<body>\n"
+					+ "<h3>Pubkey Repos</h3>"
+					+ "<p>Repos:</p>"
+					+ "<ul>" + repos + "</ul>"
+					+ "</body>\n"
+					+ "</html>");
+		});
+		proxyRouter.route(HttpMethod.GET, "/types").handler(req -> {
+			String repos = "";
+			List<String> repoList = new ArrayList<>(TripleStore.get().getRepositoryNames());
+			Collections.sort(repoList);
+			for (String s : repoList) {
+				if (!s.startsWith("type_")) continue;
+				String hash = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$2");
+				Value hashObj = Utils.getObjectForHash(hash);
+				String label;
+				if (hashObj == null) {
+					label = "";
+				} else {
+					label = " (" + hashObj.stringValue() + ")";
+				}
+				s = s.replaceFirst("^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$", "$1/$2");
+				repos += "<li><code><a href=\"/page/" + s + "\">" + s + "</a>" + label + "</code></li>";
+			}
+			req.response()
+			.putHeader("content-type", "text/html")
+			.end("<!DOCTYPE html>\n"
+					+ "<html lang='en'>\n"
+					+ "<head>\n"
+					+ "<title>Nanopub Query: Type Repos</title>\n"
+					+ "<meta charset='utf-8'>\n"
+					+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+					+ "</head>\n"
+					+ "<body>\n"
+					+ "<h3>Type Repos</h3>"
 					+ "<p>Repos:</p>"
 					+ "<ul>" + repos + "</ul>"
 					+ "</body>\n"
