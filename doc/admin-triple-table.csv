@@ -15,7 +15,7 @@ NANOPUB,npa:hasGraph,GRAPH,npa:graph,meta,generic link to all four graphs of the
 NANOPUB,np:hasAssertion,ASSERTION_GRAPH,npa:graph,meta,direct link to the assertion graph of the NANOPUB
 NANOPUB,np:hasProvenance,PROVENANCE_GRAPH,npa:graph,meta,direct link to the provenance graph of the NANOPUB
 NANOPUB,np:hasPublicationInfo,PUBINFO_GRAPH,npa:graph,meta,direct link to the pubinfo graph of the NANOPUB
-NANOPUB,npa:artifactCode,ARTIFACT_CODE,npa:graph,meta,artifact code starting with "RA..."
+NANOPUB,npa:artifactCode,ARTIFACT_CODE,npa:graph,meta,artifact code starting with 'RA...'
 NANOPUB,npa:isIntroductionOf,AGENT,npa:graph,meta,linking intro nanopub to the agent it is introducing
 NANOPUB,npa:declaresPubkey,FULL_PUBKEY,npa:graph,meta,full pubkey declared by the given intro NANOPUB
 NANOPUB,dct:created,CREATION_DATE,npa:graph,meta,normalized creation timestamp

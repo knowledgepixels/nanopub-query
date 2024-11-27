@@ -209,7 +209,7 @@ public class NanopubLoader {
 
 		String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
 		metaStatements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));
-		// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:artifactCode, ARTIFACT_CODE, npa:graph, meta, artifact code starting with "RA..."
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:artifactCode, ARTIFACT_CODE, npa:graph, meta, artifact code starting with 'RA...'
 
 		if (isIntroNanopub(np)) {
 			IntroNanopub introNp = new IntroNanopub(np);
