@@ -33,4 +33,5 @@ while read LINE; do
   echo "<tr><td>${LINE//,/</td><td>}</td></tr>" >> doc/admin-triple-table.html
 done < doc/admin-triple-table.csv
 echo '</table>' >> doc/admin-triple-table.html
-
+echo '</body>' >> doc/admin-triple-table.html
+echo '</html>' >> doc/admin-triple-table.html
