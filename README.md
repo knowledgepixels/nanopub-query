@@ -12,6 +12,11 @@ You can check out Nanopub Query at these instances:
 - https://query.np.kpxl.org/
 
 
+## Admin Graphs and Triples
+
+See the [admin triple table](doc/admin-triple-table.html).
+
+
 ## General Setup
 
 Get pre-packaged data (optional):
