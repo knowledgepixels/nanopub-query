@@ -14,7 +14,7 @@ You can check out Nanopub Query at these instances:
 
 ## Admin Graphs and Triples
 
-See the [admin triple table](doc/admin-triple-table.html).
+See the [admin triple table](doc/admin-triple-table.csv).
 
 
 ## General Setup
