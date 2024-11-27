@@ -96,12 +96,15 @@ public class NanopubLoader {
 		List<Statement> invalidateStatements = new ArrayList<>();
 
 		final Statement pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasValidSignatureForPublicKey, FULL_PUBKEY, npa:graph, meta, full pubkey if signature is valid
 		metaStatements.add(pubkeyStatement);
 		final Statement pubkeyStatementX = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, vf.createLiteral(Utils.createHash(el.getPublicKeyString())), ADMIN_GRAPH);
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasValidSignatureForPublicKeyHash, PUBKEY_HASH, npa:graph, meta, hex-encoded SHA256 hash if signature is valid
 		metaStatements.add(pubkeyStatementX);
 
 		if (el.getSigners().size() == 1) {  // > 1 is deprecated
 			metaStatements.add(vf.createStatement(np.getUri(), NanopubSignatureElement.SIGNED_BY, el.getSigners().iterator().next(), ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:signedBy, SIGNER, npa:graph, meta, ID of signer
 		}
 
 		Set<IRI> subIris = new HashSet<>();
@@ -131,10 +134,13 @@ public class NanopubLoader {
 				}
 				if (st.getObject().toString().matches(".*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}")) {
 					metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_NETWORK_GRAPH));
+					// @ADMIN-TRIPLE-TABLE@ NANOPUB1, RELATION, NANOPUB2, npa:networkGraph, meta, any inter-nanopub relation found in NANOPUB1
 				}
 				if (st.getContext().equals(np.getPubinfoUri())) {
 					if (st.getPredicate().equals(INTRODUCES) || st.getPredicate().equals(DESCRIBES)) {
 						metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));
+						// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:introduces, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
+						// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:describes, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
 					}
 				}
 			}
@@ -166,39 +172,52 @@ public class NanopubLoader {
 		subIris.remove(np.getPubinfoUri());
 		for (IRI i : subIris) {
 			metaStatements.add(vf.createStatement(np.getUri(), HAS_SUB_IRI, i, ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasSubIri, SUB_IRI, npa:graph, meta, for any IRI minted in the namespace of the NANOPUB
 		}
 		for (IRI i : otherNps) {
 			metaStatements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB1, npa:refersToNanopub, NANOPUB2, npa:networkGraph, meta, generic inter-nanopub relation
 		}
 		for (IRI i : invalidated) {
 			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:invalidates, INVALIDATED_NANOPUB, npa:graph, meta, if the NANOPUB retracts or supersedes another nanopub
 		}
 		for (IRI i : retracted) {
 			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
 			metaStatements.add(vf.createStatement(np.getUri(), RETRACTS, i, ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:retracts, RETRACTED_NANOPUB, npa:graph, meta, if the NANOPUB retracts another nanopub
 		}
 		for (IRI i : superseded) {
 			invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));
 			metaStatements.add(vf.createStatement(np.getUri(), SUPERSEDES, i, ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:supersedes, SUPERSEDED_NANOPUB, npa:graph, meta, if the NANOPUB supersedes another nanopub
 		}
 
 		metaStatements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasHeadGraph, HEAD_GRAPH, npa:graph, meta, direct link to the head graph of the NANOPUB
 		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getHeadUri(), ADMIN_GRAPH));
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasGraph, GRAPH, npa:graph, meta, generic link to all four graphs of the given NANOPUB
 		metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_GRAPH));
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasAssertion, ASSERTION_GRAPH, npa:graph, meta, direct link to the assertion graph of the NANOPUB
 		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getAssertionUri(), ADMIN_GRAPH));
 		metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_GRAPH));
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasProvenance, PROVENANCE_GRAPH, npa:graph, meta, direct link to the provenance graph of the NANOPUB
 		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getProvenanceUri(), ADMIN_GRAPH));
 		metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_GRAPH));
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasPublicationInfo, PUBINFO_GRAPH, npa:graph, meta, direct link to the pubinfo graph of the NANOPUB
 		metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getPubinfoUri(), ADMIN_GRAPH));
 
 		String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
 		metaStatements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));
+		// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:artifactCode, ARTIFACT_CODE, npa:graph, meta, artifact code starting with "RA..."
 
 		if (isIntroNanopub(np)) {
 			IntroNanopub introNp = new IntroNanopub(np);
 			metaStatements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:isIntroductionOf, AGENT, npa:graph, meta, linking intro nanopub to the agent it is introducing
 			for (KeyDeclaration kc : introNp.getKeyDeclarations()) {
 				metaStatements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));
+				// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:declaresPubkey, FULL_PUBKEY, npa:graph, meta, full pubkey declared by the given intro NANOPUB
 			}
 		}
 	
@@ -210,30 +229,37 @@ public class NanopubLoader {
 		}
 		if (timestamp != null) {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:created, CREATION_DATE, npa:graph, meta, normalized creation timestamp
 		}
 
 		String literalFilter = "_pubkey_" + Utils.createHash(el.getPublicKeyString());
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), HAS_NANOPUB_TYPE, typeIri, ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
 			literalFilter += " _type_" + Utils.createHash(typeIri);
 		}
 		String label = NanopubUtils.getLabel(np);
 		if (label != null) {
 			metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, rdfs:label, LABEL, npa:graph, meta, label of NANOPUB
 		}
 		String description = NanopubUtils.getDescription(np);
 		if (description != null) {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.DESCRIPTION, vf.createLiteral(description), ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:description, LABEL, npa:graph, meta, description of NANOPUB
 		}
 		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATOR, creatorIri, ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:creator, CREATOR, npa:graph, meta, creator of NANOPUB (can be several)
 		}
 		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
 			metaStatements.add(vf.createStatement(np.getUri(), SimpleCreatorPattern.PAV_AUTHOREDBY, authorIri, ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, pav:authoredBy, AUTHOR, npa:graph, meta, author of NANOPUB (can be several)
 		}
 
 		if (!combinedLiterals.isEmpty()) {
 			literalStatements.add(vf.createStatement(np.getUri(), HAS_FILTER_LITERAL, vf.createLiteral(literalFilter + "\n" + combinedLiterals), ADMIN_GRAPH));
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasFilterLiteral, FILTER_LITERAL, npa:graph, literal, auxiliary literal for filtering by type and pubkey in text repo
 		}
 
 		// Any statements that express that the currently processed nanopub is already invalidated:
@@ -357,10 +383,15 @@ public class NanopubLoader {
 					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
 					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);
 					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
+					// @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanpubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded (BUG: npa:hasNanpubCount should be npa:hasNanopubCount)
 					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
+					// @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
 					conn.add(npId, TripleStore.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
+					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadNumber, LOAD_NUMBER, npa:graph, admin, the sequential number at which this NANOPUB was loaded
 					conn.add(npId, TripleStore.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
+					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
 					conn.add(npId, TripleStore.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), ADMIN_GRAPH);
+					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
 					while (statements.size() > 1000) {
 						conn.add(statements.subList(0, 1000));
 						statements = statements.subList(1000, statements.size());

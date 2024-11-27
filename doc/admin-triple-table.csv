@@ -1,0 +1,32 @@
+Subject,Predicate,Object,Graph,Group,Comment
+NANOPUB,npa:hasValidSignatureForPublicKey,FULL_PUBKEY,npa:graph,meta,full pubkey if signature is valid
+NANOPUB,npa:hasValidSignatureForPublicKeyHash,PUBKEY_HASH,npa:graph,meta,hex-encoded SHA256 hash if signature is valid
+NANOPUB,npx:signedBy,SIGNER,npa:graph,meta,ID of signer
+NANOPUB1,RELATION,NANOPUB2,npa:networkGraph,meta,any inter-nanopub relation found in NANOPUB1
+NANOPUB,npx:introduces,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
+NANOPUB,npx:describes,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
+NANOPUB,npx:hasSubIri,SUB_IRI,npa:graph,meta,for any IRI minted in the namespace of the NANOPUB
+NANOPUB1,npa:refersToNanopub,NANOPUB2,npa:networkGraph,meta,generic inter-nanopub relation
+NANOPUB,npx:invalidates,INVALIDATED_NANOPUB,npa:graph,meta,if the NANOPUB retracts or supersedes another nanopub
+NANOPUB,npx:retracts,RETRACTED_NANOPUB,npa:graph,meta,if the NANOPUB retracts another nanopub
+NANOPUB,npx:supersedes,SUPERSEDED_NANOPUB,npa:graph,meta,if the NANOPUB supersedes another nanopub
+NANOPUB,npa:hasHeadGraph,HEAD_GRAPH,npa:graph,meta,direct link to the head graph of the NANOPUB
+NANOPUB,npa:hasGraph,GRAPH,npa:graph,meta,generic link to all four graphs of the given NANOPUB
+NANOPUB,np:hasAssertion,ASSERTION_GRAPH,npa:graph,meta,direct link to the assertion graph of the NANOPUB
+NANOPUB,np:hasProvenance,PROVENANCE_GRAPH,npa:graph,meta,direct link to the provenance graph of the NANOPUB
+NANOPUB,np:hasPublicationInfo,PUBINFO_GRAPH,npa:graph,meta,direct link to the pubinfo graph of the NANOPUB
+NANOPUB,npa:artifactCode,ARTIFACT_CODE,npa:graph,meta,artifact code starting with "RA..."
+NANOPUB,npa:isIntroductionOf,AGENT,npa:graph,meta,linking intro nanopub to the agent it is introducing
+NANOPUB,npa:declaresPubkey,FULL_PUBKEY,npa:graph,meta,full pubkey declared by the given intro NANOPUB
+NANOPUB,dct:created,CREATION_DATE,npa:graph,meta,normalized creation timestamp
+NANOPUB,npx:hasNanopubType,NANOPUB_TYPE,npa:graph,meta,type of NANOPUB
+NANOPUB,rdfs:label,LABEL,npa:graph,meta,label of NANOPUB
+NANOPUB,dct:description,LABEL,npa:graph,meta,description of NANOPUB
+NANOPUB,dct:creator,CREATOR,npa:graph,meta,creator of NANOPUB (can be several)
+NANOPUB,pav:authoredBy,AUTHOR,npa:graph,meta,author of NANOPUB (can be several)
+NANOPUB,npa:hasFilterLiteral,FILTER_LITERAL,npa:graph,literal,auxiliary literal for filtering by type and pubkey in text repo
+REPO,npa:hasNanpubCount,NANOPUB_COUNT,npa:graph,admin,number of nanopubs loaded (BUG: npa:hasNanpubCount should be npa:hasNanopubCount)
+REPO,npa:hasNanopubChecksum,NANOPUB_CHECKSUM,npa:graph,admin,checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
+NANOPUB,npa:hasLoadNumber,LOAD_NUMBER,npa:graph,admin,the sequential number at which this NANOPUB was loaded
+NANOPUB,npa:hasLoadChecksum,LOAD_CHECKSUM,npa:graph,admin,the checksum of all loaded nanopubs after loading the given NANOPUB
+NANOPUB,npa:hasLoadTimestamp,LOAD_TIMESTAMP,npa:graph,admin,the time point at which this NANOPUB was loaded
