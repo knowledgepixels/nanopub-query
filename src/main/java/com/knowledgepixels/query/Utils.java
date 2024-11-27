@@ -114,4 +114,20 @@ public class Utils {
 		return defaultValue;
 	}
 
+	public static final String defaultQuery =
+			"prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n"
+			+ "prefix dct: <http://purl.org/dc/terms/>\n"
+			+ "prefix np: <http://www.nanopub.org/nschema#>\n"
+			+ "prefix npa: <http://purl.org/nanopub/admin/>\n"
+			+ "prefix npx: <http://purl.org/nanopub/x/>\n"
+			+ "\n"
+			+ "select ?np ?date ?label where {\n"
+			+ "  graph npa:graph {\n"
+			+ "    ?np npa:hasValidSignatureForPublicKey ?pubkey .\n"
+			+ "    filter not exists { ?npx npx:invalidates ?np ; npa:hasValidSignatureForPublicKey ?pubkey . }\n"
+			+ "    ?np dct:created ?date .\n"
+			+ "    optional { ?np rdfs:label ?label }\n"
+			+ "  }\n"
+			+ "} limit 10";
+
 }

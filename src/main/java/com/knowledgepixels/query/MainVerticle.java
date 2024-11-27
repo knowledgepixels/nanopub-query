@@ -126,7 +126,7 @@ public class MainVerticle extends AbstractVerticle {
 							+ "<script src='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.js'></script>\n"
 							+ "<script type=\"text/javascript\">\n"
 							+ "var yasgui = YASGUI(document.getElementById(\"yasgui\"), {\n"
-							+ "  yasqe:{sparql:{endpoint:'/repo/" + repo + "'}}\n"
+							+ "  yasqe:{sparql:{endpoint:'/repo/" + repo + "'},value:'" + Utils.defaultQuery.replaceAll("\n", "\\\\n") + "'}\n"
 							+ "});\n"
 							+ "</script>\n"
 							+ "</body>\n"
