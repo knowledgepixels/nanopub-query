@@ -12,9 +12,24 @@ You can check out Nanopub Query at these instances:
 - https://query.np.kpxl.org/
 
 
-## Admin Graphs and Triples
+## Repos and Triples
 
-See the [admin triple table](doc/admin-triple-table.csv).
+Each nanopublications is loaded into different repos in the form of RDF4J triple stores. There are these general repos:
+
+- `meta`: Stores only some specific "admin-graph metadata" of the nanopublication (see below)
+- `full`: Loads all nanopublications and their admin-graph metadata (not scalable on the long term, so will be deprecated in the medium-term future)
+- `last30d`: Stores all nanopublications of the last 30 days and their admin-graph metadata
+- `text`: Stores all nanopublications for full-text search
+- `admin`: Stores some further admin info, such as the full pubkeys for their hash values
+- `empty`: Empty repo from which other repos can be accessed via the SPARQL `service` keyword
+
+On top of that, there are these specific repos:
+
+- `pubkey`: For each public key used to sign a nanopublication, a separate repo is created
+- `type`: For each nanopub type, a separate repo is created too
+
+Two admin graphs (`npa:graph` and `npa:networkGraph`) are created with metadata about the nanopublications.
+The [admin triple table](doc/admin-triple-table.csv) shows the details.
 
 
 ## General Setup
