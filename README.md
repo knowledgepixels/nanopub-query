@@ -16,8 +16,8 @@ You can check out Nanopub Query at these instances:
 
 Each nanopublications is loaded into different repos in the form of RDF4J triple stores. There are these general repos:
 
-- `meta`: Stores only some specific "admin-graph metadata" of the nanopublication (see below)
-- `full`: Loads all nanopublications and their admin-graph metadata (not scalable on the long term, so will be deprecated in the medium-term future)
+- `meta`: Stores some specific "admin-graph metadata" of the nanopublication (see below), but not the nanopublications themselves
+- `full`: Stores all nanopublications in full and their admin-graph metadata (not scalable on the long term, so will be deprecated in the medium-term future)
 - `last30d`: Stores all nanopublications of the last 30 days and their admin-graph metadata
 - `text`: Stores all nanopublications for full-text search
 - `admin`: Stores some further admin info, such as the full pubkeys for their hash values
