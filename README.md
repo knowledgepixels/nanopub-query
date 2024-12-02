@@ -36,8 +36,8 @@ The [admin triple table](doc/admin-triple-table.csv) shows the details.
 
 Get pre-packaged data (optional):
 
-    $ wget https://zenodo.org/records/11125050/files/rdf4j-20240507.tar.gz
-    $ tar -xvzf rdf4j-20240507.tar.gz
+    $ wget https://zenodo.org/records/14260335/files/rdf4j-20241202.tar.gz
+    $ tar -xzf rdf4j-20241202.tar.gz
 
 Init directories:
 
