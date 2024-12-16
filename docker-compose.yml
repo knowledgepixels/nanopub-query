@@ -42,7 +42,7 @@ services:
           "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" \
         || (
           date >> /var/info/restart
-          kill -15 1
+          kill -1 1
         )
       interval: 10s
       timeout: 10s
