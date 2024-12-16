@@ -34,15 +34,19 @@ services:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
       - ./data/info:/var/info
+      - ./entrypoint:/var/entrypoint
     ports:
       - 8081:8080
+    entrypoint: /var/entrypoint/init.sh
     healthcheck:
       test: >
         curl -f --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
           "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" \
         || (
           date >> /var/info/restart
-          kill -1 1
+          kill -s 15 -1
+          sleep 10
+          kill -s 9 -1
         )
       interval: 10s
       timeout: 10s
