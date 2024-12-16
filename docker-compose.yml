@@ -3,8 +3,6 @@ services:
     build: .
     image: nanopub/query
     restart: unless-stopped
-    labels:
-      "autoheal": "true"
     ports:
       - 9300:9300
       - 9393:9393
@@ -35,8 +33,20 @@ services:
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
+      - ./data/info:/var/info
     ports:
       - 8081:8080
+    healthcheck:
+      test: >
+        curl -f --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
+          "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" \
+        || (
+          date >> /var/info/restart;
+          bash -c "kill -15 1"
+        )
+      interval: 10s
+      timeout: 10s
+      start_period: 60s
   grlc:
     image: clariah/grlc:v1.3.9  # causes error locally ("failed to register layer: failed to Lchown ..."), but seems to work on the servers
 #    image: clariah/grlc:v1.3.8  # works locally but leads to problems on the servers
