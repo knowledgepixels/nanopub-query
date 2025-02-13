@@ -25,8 +25,6 @@ import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
 import org.nanopub.NanopubUtils;
 
-import virtuoso.rdf4j.driver.VirtuosoRepository;
-
 public class TripleStore {
 
 	public static final String ADMIN_REPO = "admin";
@@ -47,8 +45,6 @@ public class TripleStore {
 	private Map<String,Repository> repositories = new HashMap<>();
 	private String endpointBase = null;
 	private String endpointType = null;
-	private String username = null;
-	private String password = null;
 
 	volatile boolean terminated = false;
 
@@ -74,8 +70,6 @@ public class TripleStore {
 		endpointBase = env.get("ENDPOINT_BASE");
 		System.err.println("Endpoint base: " + endpointBase);
 		endpointType = env.get("ENDPOINT_TYPE");
-		username = env.get("USERNAME");
-		password = env.get("PASSWORD");
 
 		getRepository("empty");  // Make sure empty repo exists
 	}
@@ -89,8 +83,8 @@ public class TripleStore {
 				HTTPRepository hr = new HTTPRepository(endpointBase + name);
 				hr.setHttpClient(httpclient);
 				repository = hr;
-			} else if (endpointType.equals("virtuoso")) {
-				repository = new VirtuosoRepository(endpointBase + name, username, password);
+//			} else if (endpointType.equals("virtuoso")) {
+//				repository = new VirtuosoRepository(endpointBase + name, username, password);
 			} else {
 				throw new RuntimeException("Unknown repository type: " + endpointType);
 			}

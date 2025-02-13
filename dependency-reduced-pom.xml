@@ -60,7 +60,7 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-junit5</artifactId>
-      <version>5.0.0.CR3</version>
+      <version>4.5.11</version>
       <scope>test</scope>
       <exclusions>
         <exclusion>
@@ -105,12 +105,6 @@
         </exclusion>
       </exclusions>
     </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-simple</artifactId>
-      <version>2.1.0-alpha1</version>
-      <scope>test</scope>
-    </dependency>
   </dependencies>
   <dependencyManagement>
     <dependencies>
@@ -127,7 +121,7 @@
     <main.verticle>com.knowledgepixels.query.MainVerticle</main.verticle>
     <maven-shade-plugin.version>3.5.0</maven-shade-plugin.version>
     <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
-    <vertx.version>5.0.0.CR3</vertx.version>
+    <vertx.version>4.5.11</vertx.version>
     <launcher.class>io.vertx.core.Launcher</launcher.class>
     <junit-jupiter.version>5.11.4</junit-jupiter.version>
     <maven-surefire-plugin.version>3.1.2</maven-surefire-plugin.version>
