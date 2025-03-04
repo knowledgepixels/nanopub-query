@@ -1,4 +1,4 @@
-FROM maven:3-openjdk-18
+FROM maven:3.9.9-eclipse-temurin-21
 
 ENV APP_DIR /app
 ENV TMP_DIR /tmp
