@@ -11,7 +11,7 @@ import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.nanopub.Nanopub;
 import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.extra.server.GetNanopub;
-import org.nanopub.extra.services.ApiAccess;
+import org.nanopub.extra.services.QueryAccess;
 
 import io.vertx.core.MultiMap;
 import net.trustyuri.TrustyUriUtils;
@@ -48,7 +48,7 @@ public class GrlcSpecPage {
 		np = GetNanopub.get(artifactCode);
 		if (parameters.get("api-version") != null && "latest".equals(parameters.get("api-version").toString())) {
 			// TODO Get the latest version from the local store:
-			np = GetNanopub.get(ApiAccess.getLatestVersionId(np.getUri().stringValue()));
+			np = GetNanopub.get(QueryAccess.getLatestVersionId(np.getUri().stringValue()));
 			artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
 		}
 		for (Statement st : np.getAssertion()) {
