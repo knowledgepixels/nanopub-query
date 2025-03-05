@@ -350,12 +350,10 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 
-		vertx.executeBlocking(() -> {
+		new Thread(() -> {
 			LocalNanopubLoader.init();
-			return null;
-		}).onComplete(res -> {
-		  System.err.println("Local nanopublication loading finished");
-		});
+			System.err.println("Local nanopublication loading finished");
+		}).start();
 
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			try {
