@@ -359,6 +359,7 @@ public class MainVerticle extends AbstractVerticle {
 //		new Thread(() -> {
 //			// Just for testing:
 //			final String requestUrl = "https://registry.petapico.org/list/ddf0547234e33a887f71de3840d2a92c1d1c08d56e1a04b8a517dddc083298f7/$.jelly";
+//			//final String requestUrl = "https://registry.petapico.org/nanopubs.jelly";
 //			System.err.println("Request: " + requestUrl);
 //			try {
 //				CloseableHttpResponse resp = NanopubUtils.getHttpClient().execute(new HttpGet(requestUrl));
