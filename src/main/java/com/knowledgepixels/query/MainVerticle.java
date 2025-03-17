@@ -350,6 +350,8 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 
+		JellyNanopubLoader.initialLoad();
+
 		// Old local loader code
 		// TODO: remove
 //		new Thread(() -> {
