@@ -27,6 +27,13 @@
     <launcher.class>io.vertx.core.Launcher</launcher.class>
   </properties>
 
+  <repositories>
+    <repository>
+      <id>jitpack.io</id>
+      <url>https://jitpack.io</url>
+    </repository>
+  </repositories>
+
   <dependencyManagement>
     <dependencies>
       <dependency>
@@ -74,10 +81,16 @@
       <version>${junit-jupiter.version}</version>
       <scope>test</scope>
     </dependency>
+    <!--    <dependency>-->
+    <!--      <groupId>org.nanopub</groupId>-->
+    <!--      <artifactId>nanopub</artifactId>-->
+    <!--      <version>1.70-snapshot</version>-->
+    <!--    </dependency>-->
+    <!-- Temporary: dependency on Jitpack for snapshot builds -->
     <dependency>
-      <groupId>org.nanopub</groupId>
-      <artifactId>nanopub</artifactId>
-      <version>1.69</version>
+      <groupId>com.github.Nanopublication</groupId>
+      <artifactId>nanopub-java</artifactId>
+      <version>1b55c03442929f4195ef19b66a847308386f7261</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>

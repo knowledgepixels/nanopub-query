@@ -350,10 +350,12 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 
-		new Thread(() -> {
-			LocalNanopubLoader.init();
-			System.err.println("Local nanopublication loading finished");
-		}).start();
+		// Old local loader code
+		// TODO: remove
+//		new Thread(() -> {
+//			LocalNanopubLoader.init();
+//			System.err.println("Local nanopublication loading finished");
+//		}).start();
 
 		// Preliminary code to test loading from Nanopub Registry via Jelly:
 //		new Thread(() -> {
