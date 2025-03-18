@@ -6,25 +6,15 @@ services:
     ports:
       - 9300:9300
       - 9393:9393
-    volumes:
-      - ./load:/app/load
     environment:
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/
-      - REGISTRY_FIXED_URL=TODO
-#     - INIT_WAIT_SECONDS=120
+      - REGISTRY_FIXED_URL=https://registry.knowledgepixels.com/
 #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
     logging:
       options:
         max-size: "10m"
         max-file: "3"
-
-#  autofetch:
-#    image: alpine
-#    volumes:
-#      - ./load:/app/load
-#      - ./scripts:/app/scripts
-#    command: /app/scripts/autofetch.sh
 
   rdf4j:
     image: eclipse/rdf4j-workbench:5.0.3
