@@ -1,6 +1,5 @@
 package com.knowledgepixels.query;
 
-import com.knowledgepixels.query.exception.TransientNanopubLoadingException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
@@ -107,7 +106,7 @@ public class JellyNanopubLoader {
             var npStream = NanopubStream.fromByteStream(is).getAsNanopubs()
         ) {
             npStream.forEach(m -> {
-                if (!m.isSuccess()) throw new TransientNanopubLoadingException("Failed to load " +
+                if (!m.isSuccess()) throw new RuntimeException("Failed to load " +
                         "nanopub from Jelly stream. Last known counter: " + lastCommittedCounter,
                         m.getException()
                 );
