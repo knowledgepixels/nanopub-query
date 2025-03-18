@@ -9,10 +9,12 @@ import org.apache.http.client.methods.HttpHead;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
+import org.eclipse.rdf4j.query.algebra.Str;
 import org.nanopub.NanopubUtils;
 import org.nanopub.jelly.NanopubStream;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
@@ -105,6 +107,10 @@ public class JellyNanopubLoader {
             var is = response.getEntity().getContent();
             var npStream = NanopubStream.fromByteStream(is).getAsNanopubs()
         ) {
+            AtomicLong checkpointTime = new AtomicLong(System.currentTimeMillis());
+            AtomicLong checkpointCounter = new AtomicLong(lastCommittedCounter);
+            AtomicLong loaded = new AtomicLong(0L);
+
             npStream.forEach(m -> {
                 if (!m.isSuccess()) throw new RuntimeException("Failed to load " +
                         "nanopub from Jelly stream. Last known counter: " + lastCommittedCounter,
@@ -117,6 +123,16 @@ public class JellyNanopubLoader {
                 }
                 NanopubLoader.load(m.getNanopub());
                 lastCommittedCounter = m.getCounter();
+                loaded.getAndIncrement();
+
+                if (loaded.get() % 50 == 0) {
+                    long currTime = System.currentTimeMillis();
+                    double speed = 50 / ((currTime - checkpointTime.get()) / 1000.0);
+                    System.err.println("Loading speed: " + String.format("%.2f", speed) +
+                            " np/s. Counter: " + lastCommittedCounter);
+                    checkpointTime.set(currTime);
+                    checkpointCounter.set(lastCommittedCounter);
+                }
             });
         } catch (IOException e) {
             throw new RuntimeException("I/O error while reading the response Jelly stream.", e);
