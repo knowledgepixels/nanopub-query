@@ -4,6 +4,7 @@ import com.knowledgepixels.query.exception.TransientNanopubLoadingException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -25,8 +26,9 @@ public class JellyNanopubLoader {
     private static final HttpClient metadataClient;
     private static final CloseableHttpClient jellyStreamClient;
 
-    private static final int MAX_RETRIES_METADATA = 5;
-    private static final int RETRY_DELAY_METADATA = 1000;
+    private static final int MAX_RETRIES_METADATA = 10;
+    private static final int RETRY_DELAY_METADATA = 3000;
+    private static final int RETRY_DELAY_JELLY = 5000;
 
     static {
         // Initialize registryUrl
@@ -37,7 +39,6 @@ public class JellyNanopubLoader {
         registryUrl = url;
 
         // Initialize HTTP clients
-        // TODO: see if those options make sense
         var rqConfig = RequestConfig.custom()
                 .setConnectTimeout(1000)
                 .setConnectionRequestTimeout(1000)
@@ -66,18 +67,34 @@ public class JellyNanopubLoader {
             } catch (Exception e) {
                 System.err.println("Failed to load batch starting from counter " + lastCommittedCounter);
                 System.err.println(e.getMessage());
+                try {
+                    Thread.sleep(RETRY_DELAY_JELLY);
+                } catch (InterruptedException e2) {
+                    throw new RuntimeException("Interrupted while waiting to retry loading batch.");
+                }
             }
         }
         System.err.println("Initial load complete.");
+
+        // TODO: transition to the next state, enable periodic checks for new nanopubs
     }
 
     /**
-     * TODO
-     * @param fromCounter
+     * Load a batch of nanopubs from the Jelly stream.
+     * <p>
+     * The method requests the list of all nanopubs from the Registry and reads it for as long
+     * as it can. If the stream is interrupted, the method will throw an exception, and you
+     * can resume loading from the last known counter.
+     * @param afterCounter the last known nanopub counter to have been committed in the DB
      */
-    private static void loadBatch(long fromCounter) throws IOException {
-        var request = new HttpGet(makeStreamFetchUrl(fromCounter));
-        var response = jellyStreamClient.execute(request);
+    private static void loadBatch(long afterCounter) {
+        CloseableHttpResponse response;
+        try {
+            var request = new HttpGet(makeStreamFetchUrl(afterCounter));
+            response = jellyStreamClient.execute(request);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to fetch Jelly stream from the Registry (I/O error).", e);
+        }
 
         int httpStatus = response.getStatusLine().getStatusCode();
         if (httpStatus < 200 || httpStatus >= 300) {
@@ -102,6 +119,8 @@ public class JellyNanopubLoader {
                 NanopubLoader.load(m.getNanopub());
                 lastCommittedCounter = m.getCounter();
             });
+        } catch (IOException e) {
+            throw new RuntimeException("I/O error while reading the response Jelly stream.", e);
         }
         System.err.println("Initial load: loaded batch up to counter " + lastCommittedCounter);
     }
@@ -136,6 +155,11 @@ public class JellyNanopubLoader {
         return counter;
     }
 
+    /**
+     * Inner logic for fetching the registry load counter.
+     * @return the current load counter
+     * @throws IOException if the HTTP request fails
+     */
     private static long fetchRegistryLoadCounterInner() throws IOException {
         var request = new HttpHead(registryUrl);
         var response = metadataClient.execute(request);
@@ -151,7 +175,7 @@ public class JellyNanopubLoader {
         if (hStatus.length == 0) {
             throw new RuntimeException("Registry did not return a Nanopub-Registry-Status header.");
         }
-        if (!hStatus[0].getValue().equals("ready")) {
+        if (!"ready".equals(hStatus[0].getValue()) && !"updating".equals(hStatus[0].getValue())) {
             throw new RuntimeException("Registry is not in ready state.");
         }
 
@@ -165,7 +189,12 @@ public class JellyNanopubLoader {
         return counter;
     }
 
-    private static String makeStreamFetchUrl(long fromCounter) {
-        return registryUrl + "nanopubs.jelly?fromCounter=" + fromCounter;
+    /**
+     * Construct the URL for fetching the Jelly stream.
+     * @param afterCounter the last known nanopub counter to have been committed in the DB
+     * @return the URL for fetching the Jelly stream
+     */
+    private static String makeStreamFetchUrl(long afterCounter) {
+        return registryUrl + "nanopubs.jelly?afterCounter=" + afterCounter;
     }
 }

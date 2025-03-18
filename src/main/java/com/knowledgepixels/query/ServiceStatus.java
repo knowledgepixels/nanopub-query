@@ -9,7 +9,7 @@ public class ServiceStatus {
     }
 
     // TODO: the state machine is currently implemented as an in-memory variable.
-    //   Persist it in the DB!
+    //   Persist it in the DB
     //   https://github.com/knowledgepixels/nanopub-query/issues/13
 
     private final static Object sync = new Object();
