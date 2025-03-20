@@ -352,7 +352,12 @@ public class MainVerticle extends AbstractVerticle {
 
 		new Thread(() -> {
 			try {
-				JellyNanopubLoader.initialLoad();
+				// Fall back to local nanopub loading if the local files are present
+				if (!LocalNanopubLoader.init()) {
+					JellyNanopubLoader.initialLoad();
+				} else {
+					System.err.println("Local nanopublication loading finished");
+				}
 			} catch (Exception ex) {
 				ex.printStackTrace();
 				System.err.println("Initial load failed, terminating...");
