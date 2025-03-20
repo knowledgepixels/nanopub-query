@@ -3,6 +3,7 @@ services:
     environment:
       - JPDA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
       - NANOPUB_QUERY_URL=https://query.your.domain.com/
+      - REGISTRY_FIXED_URL=http://your.nanopub.registry.com/
     ports:
       - 5005:5005
     entrypoint: 'java -jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 nanopub-query.jar'

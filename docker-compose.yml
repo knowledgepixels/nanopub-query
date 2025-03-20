@@ -7,22 +7,20 @@ services:
       - 9300:9300
       - 9393:9393
     volumes:
+      # For the local nanopub loader (optional).
+      # If not used, Query will load the nanopubs from the Registry with Jelly.
       - ./load:/app/load
     environment:
       - ENDPOINT_TYPE=rdf4j
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/
-#     - INIT_WAIT_SECONDS=120
+      - REGISTRY_FIXED_URL=https://registry.knowledgepixels.com/
+#     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
 #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
     logging:
       options:
         max-size: "10m"
         max-file: "3"
-  autofetch:
-    image: alpine
-    volumes:
-      - ./load:/app/load
-      - ./scripts:/app/scripts
-    command: /app/scripts/autofetch.sh
+
   rdf4j:
     image: eclipse/rdf4j-workbench:5.0.3
 #   image: eclipse/rdf4j-workbench:5.0.2
@@ -51,6 +49,7 @@ services:
       interval: 10s
       timeout: 10s
       start_period: 60s
+
   grlc:
     image: clariah/grlc:v1.3.9  # causes error locally ("failed to register layer: failed to Lchown ..."), but seems to work on the servers
 #    image: clariah/grlc:v1.3.8  # works locally but leads to problems on the servers

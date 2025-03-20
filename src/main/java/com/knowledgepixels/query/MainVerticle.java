@@ -351,42 +351,19 @@ public class MainVerticle extends AbstractVerticle {
 		});
 
 		new Thread(() -> {
-			LocalNanopubLoader.init();
-			System.err.println("Local nanopublication loading finished");
+			try {
+				// Fall back to local nanopub loading if the local files are present
+				if (!LocalNanopubLoader.init()) {
+					JellyNanopubLoader.initialLoad();
+				} else {
+					System.err.println("Local nanopublication loading finished");
+				}
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				System.err.println("Initial load failed, terminating...");
+				Runtime.getRuntime().exit(1);
+			}
 		}).start();
-
-		// Preliminary code to test loading from Nanopub Registry via Jelly:
-//		new Thread(() -> {
-//			// Just for testing:
-//			final String requestUrl = "https://registry.petapico.org/list/ddf0547234e33a887f71de3840d2a92c1d1c08d56e1a04b8a517dddc083298f7/$.jelly";
-//			//final String requestUrl = "https://registry.petapico.org/nanopubs.jelly";
-//			System.err.println("Request: " + requestUrl);
-//			try {
-//				CloseableHttpResponse resp = NanopubUtils.getHttpClient().execute(new HttpGet(requestUrl));
-//				int httpStatus = resp.getStatusLine().getStatusCode();
-//				if (httpStatus < 200 || httpStatus >= 300) {
-//					EntityUtils.consumeQuietly(resp.getEntity());
-//					throw new RuntimeException("Request failed: " + requestUrl + " " + httpStatus);
-//				}
-//				Header nrStatus = resp.getFirstHeader("Nanopub-Registry-Status");
-//				if (nrStatus == null) {
-//					EntityUtils.consumeQuietly(resp.getEntity());
-//					throw new RuntimeException("Nanopub-Registry-Status header not found at: " + requestUrl);
-//				} else if (!nrStatus.getValue().equals("ready") && !nrStatus.getValue().equals("updating")) {
-//					EntityUtils.consumeQuietly(resp.getEntity());
-//					throw new RuntimeException("Peer in non-ready state: " + requestUrl + " " + nrStatus.getValue());
-//				}
-//				InputStream is = resp.getEntity().getContent();
-//				try (Stream<MaybeNanopub> stream = NanopubStream.fromByteStream(is).getAsNanopubs()) {
-//					stream.forEach(m -> {
-//						if (!m.isSuccess()) throw new RuntimeException("Failed to download nanopub");
-//						NanopubLoader.load(m.getNanopub());
-//					});
-//				}
-//			} catch (UnsupportedOperationException | IOException ex) {
-//				ex.printStackTrace();
-//			}
-//		}).start();
 
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			try {

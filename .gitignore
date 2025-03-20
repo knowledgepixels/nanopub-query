@@ -13,3 +13,4 @@
 /testing/load
 /testing/docker-compose.override.yml
 /dependency-reduced-pom.xml
+/.idea
