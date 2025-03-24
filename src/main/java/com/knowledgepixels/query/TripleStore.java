@@ -74,13 +74,13 @@ public class TripleStore {
 		getRepository("empty");  // Make sure empty repo exists
 	}
 
-	private CloseableHttpClient httpclient = HttpClients.createDefault();
+	private final CloseableHttpClient httpclient = HttpClients.createDefault();
 
 	private Repository getRepository(String name) {
 		if (!repositories.containsKey(name)) {
 			Repository repository = null;
 			if (endpointType == null || endpointType.equals("rdf4j")) {
-				HTTPRepository hr = new HTTPRepository(endpointBase + name);
+				HTTPRepository hr = new HTTPRepository(endpointBase + "repositories/" + name);
 				hr.setHttpClient(httpclient);
 				repository = hr;
 //			} else if (endpointType.equals("virtuoso")) {
@@ -204,7 +204,7 @@ public class TripleStore {
 			}
 
 			HttpUriRequest createRepoRequest = RequestBuilder.put()
-					.setUri("http://rdf4j:8080/rdf4j-server/repositories/" + repoName)
+					.setUri(endpointBase + "repositories/" + repoName)
 					.addHeader("Content-Type", "text/turtle")
 					.setEntity(new StringEntity(createRepoQueryString))
 					.build();
@@ -243,7 +243,7 @@ public class TripleStore {
 		Map<String,Boolean> repositoryNames = null;
 		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
 			HttpResponse resp = httpclient.execute(RequestBuilder.get()
-					.setUri("http://rdf4j:8080/rdf4j-server/repositories")
+					.setUri(endpointBase + "/repositories")
 					.addHeader("Content-Type", "text/csv")
 					.build());
 			BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));

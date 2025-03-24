@@ -338,18 +338,19 @@ public class NanopubLoader {
 							+ "filter ( ?date < ?thirtydaysago ) "
 						+ "} }");
 					q.setBinding("thirtydaysago",  thirtyDaysAgo);
-					TupleQueryResult r = q.evaluate();
-					while (r.hasNext()) {
-						BindingSet b = r.next();
-						IRI oldNpId = (IRI) b.getBinding("np").getValue();
-						//System.err.println("Remove old nanopub: " + oldNpId);
-						for (Value v : Utils.getObjectsForPattern(conn, ADMIN_GRAPH, oldNpId, HAS_GRAPH)) {
-							// Remove all four nanopub graphs:
-							conn.remove((Resource) null, (IRI) null, (Value) null, (IRI) v);
+					try (TupleQueryResult r = q.evaluate()) {
+						while (r.hasNext()) {
+							BindingSet b = r.next();
+							IRI oldNpId = (IRI) b.getBinding("np").getValue();
+							//System.err.println("Remove old nanopub: " + oldNpId);
+							for (Value v : Utils.getObjectsForPattern(conn, ADMIN_GRAPH, oldNpId, HAS_GRAPH)) {
+								// Remove all four nanopub graphs:
+								conn.remove((Resource) null, (IRI) null, (Value) null, (IRI) v);
+							}
+							// Remove nanopubs in admin graphs:
+							conn.remove(oldNpId, null, null, ADMIN_GRAPH);
+							conn.remove(oldNpId, null, null, ADMIN_NETWORK_GRAPH);
 						}
-						// Remove nanopubs in admin graphs:
-						conn.remove(oldNpId, null, null, ADMIN_GRAPH);
-						conn.remove(oldNpId, null, null, ADMIN_NETWORK_GRAPH);
 					}
 					lastUpdateOfLatestRepo = new Date().getTime();
 				}
@@ -493,12 +494,13 @@ public class NanopubLoader {
 				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { "
 						+ "?np <" + INVALIDATES + "> <" + npId + "> ; <" + HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . "
 						+ "} }").evaluate();
-				while (r.hasNext()) {
-					BindingSet b = r.next();
-					invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), INVALIDATES, npId, ADMIN_GRAPH));
-					invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, b.getBinding("pubkey").getValue(), ADMIN_GRAPH));
+				try (r) {
+					while (r.hasNext()) {
+						BindingSet b = r.next();
+						invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), INVALIDATES, npId, ADMIN_GRAPH));
+						invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, b.getBinding("pubkey").getValue(), ADMIN_GRAPH));
+					}
 				}
-
 				conn.commit();
 				success = true;
 			} catch (Exception ex) {
