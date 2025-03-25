@@ -53,11 +53,16 @@ public class LocalNanopubLoader {
         if (!autofetchNanopubsFile.exists()) {
             System.err.println("No local autofetch nanopub URI file found.");
         } else {
+            long loaded = 0L;
             try (BufferedReader reader = new BufferedReader(new FileReader(autofetchNanopubsFile))) {
                 String line = reader.readLine();
                 while (line != null) {
                     NanopubLoader.load(line);
                     line = reader.readLine();
+                    loaded++;
+                    if (loaded % 50 == 0) {
+                        System.err.println("Loaded " + loaded + " nanopubs...");
+                    }
                 }
             } catch (IOException ex) {
                 ex.printStackTrace();

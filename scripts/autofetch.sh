@@ -1,6 +1,6 @@
 #!/bin/sh
 
-cd /app/load
+cd ../load
 
 echo "Autofetch init"
 
