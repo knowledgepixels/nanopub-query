@@ -38,12 +38,13 @@ public class Utils {
 				TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
 				query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
 				query.setBinding("p", IS_HASH_OF);
-				TupleQueryResult r = query.evaluate();
-				while (r.hasNext()) {
-					BindingSet b = r.next();
-					String hash = b.getBinding("s").getValue().stringValue();
-					hash = StringUtils.replace(hash, HASH_PREFIX.toString(), "");
-					hashToObjMap.put(hash, b.getBinding("o").getValue());
+				try (TupleQueryResult r = query.evaluate()) {
+					while (r.hasNext()) {
+						BindingSet b = r.next();
+						String hash = b.getBinding("s").getValue().stringValue();
+						hash = StringUtils.replace(hash, HASH_PREFIX.toString(), "");
+						hashToObjMap.put(hash, b.getBinding("o").getValue());
+					}
 				}
 			}
 		}
@@ -81,17 +82,21 @@ public class Utils {
 
 	public static Value getObjectForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
 		TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + graph.stringValue() + "> { <" + subj.stringValue() + "> <" + pred.stringValue() + "> ?o } }").evaluate();
-		if (!r.hasNext()) return null;
-		return r.next().getBinding("o").getValue();
+		try (r) {
+			if (!r.hasNext()) return null;
+			return r.next().getBinding("o").getValue();
+		}
 	}
 
 	public static List<Value> getObjectsForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
 		List<Value> values = new ArrayList<>();
 		TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + graph.stringValue() + "> { <" + subj.stringValue() + "> <" + pred.stringValue() + "> ?o } }").evaluate();
-		while (r.hasNext()) {
-			values.add(r.next().getBinding("o").getValue());
+		try (r) {
+			while (r.hasNext()) {
+				values.add(r.next().getBinding("o").getValue());
+			}
+			return values;
 		}
-		return values;
 	}
 
 	public static String getEnvString(String envVarName, String defaultValue) {

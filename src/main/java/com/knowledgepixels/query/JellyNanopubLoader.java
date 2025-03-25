@@ -9,7 +9,6 @@ import org.apache.http.client.methods.HttpHead;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
-import org.eclipse.rdf4j.query.algebra.Str;
 import org.nanopub.NanopubUtils;
 import org.nanopub.jelly.NanopubStream;
 
@@ -136,6 +135,12 @@ public class JellyNanopubLoader {
             });
         } catch (IOException e) {
             throw new RuntimeException("I/O error while reading the response Jelly stream.", e);
+        } finally {
+            try {
+                response.close();
+            } catch (IOException e) {
+                System.err.println("Failed to close the Jelly stream response.");
+            }
         }
         System.err.println("Initial load: loaded batch up to counter " + lastCommittedCounter);
     }
@@ -179,8 +184,8 @@ public class JellyNanopubLoader {
         var request = new HttpHead(registryUrl);
         var response = metadataClient.execute(request);
         int status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
         if (status < 200 || status >= 300) {
-            EntityUtils.consumeQuietly(response.getEntity());
             throw new RuntimeException("Registry load counter HTTP status is not 2xx: " +
                     status + ".");
         }

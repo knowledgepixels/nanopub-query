@@ -12,7 +12,7 @@ services:
       - ./load:/app/load
     environment:
       - ENDPOINT_TYPE=rdf4j
-      - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/repositories/
+      - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/
       - REGISTRY_FIXED_URL=https://registry.knowledgepixels.com/
 #     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
 #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
