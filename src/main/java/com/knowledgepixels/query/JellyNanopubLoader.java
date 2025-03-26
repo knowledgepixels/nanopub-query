@@ -17,11 +17,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
- * TODO: implement periodic checks for new nanopubs
  */
 public class JellyNanopubLoader {
     private static final String registryUrl;
-    // TODO: this should be persisted in the DB, via the ServiceStatus class probably
     private static long lastCommittedCounter = -1;
     private static final HttpClient metadataClient;
     private static final CloseableHttpClient jellyStreamClient;
@@ -29,6 +27,12 @@ public class JellyNanopubLoader {
     private static final int MAX_RETRIES_METADATA = 10;
     private static final int RETRY_DELAY_METADATA = 3000;
     private static final int RETRY_DELAY_JELLY = 5000;
+    public static final int UPDATES_POLL_INTERVAL = 2000;
+
+    private enum LoadingType {
+        INITIAL,
+        UPDATE,
+    }
 
     static {
         // Initialize registryUrl
@@ -49,21 +53,19 @@ public class JellyNanopubLoader {
         jellyStreamClient = NanopubUtils.getHttpClient();
     }
 
-    public static void initialLoad() {
-        // State management: if this method fails, the whole service is in an inconsistent state
-        // and should be shut down.
-        // TODO: make it possible to recover from this state across restarts -- this requires
-        //   persisting the state machine in the DB.
-        if (!ServiceStatus.transitionTo(ServiceStatus.State.LOADING_INITIAL)) {
-            throw new IllegalStateException("Cannot transition to LOADING_INITIAL, as the " +
-                    "current state is " + ServiceStatus.getState());
-        }
+    /**
+     * Start or continue (after restart) the initial loading procedure. This simply loads all
+     * nanopubs from the attached Registry.
+     * @param afterCounter which counter to start from (-1 for the beginning)
+     */
+    public static void loadInitial(long afterCounter) {
         long targetCounter = fetchRegistryLoadCounter();
-
-        lastCommittedCounter = -1;
+        System.err.println("Fetched Registry load counter: " + targetCounter);
+        lastCommittedCounter = afterCounter;
         while (lastCommittedCounter < targetCounter) {
             try {
-                loadBatch(lastCommittedCounter);
+                loadBatch(lastCommittedCounter, LoadingType.INITIAL);
+                System.err.println("Initial load: loaded batch up to counter " + lastCommittedCounter);
             } catch (Exception e) {
                 System.err.println("Failed to load batch starting from counter " + lastCommittedCounter);
                 System.err.println(e.getMessage());
@@ -75,8 +77,34 @@ public class JellyNanopubLoader {
             }
         }
         System.err.println("Initial load complete.");
+    }
 
-        // TODO: transition to the next state, enable periodic checks for new nanopubs
+    /**
+     * Check if the Registry has any new nanopubs. If it does, load them.
+     * This method should be called periodically, and you should wait for it to finish before
+     * calling it again.
+     */
+    public static void loadUpdates() {
+        try {
+            final var status = StatusController.get().getState();
+            lastCommittedCounter = status.loadCounter;
+            StatusController.get().setLoadingUpdates(status.loadCounter);
+            long targetCounter = fetchRegistryLoadCounter();
+            if (lastCommittedCounter >= targetCounter) {
+                // Keep quiet so as not to spam the log every second
+                // System.err.println("No updates to load.");
+                StatusController.get().setReady();
+                return;
+            }
+            loadBatch(lastCommittedCounter, LoadingType.UPDATE);
+            System.err.println("Loaded " + (targetCounter - status.loadCounter) +
+                    " update(s). Counter: " + lastCommittedCounter);
+        } catch (Exception e) {
+            System.err.println("Failed to load updates. Current counter: " + lastCommittedCounter);
+            System.err.println(e.getMessage());
+        } finally {
+            StatusController.get().setReady();
+        }
     }
 
     /**
@@ -86,8 +114,9 @@ public class JellyNanopubLoader {
      * as it can. If the stream is interrupted, the method will throw an exception, and you
      * can resume loading from the last known counter.
      * @param afterCounter the last known nanopub counter to have been committed in the DB
+     * @param type the type of loading operation (initial or update)
      */
-    private static void loadBatch(long afterCounter) {
+    private static void loadBatch(long afterCounter, LoadingType type) {
         CloseableHttpResponse response;
         try {
             var request = new HttpGet(makeStreamFetchUrl(afterCounter));
@@ -121,6 +150,15 @@ public class JellyNanopubLoader {
                             ", received counter: " + m.getCounter());
                 }
                 NanopubLoader.load(m.getNanopub());
+                try {
+                    if (type == LoadingType.INITIAL) {
+                        StatusController.get().setLoadingInitial(m.getCounter());
+                    } else {
+                        StatusController.get().setLoadingUpdates(m.getCounter());
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException("Could not update the nanopub counter in DB", e);
+                }
                 lastCommittedCounter = m.getCounter();
                 loaded.getAndIncrement();
 
@@ -142,7 +180,6 @@ public class JellyNanopubLoader {
                 System.err.println("Failed to close the Jelly stream response.");
             }
         }
-        System.err.println("Initial load: loaded batch up to counter " + lastCommittedCounter);
     }
 
     /**
@@ -204,9 +241,7 @@ public class JellyNanopubLoader {
         if (hCounter.length == 0) {
             throw new RuntimeException("Registry did not return a Nanopub-Registry-Load-Counter header.");
         }
-        long counter = Long.parseLong(hCounter[0].getValue());
-        System.err.println("Fetched Registry load counter: " + counter);
-        return counter;
+        return Long.parseLong(hCounter[0].getValue());
     }
 
     /**

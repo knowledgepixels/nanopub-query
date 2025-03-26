@@ -37,6 +37,8 @@ public class TripleStore {
 	public static final IRI HAS_LOAD_NUMBER = vf.createIRI("http://purl.org/nanopub/admin/hasLoadNumber");
 	public static final IRI HAS_LOAD_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasLoadChecksum");
 	public static final IRI HAS_LOAD_TIMESTAMP = vf.createIRI("http://purl.org/nanopub/admin/hasLoadTimestamp");
+	public static final IRI HAS_STATUS = vf.createIRI("http://purl.org/nanopub/admin/hasStatus");
+	public static final IRI HAS_REGISTRY_LOAD_COUNTER = vf.createIRI("http://purl.org/nanopub/admin/hasRegistryLoadCounter");
 	public static final IRI THIS_REPO_ID = vf.createIRI("http://purl.org/nanopub/admin/thisRepo");
 	public static final IRI HAS_COVERAGE_ITEM = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageItem");
 	public static final IRI HAS_COVERAGE_HASH = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageHash");
