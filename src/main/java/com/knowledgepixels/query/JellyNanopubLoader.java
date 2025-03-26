@@ -17,11 +17,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
- * TODO: implement periodic checks for new nanopubs
  */
 public class JellyNanopubLoader {
     private static final String registryUrl;
-    // TODO: this should be persisted in the DB, via the ServiceStatus class probably
     private static long lastCommittedCounter = -1;
     private static final HttpClient metadataClient;
     private static final CloseableHttpClient jellyStreamClient;
