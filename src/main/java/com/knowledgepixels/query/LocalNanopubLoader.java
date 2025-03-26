@@ -22,7 +22,7 @@ public class LocalNanopubLoader {
     public final static File loadNanopubsFile = new File("load/nanopubs.trig.gz");
     public final static File autofetchNanopubsFile = new File("load/nanopubs-autofetch.txt");
 
-    private static int waitSeconds = Utils.getEnvInt("INIT_WAIT_SECONDS", 120);
+    private static final int WAIT_SECONDS = Utils.getEnvInt("INIT_WAIT_SECONDS", 120);
 
     /**
      * Load nanopubs from local files.
@@ -34,9 +34,9 @@ public class LocalNanopubLoader {
                     "via Jelly...");
             return false;
         }
-        System.err.println("Waiting " + waitSeconds + " seconds to make sure the triple store is up...");
+        System.err.println("Waiting " + WAIT_SECONDS + " seconds to make sure the triple store is up...");
         try {
-            for (int w = 0 ; w < waitSeconds ; w++) {
+            for (int w = 0; w < WAIT_SECONDS; w++) {
                 System.err.println("Waited " + w + " seconds...");
                 Thread.sleep(1000);
             }

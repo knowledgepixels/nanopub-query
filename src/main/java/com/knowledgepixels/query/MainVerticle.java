@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Scanner;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.http.HttpStatus;
@@ -352,17 +353,37 @@ public class MainVerticle extends AbstractVerticle {
 
 		new Thread(() -> {
 			try {
-				// Fall back to local nanopub loading if the local files are present
-				if (!LocalNanopubLoader.init()) {
-					JellyNanopubLoader.initialLoad();
+				var status = StatusController.get().initialize();
+				System.err.println("Current state: " + status.state + ", last committed counter: " + status.loadCounter);
+				if (status.state == StatusController.State.LAUNCHING || status.state == StatusController.State.LOADING_INITIAL) {
+					// Do the initial nanopublication loading
+					StatusController.get().setLoadingInitial(status.loadCounter);
+					// Fall back to local nanopub loading if the local files are present
+					if (!LocalNanopubLoader.init()) {
+						JellyNanopubLoader.loadInitial(status.loadCounter);
+					} else {
+						System.err.println("Local nanopublication loading finished");
+					}
+					StatusController.get().setReady();
 				} else {
-					System.err.println("Local nanopublication loading finished");
+					System.err.println("Initial load is already done");
+					StatusController.get().setReady();
 				}
 			} catch (Exception ex) {
 				ex.printStackTrace();
 				System.err.println("Initial load failed, terminating...");
 				Runtime.getRuntime().exit(1);
 			}
+
+			// Start periodic nanopub loading
+			System.err.println("Starting periodic nanopub loading...");
+			var executor = Executors.newSingleThreadScheduledExecutor();
+			executor.scheduleWithFixedDelay(
+					JellyNanopubLoader::loadUpdates,
+					JellyNanopubLoader.UPDATES_POLL_INTERVAL,
+					JellyNanopubLoader.UPDATES_POLL_INTERVAL,
+					TimeUnit.MILLISECONDS
+			);
 		}).start();
 
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
