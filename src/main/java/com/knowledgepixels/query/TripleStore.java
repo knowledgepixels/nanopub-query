@@ -146,7 +146,9 @@ public class TripleStore {
 //					+ "        ]\n"
 //					+ "    ].";
 
-			String indexTypes = "spoc,posc,ospc,cspo,cpos,cosp";
+			// We can use at most 5 indexes in LMDB without hacks.
+			// We use one index for graphs, which should be more than enough (graphs are small).
+			String indexTypes = "spoc,posc,ospc,cspo";
 			if (repoName.startsWith("meta") || repoName.startsWith("text")) {
 				indexTypes = "spoc,posc,ospc";
 			}
@@ -156,18 +158,18 @@ public class TripleStore {
 					+ "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n"
 					+ "@prefix sail: <http://www.openrdf.org/config/sail#>.\n"
 					+ "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n"
-					+ "@prefix ns: <http://www.openrdf.org/config/sail/native#>.\n"
+					+ "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n"
 					+ "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n"
 					+ "\n"
 					+ "[] a rep:Repository ;\n"
 					+ "    rep:repositoryID \"" + repoName + "\" ;\n"
-					+ "    rdfs:label \"" + repoName + " native store\" ;\n"
+					+ "    rdfs:label \"" + repoName + " LMDB store\" ;\n"
 					+ "    rep:repositoryImpl [\n"
 					+ "        rep:repositoryType \"openrdf:SailRepository\" ;\n"
 					+ "        sr:sailImpl [\n"
-					+ "            sail:sailType \"openrdf:NativeStore\" ;\n"
+					+ "            sail:sailType \"rdf4j:LmdbStore\" ;\n"
 					+ "            sail:iterationCacheSyncThreshold \"10000\";\n"
-					+ "            ns:tripleIndexes \"" + indexTypes + "\" ;\n"
+					+ "            lmdb:tripleIndexes \"" + indexTypes + "\" ;\n"
 					+ "            sb:defaultQueryEvaluationMode \"STANDARD\"\n"
 					+ "        ]\n"
 					+ "    ].\n";
@@ -178,7 +180,7 @@ public class TripleStore {
 					+ "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n"
 					+ "@prefix sail: <http://www.openrdf.org/config/sail#>.\n"
 					+ "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n"
-					+ "@prefix ns: <http://www.openrdf.org/config/sail/native#>.\n"
+					+ "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n"
 					+ "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n"
 					+ "\n"
 					+ "[] a rep:Repository ;\n"
@@ -190,9 +192,9 @@ public class TripleStore {
 					+ "            sail:sailType \"openrdf:LuceneSail\" ;\n"
 					+ "            sail-luc:indexDir \"index/\" ;\n"
 					+ "            sail:delegate ["
-					+ "              sail:sailType \"openrdf:NativeStore\" ;\n"
+					+ "              sail:sailType \"rdf4j:LmdbStore\" ;\n"
 					+ "              sail:iterationCacheSyncThreshold \"10000\";\n"
-					+ "              ns:tripleIndexes \"" + indexTypes + "\" ;\n"
+					+ "              lmdb:tripleIndexes \"" + indexTypes + "\" ;\n"
 					+ "              sb:defaultQueryEvaluationMode \"STANDARD\"\n"
 					+ "            ]\n"
 					+ "        ]\n"
