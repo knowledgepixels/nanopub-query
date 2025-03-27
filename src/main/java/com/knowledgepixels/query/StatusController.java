@@ -91,8 +91,11 @@ public class StatusController {
                     var stringVal = counterStatement.getObject().stringValue();
                     lastCommittedCounter = Long.parseLong(stringVal);
                 }
+                adminRepoConn.commit();
+            } catch (Exception e) {
+                if (adminRepoConn.isActive()) adminRepoConn.rollback();
+                throw new RuntimeException(e);
             }
-            adminRepoConn.commit();
             initialized = true;
             return getState();
         }
@@ -164,34 +167,39 @@ public class StatusController {
 
     private void updateState(State newState, long loadCounter) {
         synchronized (this) {
-            adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
-            adminRepoConn.remove(
-                    TripleStore.THIS_REPO_ID,
-                    TripleStore.HAS_STATUS,
-                    null,
-                    NanopubLoader.ADMIN_GRAPH
-            );
-            adminRepoConn.add(
-                    TripleStore.THIS_REPO_ID,
-                    TripleStore.HAS_STATUS,
-                    stateAsLiteral(newState),
-                    NanopubLoader.ADMIN_GRAPH
-            );
-            adminRepoConn.remove(
-                    TripleStore.THIS_REPO_ID,
-                    TripleStore.HAS_REGISTRY_LOAD_COUNTER,
-                    null,
-                    NanopubLoader.ADMIN_GRAPH
-            );
-            adminRepoConn.add(
-                    TripleStore.THIS_REPO_ID,
-                    TripleStore.HAS_REGISTRY_LOAD_COUNTER,
-                    adminRepoConn.getValueFactory().createLiteral(loadCounter),
-                    NanopubLoader.ADMIN_GRAPH
-            );
-            adminRepoConn.commit();
-            state = newState;
-            lastCommittedCounter = loadCounter;
+            try {
+                adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
+                adminRepoConn.remove(
+                        TripleStore.THIS_REPO_ID,
+                        TripleStore.HAS_STATUS,
+                        null,
+                        NanopubLoader.ADMIN_GRAPH
+                );
+                adminRepoConn.add(
+                        TripleStore.THIS_REPO_ID,
+                        TripleStore.HAS_STATUS,
+                        stateAsLiteral(newState),
+                        NanopubLoader.ADMIN_GRAPH
+                );
+                adminRepoConn.remove(
+                        TripleStore.THIS_REPO_ID,
+                        TripleStore.HAS_REGISTRY_LOAD_COUNTER,
+                        null,
+                        NanopubLoader.ADMIN_GRAPH
+                );
+                adminRepoConn.add(
+                        TripleStore.THIS_REPO_ID,
+                        TripleStore.HAS_REGISTRY_LOAD_COUNTER,
+                        adminRepoConn.getValueFactory().createLiteral(loadCounter),
+                        NanopubLoader.ADMIN_GRAPH
+                );
+                adminRepoConn.commit();
+                state = newState;
+                lastCommittedCounter = loadCounter;
+            } catch (Exception e) {
+                if (adminRepoConn.isActive()) adminRepoConn.rollback();
+                throw new RuntimeException(e);
+            }
         }
     }
 
