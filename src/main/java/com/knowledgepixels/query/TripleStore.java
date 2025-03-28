@@ -4,7 +4,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
 
@@ -44,7 +46,8 @@ public class TripleStore {
 	public static final IRI HAS_COVERAGE_HASH = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageHash");
 	public static final IRI HAS_COVERAGE_FILTER = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageFilter");
 
-	private Map<String,Repository> repositories = new HashMap<>();
+	private Map<String,Repository> repositories = new LinkedHashMap<>();
+
 	private String endpointBase = null;
 	private String endpointType = null;
 
@@ -79,7 +82,18 @@ public class TripleStore {
 	private final CloseableHttpClient httpclient = HttpClients.createDefault();
 
 	private Repository getRepository(String name) {
-		if (!repositories.containsKey(name)) {
+		while (repositories.size() > 100) {
+			Entry<String,Repository> e = repositories.entrySet().iterator().next();
+			repositories.remove(e.getKey());
+			System.err.println("Shutting down repo: " + e.getKey());
+			e.getValue().shutDown();
+			System.err.println("Shutdown complete");
+		}
+		if (repositories.containsKey(name)) {
+			// Move to the end of the list:
+			Repository repo = repositories.remove(name);
+			repositories.put(name, repo);
+		} else {
 			Repository repository = null;
 			if (endpointType == null || endpointType.equals("rdf4j")) {
 				HTTPRepository hr = new HTTPRepository(endpointBase + "repositories/" + name);
