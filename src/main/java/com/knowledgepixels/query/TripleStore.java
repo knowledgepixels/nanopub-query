@@ -148,9 +148,7 @@ public class TripleStore {
 //					+ "        ]\n"
 //					+ "    ].";
 
-			// We can use at most 5 indexes in LMDB without hacks.
-			// We use one index for graphs, which should be more than enough (graphs are small).
-			String indexTypes = "spoc,posc,ospc,cspo";
+			String indexTypes = "spoc,posc,ospc,cspo,cpos,cosp";
 			if (repoName.startsWith("meta") || repoName.startsWith("text")) {
 				indexTypes = "spoc,posc,ospc";
 			}
