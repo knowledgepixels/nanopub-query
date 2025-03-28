@@ -45,8 +45,8 @@ services:
           sleep 10
           pkill -9 java
         )
-      interval: 10s
-      timeout: 10s
+      interval: 60s
+      timeout: 60s
       start_period: 300s
 
   grlc:
