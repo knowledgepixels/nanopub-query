@@ -20,7 +20,6 @@ public class LocalNanopubLoader {
 
     public final static File loadUrisFile = new File("load/nanopub-uris.txt");
     public final static File loadNanopubsFile = new File("load/nanopubs.trig.gz");
-    public final static File autofetchNanopubsFile = new File("load/nanopubs-autofetch.txt");
 
     private static final int WAIT_SECONDS = Utils.getEnvInt("INIT_WAIT_SECONDS", 120);
 
@@ -29,7 +28,7 @@ public class LocalNanopubLoader {
      * @return true if local nanopubs were found and loaded, false otherwise
      */
     public static boolean init() {
-        if (!(loadNanopubsFile.exists() || loadNanopubsFile.exists() || autofetchNanopubsFile.exists())) {
+        if (!(loadNanopubsFile.exists() || loadNanopubsFile.exists())) {
             System.err.println("No local nanopub files for loading found. Moving on to loading " +
                     "via Jelly...");
             return false;
@@ -50,24 +49,6 @@ public class LocalNanopubLoader {
     }
 
     private static void load() {
-        if (!autofetchNanopubsFile.exists()) {
-            System.err.println("No local autofetch nanopub URI file found.");
-        } else {
-            long loaded = 0L;
-            try (BufferedReader reader = new BufferedReader(new FileReader(autofetchNanopubsFile))) {
-                String line = reader.readLine();
-                while (line != null) {
-                    NanopubLoader.load(line);
-                    line = reader.readLine();
-                    loaded++;
-                    if (loaded % 50 == 0) {
-                        System.err.println("Loaded " + loaded + " nanopubs...");
-                    }
-                }
-            } catch (IOException ex) {
-                ex.printStackTrace();
-            }
-        }
         if (!loadUrisFile.exists()) {
             System.err.println("No local nanopub URI file found.");
         } else {
