@@ -36,7 +36,7 @@ Stop all services:
 
 Create zip file of rdf4j:
 
-    $ sudo tar --exclude='data/rdf4j/logs/*' --exclude='data/rdf4j/data/server/logs/*' -czvf rdf4j.tar.gz data/rdf4j
+    $ sudo tar -czvf --exclude=logs nanopub-query-data-rdf4j.tar.gz data/rdf4j
 
 Start the services again:
 
@@ -44,8 +44,8 @@ Start the services again:
 
 To clarify versions:
 
-    $ mv rdf4j.tar.gz rdf4j-20231027.tar.gz
+    $ mv nanopub-query-data-rdf4j.tar.gz nanopub-query-data-rdf4j-20250331.tar.gz
 
 Unzipping after download:
 
-    $ tar -xvzf rdf4j-20231027.tar.gz
+    $ tar -xvzf nanopub-query-data-rdf4j-20250331.tar.gz
