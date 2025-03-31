@@ -384,7 +384,7 @@ public class NanopubLoader {
 					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
 					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);
 					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
-					// @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanpubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded (BUG: npa:hasNanpubCount should be npa:hasNanopubCount)
+					// @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded
 					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
 					// @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
 					conn.add(npId, TripleStore.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
