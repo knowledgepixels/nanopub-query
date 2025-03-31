@@ -25,7 +25,7 @@ NANOPUB,dct:description,LABEL,npa:graph,meta,description of NANOPUB
 NANOPUB,dct:creator,CREATOR,npa:graph,meta,creator of NANOPUB (can be several)
 NANOPUB,pav:authoredBy,AUTHOR,npa:graph,meta,author of NANOPUB (can be several)
 NANOPUB,npa:hasFilterLiteral,FILTER_LITERAL,npa:graph,literal,auxiliary literal for filtering by type and pubkey in text repo
-REPO,npa:hasNanpubCount,NANOPUB_COUNT,npa:graph,admin,number of nanopubs loaded (BUG: npa:hasNanpubCount should be npa:hasNanopubCount)
+REPO,npa:hasNanopubCount,NANOPUB_COUNT,npa:graph,admin,number of nanopubs loaded
 REPO,npa:hasNanopubChecksum,NANOPUB_CHECKSUM,npa:graph,admin,checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
 NANOPUB,npa:hasLoadNumber,LOAD_NUMBER,npa:graph,admin,the sequential number at which this NANOPUB was loaded
 NANOPUB,npa:hasLoadChecksum,LOAD_CHECKSUM,npa:graph,admin,the checksum of all loaded nanopubs after loading the given NANOPUB
