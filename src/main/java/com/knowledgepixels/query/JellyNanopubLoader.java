@@ -137,6 +137,7 @@ public class JellyNanopubLoader {
         ) {
             AtomicLong checkpointTime = new AtomicLong(System.currentTimeMillis());
             AtomicLong checkpointCounter = new AtomicLong(lastCommittedCounter);
+            AtomicLong lastSavedCounter = new AtomicLong(lastCommittedCounter);
             AtomicLong loaded = new AtomicLong(0L);
 
             npStream.forEach(m -> {
@@ -150,14 +151,10 @@ public class JellyNanopubLoader {
                             ", received counter: " + m.getCounter());
                 }
                 NanopubLoader.load(m.getNanopub());
-                try {
-                    if (type == LoadingType.INITIAL) {
-                        StatusController.get().setLoadingInitial(m.getCounter());
-                    } else {
-                        StatusController.get().setLoadingUpdates(m.getCounter());
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException("Could not update the nanopub counter in DB", e);
+                if (m.getCounter() % 10 == 0) {
+                    // Save the committed counter only every 10 nanopubs to reduce DB load
+                    saveCommittedCounter(type);
+                    lastSavedCounter.set(m.getCounter());
                 }
                 lastCommittedCounter = m.getCounter();
                 loaded.getAndIncrement();
@@ -171,6 +168,10 @@ public class JellyNanopubLoader {
                     checkpointCounter.set(lastCommittedCounter);
                 }
             });
+            // Make sure to save the last committed counter at the end of the batch
+            if (lastCommittedCounter > lastSavedCounter.get()) {
+                saveCommittedCounter(type);
+            }
         } catch (IOException e) {
             throw new RuntimeException("I/O error while reading the response Jelly stream.", e);
         } finally {
@@ -179,6 +180,23 @@ public class JellyNanopubLoader {
             } catch (IOException e) {
                 System.err.println("Failed to close the Jelly stream response.");
             }
+        }
+    }
+
+    /**
+     * Save the last committed counter to the DB. Do this every N nanopubs to reduce DB load.
+     * Remember to call this method at the end of the batch as well.
+     * @param type the type of loading operation (initial or update)
+     */
+    private static void saveCommittedCounter(LoadingType type) {
+        try {
+            if (type == LoadingType.INITIAL) {
+                StatusController.get().setLoadingInitial(lastCommittedCounter);
+            } else {
+                StatusController.get().setLoadingUpdates(lastCommittedCounter);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Could not update the nanopub counter in DB", e);
         }
     }
 
