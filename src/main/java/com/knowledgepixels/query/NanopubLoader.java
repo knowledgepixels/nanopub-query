@@ -322,13 +322,9 @@ public class NanopubLoader {
 		while (!success) {
 			RepositoryConnection conn = TripleStore.get().getRepoConnection("last30d");
 			try (conn) {
-				// TODO Using least strict isolation level, to see whether that's causing the blocking.
-				//      Consider changing it back here and elsewhere in the future.
-				conn.begin(IsolationLevels.SERIALIZABLE);
-				while (statements.size() > 1000) {
-					conn.add(statements.subList(0, 1000));
-					statements = statements.subList(1000, statements.size());
-				}
+				// Read committed, because deleting old nanopubs is idempotent. Inserts do not collide
+				// with deletes, because we are not inserting old nanopubs.
+				conn.begin(IsolationLevels.READ_COMMITTED);
 				conn.add(statements);
 				if (lastUpdateOfLatestRepo == null || new Date().getTime() - lastUpdateOfLatestRepo > ONE_HOUR) {
 					//System.err.println("Remove old nanopubs...");
@@ -374,6 +370,8 @@ public class NanopubLoader {
 		while (!success) {
 			RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
 			try (conn) {
+				// Serializable, because write skew would cause the chain of hashes to be broken.
+				// The inserts must be done serially.
 				conn.begin(IsolationLevels.SERIALIZABLE);
 				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStore.HAS_LOAD_NUMBER) != null) {
 					System.err.println("Already loaded: " + npId);
@@ -393,10 +391,6 @@ public class NanopubLoader {
 					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
 					conn.add(npId, TripleStore.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), ADMIN_GRAPH);
 					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
-					while (statements.size() > 1000) {
-						conn.add(statements.subList(0, 1000));
-						statements = statements.subList(1000, statements.size());
-					}
 					conn.add(statements);
 				}
 				conn.commit();
@@ -421,7 +415,8 @@ public class NanopubLoader {
 			RepositoryConnection metaConn = TripleStore.get().getRepoConnection("meta");
 			try {
 				IRI invalidatedNpId = (IRI) invalidateStatement.getObject();
-				metaConn.begin(IsolationLevels.SERIALIZABLE);
+				// Basic isolation because here we only read append-only data.
+				metaConn.begin(IsolationLevels.READ_COMMITTED);
 
 				Value pubkeyValue = Utils.getObjectForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY);
 				if (pubkeyValue != null) {
@@ -478,7 +473,8 @@ public class NanopubLoader {
 
 	private static RepositoryConnection loadStatements(String repoName, Statement... statements) {
 		RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
-		conn.begin(IsolationLevels.SERIALIZABLE);
+		// Basic isolation: we only append new statements
+		conn.begin(IsolationLevels.READ_COMMITTED);
 		for (Statement st : statements) {
 			conn.add(st);
 		}
@@ -491,7 +487,8 @@ public class NanopubLoader {
 		while (!success) {
 			RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
 			try (conn) {
-				conn.begin(IsolationLevels.SERIALIZABLE);
+				// Basic isolation because here we only read append-only data.
+				conn.begin(IsolationLevels.READ_COMMITTED);
 
 				TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + ADMIN_GRAPH + "> { "
 						+ "?np <" + INVALIDATES + "> <" + npId + "> ; <" + HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . "
