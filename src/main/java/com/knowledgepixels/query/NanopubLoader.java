@@ -373,19 +373,18 @@ public class NanopubLoader {
 				// Serializable, because write skew would cause the chain of hashes to be broken.
 				// The inserts must be done serially.
 				conn.begin(IsolationLevels.SERIALIZABLE);
-				if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, npId, TripleStore.HAS_LOAD_NUMBER) != null) {
+				var repoStatus = fetchRepoStatus(conn, npId);
+				if (repoStatus.isLoaded) {
 					System.err.println("Already loaded: " + npId);
 				} else {
-					long count = Long.parseLong(Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT).stringValue());
-					String checksum = Utils.getObjectForPattern(conn, ADMIN_GRAPH, TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM).stringValue();
-					String newChecksum = NanopubUtils.updateXorChecksum(npId, checksum);
+					String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
 					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);
 					conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);
-					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, vf.createLiteral(count + 1), ADMIN_GRAPH);
+					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, vf.createLiteral(repoStatus.count + 1), ADMIN_GRAPH);
 					// @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded
 					conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
 					// @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
-					conn.add(npId, TripleStore.HAS_LOAD_NUMBER, vf.createLiteral(count), ADMIN_GRAPH);
+					conn.add(npId, TripleStore.HAS_LOAD_NUMBER, vf.createLiteral(repoStatus.count), ADMIN_GRAPH);
 					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadNumber, LOAD_NUMBER, npa:graph, admin, the sequential number at which this NANOPUB was loaded
 					conn.add(npId, TripleStore.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);
 					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
@@ -405,6 +404,29 @@ public class NanopubLoader {
 					Thread.sleep(10000);
 				} catch (InterruptedException x) {}
 			}
+		}
+	}
+
+	private record RepoStatus (boolean isLoaded, long count, String checksum) {}
+
+	/**
+	 * To execute before loading a nanopub: check if the nanopub is already loaded and what is the
+	 * current load counter and checksum. This effectively batches three queries into one.
+	 * This method must be called from within a transaction.
+	 * @param conn repo connection
+	 * @param npId nanopub ID
+	 * @return the current status
+	 */
+	private static RepoStatus fetchRepoStatus(RepositoryConnection conn, IRI npId) {
+		var result = conn.prepareTupleQuery(QueryLanguage.SPARQL, REPO_STATUS_QUERY_TEMPLATE.formatted(npId))
+				.evaluate();
+		try (result) {
+			var row = result.next();
+			return new RepoStatus(
+					row.hasBinding("loadNumber"),
+					Long.parseLong(row.getBinding("count").getValue().stringValue()),
+					row.getBinding("checksum").getValue().stringValue()
+			);
 		}
 	}
 
@@ -601,4 +623,14 @@ public class NanopubLoader {
 	public static final IRI INTRODUCES = vf.createIRI("http://purl.org/nanopub/x/introduces");
 	public static final IRI DESCRIBES = vf.createIRI("http://purl.org/nanopub/x/describes");
 
+	// Template for .fetchRepoStatus
+	private static final String REPO_STATUS_QUERY_TEMPLATE = """
+		SELECT * { graph <%s> {
+		  OPTIONAL { <%s> <%s> ?loadNumber . }
+		  <%s> <%s> ?count ;
+		       <%s> ?checksum .
+		} }
+		""".formatted(ADMIN_GRAPH, "%s", TripleStore.HAS_LOAD_NUMBER,
+			TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT,
+			TripleStore.HAS_NANOPUB_CHECKSUM);
 }
