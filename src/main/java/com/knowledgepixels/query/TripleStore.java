@@ -289,6 +289,7 @@ public class TripleStore {
 		if (!repoName.equals("empty")) {
 			RepositoryConnection conn = getRepoConnection(repoName);
 			try (conn) {
+				// Full isolation, just in case.
 				conn.begin(IsolationLevels.SERIALIZABLE);
 				conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
 				conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0l), NanopubLoader.ADMIN_GRAPH);

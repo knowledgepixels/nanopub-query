@@ -52,6 +52,7 @@ public class StatusController {
             }
             state = State.LAUNCHING;
             adminRepoConn = TripleStore.get().getAdminRepoConnection();
+            // Serializable, as the service state needs to be strictly consistent
             adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
             // Fetch the state from the DB
             try (var statements = adminRepoConn.getStatements(
@@ -168,6 +169,7 @@ public class StatusController {
     private void updateState(State newState, long loadCounter) {
         synchronized (this) {
             try {
+                // Serializable, as the service state needs to be strictly consistent
                 adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
                 adminRepoConn.remove(
                         TripleStore.THIS_REPO_ID,
