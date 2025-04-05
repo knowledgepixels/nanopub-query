@@ -420,9 +420,7 @@ public class NanopubLoader {
 					// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
 					conn.add(statements);
 				}
-				// System.err.println(repoName + " START " + System.nanoTime());
 				conn.commit();
-				// System.err.println(repoName + " -END- " + System.nanoTime());
 				success = true;
 			} catch (Exception ex) {
 				ex.printStackTrace();
