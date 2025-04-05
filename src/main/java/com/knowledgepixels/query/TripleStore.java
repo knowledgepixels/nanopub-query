@@ -14,10 +14,14 @@ import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.methods.RequestBuilder;
+import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -46,7 +50,7 @@ public class TripleStore {
 	public static final IRI HAS_COVERAGE_HASH = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageHash");
 	public static final IRI HAS_COVERAGE_FILTER = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageFilter");
 
-	private Map<String,Repository> repositories = new LinkedHashMap<>();
+	private final Map<String, Repository> repositories = new LinkedHashMap<>();
 
 	private String endpointBase = null;
 	private String endpointType = null;
@@ -79,36 +83,42 @@ public class TripleStore {
 		getRepository("empty");  // Make sure empty repo exists
 	}
 
-	private final CloseableHttpClient httpclient = HttpClients.createDefault();
+	private final HttpClientConnectionManager connMgr = new PoolingHttpClientConnectionManager();
+	private final CloseableHttpClient httpclient = HttpClients.custom()
+			// .setMaxConnPerRoute(4)
+			// .setMaxConnTotal(100)
+			.build();
 
 	private Repository getRepository(String name) {
-		while (repositories.size() > 100) {
-			Entry<String,Repository> e = repositories.entrySet().iterator().next();
-			repositories.remove(e.getKey());
-			System.err.println("Shutting down repo: " + e.getKey());
-			e.getValue().shutDown();
-			System.err.println("Shutdown complete");
-		}
-		if (repositories.containsKey(name)) {
-			// Move to the end of the list:
-			Repository repo = repositories.remove(name);
-			repositories.put(name, repo);
-		} else {
-			Repository repository = null;
-			if (endpointType == null || endpointType.equals("rdf4j")) {
-				HTTPRepository hr = new HTTPRepository(endpointBase + "repositories/" + name);
-				hr.setHttpClient(httpclient);
-				repository = hr;
+		synchronized (this) {
+			while (repositories.size() > 100) {
+				Entry<String, Repository> e = repositories.entrySet().iterator().next();
+				repositories.remove(e.getKey());
+				System.err.println("Shutting down repo: " + e.getKey());
+				e.getValue().shutDown();
+				System.err.println("Shutdown complete");
+			}
+			if (repositories.containsKey(name)) {
+				// Move to the end of the list:
+				Repository repo = repositories.remove(name);
+				repositories.put(name, repo);
+			} else {
+				Repository repository = null;
+				if (endpointType == null || endpointType.equals("rdf4j")) {
+					HTTPRepository hr = new HTTPRepository(endpointBase + "repositories/" + name);
+					hr.setHttpClient(httpclient);
+					repository = hr;
 //			} else if (endpointType.equals("virtuoso")) {
 //				repository = new VirtuosoRepository(endpointBase + name, username, password);
-			} else {
-				throw new RuntimeException("Unknown repository type: " + endpointType);
+				} else {
+					throw new RuntimeException("Unknown repository type: " + endpointType);
+				}
+				repositories.put(name, repository);
+				createRepo(name);
+				getRepoConnection(name).close();
 			}
-			repositories.put(name, repository);
-			createRepo(name);
-			getRepoConnection(name).close();
+			return repositories.get(name);
 		}
-		return repositories.get(name);
 	}
 
 	public RepositoryConnection getRepoConnection(String name) {
