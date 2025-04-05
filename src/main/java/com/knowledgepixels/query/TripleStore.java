@@ -18,10 +18,8 @@ import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -83,11 +81,7 @@ public class TripleStore {
 		getRepository("empty");  // Make sure empty repo exists
 	}
 
-	private final HttpClientConnectionManager connMgr = new PoolingHttpClientConnectionManager();
-	private final CloseableHttpClient httpclient = HttpClients.custom()
-			// .setMaxConnPerRoute(4)
-			// .setMaxConnTotal(100)
-			.build();
+	private final CloseableHttpClient httpclient = HttpClients.createDefault();
 
 	private Repository getRepository(String name) {
 		synchronized (this) {

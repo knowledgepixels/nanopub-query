@@ -12,7 +12,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.CookieSpecs;
@@ -52,7 +51,6 @@ public class NanopubLoader {
 	private NanopubLoader() {}  // no instances allowed
 
 	private static HttpClient httpClient;
-	// TODO: configure thread count
 	private static final ThreadPoolExecutor loadingPool =
 			(ThreadPoolExecutor) Executors.newFixedThreadPool(4);
 
