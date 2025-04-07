@@ -7,6 +7,11 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.function.Consumer;
 
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.CookieSpecs;
@@ -46,6 +51,8 @@ public class NanopubLoader {
 	private NanopubLoader() {}  // no instances allowed
 
 	private static HttpClient httpClient;
+	private static final ThreadPoolExecutor loadingPool =
+			(ThreadPoolExecutor) Executors.newFixedThreadPool(4);
 
 	private static HttpClient getHttpClient() {
 		if (httpClient == null) {
@@ -275,22 +282,33 @@ public class NanopubLoader {
 		textStatements.addAll(metaStatements);
 		textStatements.addAll(invalidatingStatements);
 
+		var runningTasks = new ArrayList<Future<?>>();
+		Consumer<Runnable> runTask = t -> {
+			runningTasks.add(loadingPool.submit(t));
+		};
+
 		if (timestamp != null) {
 			if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
-				loadNanopubToLatest(allStatements);
+				runTask.accept(() -> loadNanopubToLatest(allStatements));
 			}
 		}
 
-		loadNanopubToRepo(np.getUri(), metaStatements, "meta");
-		loadNanopubToRepo(np.getUri(), allStatements, "full");
-		loadNanopubToRepo(np.getUri(), textStatements, "text");
-		loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString()));
+		runTask.accept(() -> loadNanopubToRepo(np.getUri(), textStatements, "text"));
+		runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "full"));
+		runTask.accept(() -> loadNanopubToRepo(np.getUri(), metaStatements, "meta"));
+
+		NanopubSignatureElement finalEl = el;
+		runTask.accept(() -> loadNanopubToRepo(
+				np.getUri(), allStatements, "pubkey_" + Utils.createHash(finalEl.getPublicKeyString()))
+		);
 //		loadNanopubToRepo(np.getUri(), textStatements, "text-pubkey_" + Utils.createHash(el.getPublicKeyString()));
 		for (IRI typeIri : NanopubUtils.getTypes(np)) {
 			// Exclude locally minted IRIs:
 			if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;
 			if (!typeIri.stringValue().matches("https?://.*")) continue;
-			loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri));
+			runTask.accept(() ->
+					loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri))
+			);
 //			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
 		}
 //		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
@@ -309,7 +327,18 @@ public class NanopubLoader {
 //		}
 
 		for (Statement st : invalidateStatements) {
-			loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX);
+			runTask.accept(() ->
+				loadInvalidateStatements(np, finalEl.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX)
+			);
+		}
+
+		// Wait for all loading tasks to complete before returning
+		for (var task : runningTasks) {
+			try {
+				task.get();
+			} catch (ExecutionException | InterruptedException ex) {
+				throw new RuntimeException("Error in nanopub loading thread", ex.getCause());
+			}
 		}
 	}
 
