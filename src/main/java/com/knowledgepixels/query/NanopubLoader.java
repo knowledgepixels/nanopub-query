@@ -332,6 +332,7 @@ public class NanopubLoader {
 			);
 		}
 
+		// Wait for all loading tasks to complete before returning
 		for (var task : runningTasks) {
 			try {
 				task.get();
