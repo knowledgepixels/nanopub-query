@@ -11,6 +11,7 @@ import java.util.Scanner;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import io.vertx.core.http.*;
 import org.apache.http.HttpStatus;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.rio.RDFFormat;
@@ -24,11 +25,6 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.PoolOptions;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
@@ -306,7 +302,10 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 
-		proxyServer.requestHandler(proxyRouter);
+		proxyServer.requestHandler(req -> {
+			applyGlobalHeaders(req.response());
+			proxyRouter.handle(req);
+		});
 		proxyServer.listen(9393);
 
 		HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
@@ -425,4 +424,11 @@ public class MainVerticle extends AbstractVerticle {
 		}
 	}
 
+	/**
+	 * Apply headers to the response that should be present for all requests.
+	 * @param response The response to which the headers should be applied.
+	 */
+	private static void applyGlobalHeaders(HttpServerResponse response) {
+		response.putHeader("Nanopub-Query-Status", StatusController.get().getState().state.toString());
+	}
 }
