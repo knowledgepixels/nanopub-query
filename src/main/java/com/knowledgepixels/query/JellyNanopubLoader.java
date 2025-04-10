@@ -1,6 +1,5 @@
 package com.knowledgepixels.query;
 
-import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -21,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class JellyNanopubLoader {
     private static final String registryUrl;
     private static long lastCommittedCounter = -1;
-    private static final HttpClient metadataClient;
+    private static final CloseableHttpClient metadataClient;
     private static final CloseableHttpClient jellyStreamClient;
 
     private static final int MAX_RETRIES_METADATA = 10;
@@ -237,29 +236,30 @@ public class JellyNanopubLoader {
      */
     private static long fetchRegistryLoadCounterInner() throws IOException {
         var request = new HttpHead(registryUrl);
-        var response = metadataClient.execute(request);
-        int status = response.getStatusLine().getStatusCode();
-        EntityUtils.consumeQuietly(response.getEntity());
-        if (status < 200 || status >= 300) {
-            throw new RuntimeException("Registry load counter HTTP status is not 2xx: " +
-                    status + ".");
-        }
+        try (var response = metadataClient.execute(request)) {
+            int status = response.getStatusLine().getStatusCode();
+            EntityUtils.consumeQuietly(response.getEntity());
+            if (status < 200 || status >= 300) {
+                throw new RuntimeException("Registry load counter HTTP status is not 2xx: " +
+                        status + ".");
+            }
 
-        // Check if the registry is ready
-        var hStatus = response.getHeaders("Nanopub-Registry-Status");
-        if (hStatus.length == 0) {
-            throw new RuntimeException("Registry did not return a Nanopub-Registry-Status header.");
-        }
-        if (!"ready".equals(hStatus[0].getValue()) && !"updating".equals(hStatus[0].getValue())) {
-            throw new RuntimeException("Registry is not in ready state.");
-        }
+            // Check if the registry is ready
+            var hStatus = response.getHeaders("Nanopub-Registry-Status");
+            if (hStatus.length == 0) {
+                throw new RuntimeException("Registry did not return a Nanopub-Registry-Status header.");
+            }
+            if (!"ready".equals(hStatus[0].getValue()) && !"updating".equals(hStatus[0].getValue())) {
+                throw new RuntimeException("Registry is not in ready state.");
+            }
 
-        // Get the actual load counter
-        var hCounter = response.getHeaders("Nanopub-Registry-Load-Counter");
-        if (hCounter.length == 0) {
-            throw new RuntimeException("Registry did not return a Nanopub-Registry-Load-Counter header.");
+            // Get the actual load counter
+            var hCounter = response.getHeaders("Nanopub-Registry-Load-Counter");
+            if (hCounter.length == 0) {
+                throw new RuntimeException("Registry did not return a Nanopub-Registry-Load-Counter header.");
+            }
+            return Long.parseLong(hCounter[0].getValue());
         }
-        return Long.parseLong(hCounter[0].getValue());
     }
 
     /**
