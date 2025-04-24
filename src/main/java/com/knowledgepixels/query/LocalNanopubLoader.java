@@ -69,7 +69,7 @@ public class LocalNanopubLoader {
                 MultiNanopubRdfHandler.process(RDFFormat.TRIG, loadNanopubsFile, new NanopubHandler() {
                     @Override
                     public void handleNanopub(Nanopub np) {
-                        NanopubLoader.load(np);
+                        NanopubLoader.load(np, -1);
                     }
                 });
             } catch (IOException | MalformedNanopubException ex) {

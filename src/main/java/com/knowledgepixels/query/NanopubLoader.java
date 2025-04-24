@@ -69,12 +69,22 @@ public class NanopubLoader {
 			System.err.println("Already loaded: " + nanopubUri);
 		} else {
 			Nanopub np = GetNanopub.get(nanopubUri, getHttpClient());
-			load(np);
+			load(np, -1);
 		}
 	}
 
-	public static void load(Nanopub np) throws RDF4JException {
-		System.err.println("Loading: " + np.getUri());
+	/**
+	 * Load a nanopub into the database.
+	 * @param np the nanopub to load
+	 * @param counter the load counter, only used for logging (or -1 if not known)
+	 * @throws RDF4JException if the loading fails
+	 */
+	public static void load(Nanopub np, long counter) throws RDF4JException {
+		if (counter >= 0) {
+			System.err.println("Loading " + counter + ": " + np.getUri());
+		} else {
+			System.err.println("Loading: " + np.getUri());
+		}
 
 		// TODO Ensure proper synchronization and DB rollbacks
 
@@ -450,6 +460,10 @@ public class NanopubLoader {
 		var result = conn.prepareTupleQuery(QueryLanguage.SPARQL, REPO_STATUS_QUERY_TEMPLATE.formatted(npId))
 				.evaluate();
 		try (result) {
+			if (!result.hasNext()) {
+				// This may happen if the repo was created, but is completely empty.
+				return new RepoStatus(false, 0, NanopubUtils.INIT_CHECKSUM);
+			}
 			var row = result.next();
 			return new RepoStatus(
 					row.hasBinding("loadNumber"),
