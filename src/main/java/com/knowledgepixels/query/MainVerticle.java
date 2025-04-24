@@ -301,6 +301,23 @@ public class MainVerticle extends AbstractVerticle {
 					"?specUrl=" +  URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
 					grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
 				req.response().putHeader("Location", url).setStatusCode(307).end();
+			} else if (req.normalizedPath().equals("/api/")) {
+				req.response()
+				.putHeader("content-type", "text/html")
+				.end("<!DOCTYPE html>\n"
+						+ "<html lang='en'>\n"
+						+ "<head>\n"
+						+ "<title>Nanopub Query: APIs</title>\n"
+						+ "<meta charset='utf-8'>\n"
+						+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+						+ "</head>\n"
+						+ "<body>\n"
+						+ "<h3>APIs</h3>"
+						+ "<p>Add '[nanopub-artifact-code]/[query-name]?[param]=[value]&...' to URL to access specific APIs.</p>"
+						+ "</body>\n"
+						+ "</html>");
+			} else {
+				req.response().setStatusCode(400).end("invalid API reference: " + req.normalizedPath());
 			}
 		});
 
