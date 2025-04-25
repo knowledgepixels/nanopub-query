@@ -96,13 +96,23 @@ public class JellyNanopubLoader {
                 return;
             }
             loadBatch(lastCommittedCounter, LoadingType.UPDATE);
-            System.err.println("Loaded " + (targetCounter - status.loadCounter) +
-                    " update(s). Counter: " + lastCommittedCounter);
+            System.err.println("Loaded " + (lastCommittedCounter - status.loadCounter) +
+                    " update(s). Counter: " + lastCommittedCounter + ", target was: " + targetCounter);
+            if (lastCommittedCounter < targetCounter) {
+                System.err.println("Warning: expected to load nanopubs up to (inclusive) counter " +
+                        targetCounter + " based on the counter reported in Registry's headers, " +
+                        "but loaded only up to " + lastCommittedCounter + ".");
+            }
         } catch (Exception e) {
             System.err.println("Failed to load updates. Current counter: " + lastCommittedCounter);
             System.err.println(e.getMessage());
         } finally {
-            StatusController.get().setReady();
+            try {
+                StatusController.get().setReady();
+            } catch (Exception e) {
+                System.err.println("Update loader: failed to set status to READY.");
+                System.err.println(e.getMessage());
+            }
         }
     }
 
@@ -149,7 +159,7 @@ public class JellyNanopubLoader {
                             "the last known counter. Last known counter: " + lastCommittedCounter +
                             ", received counter: " + m.getCounter());
                 }
-                NanopubLoader.load(m.getNanopub());
+                NanopubLoader.load(m.getNanopub(), m.getCounter());
                 if (m.getCounter() % 10 == 0) {
                     // Save the committed counter only every 10 nanopubs to reduce DB load
                     saveCommittedCounter(type);

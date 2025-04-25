@@ -48,7 +48,9 @@ public class MainVerticle extends AbstractVerticle {
 	@Override
 	public void start(Promise<Void> startPromise) throws Exception {
 		HttpClient httpClient = vertx.createHttpClient(
-				new HttpClientOptions().setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS).setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),
+				new HttpClientOptions()
+					.setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS)
+					.setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),
 				new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
 			);
 
@@ -340,7 +342,7 @@ public class MainVerticle extends AbstractVerticle {
 					final String dataString = payload.toString();
 					try {
 						Nanopub np = new NanopubImpl(dataString, RDFFormat.TRIG);
-						NanopubLoader.load(np);
+						NanopubLoader.load(np, -1);
 					} catch (MalformedNanopubException ex) {
 						req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)
 							.setStatusMessage(Arrays.toString(ex.getStackTrace()))
