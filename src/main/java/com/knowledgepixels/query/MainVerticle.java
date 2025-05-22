@@ -61,9 +61,13 @@ public class MainVerticle extends AbstractVerticle {
 		Router proxyRouter = Router.router(vertx);
 
 		// Metrics
+		final var metricsHttpServer = vertx.createHttpServer();
+		final var metricsRouter = Router.router(vertx);
+		metricsHttpServer.requestHandler(metricsRouter).listen(9294);
+
 		final var metricsRegistry = (PrometheusMeterRegistry) BackendRegistries.getDefaultNow();
 		final var collector = new MetricsCollector(metricsRegistry);
-		proxyRouter.route("/metrics").handler(PrometheusScrapingHandler.create(metricsRegistry));
+		metricsRouter.route("/metrics").handler(PrometheusScrapingHandler.create(metricsRegistry));
 
 		// ----------
 		// This part is only used if the redirection is not done through Nginx.
