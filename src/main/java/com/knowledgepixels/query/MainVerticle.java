@@ -63,7 +63,7 @@ public class MainVerticle extends AbstractVerticle {
 		// Metrics
 		final var metricsHttpServer = vertx.createHttpServer();
 		final var metricsRouter = Router.router(vertx);
-		metricsHttpServer.requestHandler(metricsRouter).listen(9294);
+		metricsHttpServer.requestHandler(metricsRouter).listen(9394);
 
 		final var metricsRegistry = (PrometheusMeterRegistry) BackendRegistries.getDefaultNow();
 		final var collector = new MetricsCollector(metricsRegistry);
