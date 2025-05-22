@@ -6,6 +6,7 @@ services:
     ports:
       - 9300:9300
       - 9393:9393
+      - "127.0.0.1:9294:9294" # this port should only be accessible from restricted environment as it is used for the metrics endpoint.
     volumes:
       # For the local nanopub loader (optional).
       # If not used, Query will load the nanopubs from the Registry with Jelly.
