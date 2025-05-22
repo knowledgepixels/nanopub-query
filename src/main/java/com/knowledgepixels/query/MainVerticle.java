@@ -11,7 +11,10 @@ import java.util.Scanner;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.vertx.core.http.*;
+import io.vertx.micrometer.PrometheusScrapingHandler;
+import io.vertx.micrometer.backends.BackendRegistries;
 import org.apache.http.HttpStatus;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.rio.RDFFormat;
@@ -56,6 +59,11 @@ public class MainVerticle extends AbstractVerticle {
 
 		HttpServer proxyServer = vertx.createHttpServer();
 		Router proxyRouter = Router.router(vertx);
+
+		// Metrics
+		final var metricsRegistry = (PrometheusMeterRegistry) BackendRegistries.getDefaultNow();
+		final var collector = new MetricsCollector(metricsRegistry);
+		proxyRouter.route("/metrics").handler(PrometheusScrapingHandler.create(metricsRegistry));
 
 		// ----------
 		// This part is only used if the redirection is not done through Nginx.
@@ -368,6 +376,10 @@ public class MainVerticle extends AbstractVerticle {
 				startPromise.fail(http.cause());
 			}
 		});
+
+		// Periodic metrics update
+		vertx.setPeriodic(1000, id -> collector.updateMetrics());
+
 
 		new Thread(() -> {
 			try {
