@@ -68,12 +68,13 @@ public class MainVerticle extends AbstractVerticle {
 		final var metricsRegistry = (PrometheusMeterRegistry) BackendRegistries.getDefaultNow();
 		final var collector = new MetricsCollector(metricsRegistry);
 		metricsRouter.route("/metrics").handler(PrometheusScrapingHandler.create(metricsRegistry));
-
 		// ----------
 		// This part is only used if the redirection is not done through Nginx.
 		// See nginx.conf and this bug report: https://github.com/eclipse-rdf4j/rdf4j/discussions/5120
 		HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
-		rdf4jProxy.origin(8080, "rdf4j");
+		String proxy = Utils.getEnvString("RDF4J_PROXY_HOST", "rdf4j");
+		int proxyPort = Utils.getEnvInt("RDF4J_PROXY_PORT", 8080);
+		rdf4jProxy.origin(proxyPort, proxy);
 
 		rdf4jProxy.addInterceptor(new ProxyInterceptor() {
 

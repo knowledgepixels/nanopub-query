@@ -4,6 +4,8 @@ services:
       - JPDA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
       - NANOPUB_QUERY_URL=https://query.your.domain.com/
       - REGISTRY_FIXED_URL=http://your.nanopub.registry.com/
+      - RDF4J_PROXY_HOST="rdf4j"
+      - RDF4J_PROXY_PORT=8080
     ports:
       - 5005:5005
     entrypoint: 'java -jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 nanopub-query.jar'
