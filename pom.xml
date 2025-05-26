@@ -94,7 +94,7 @@
     <dependency>
       <groupId>com.github.Nanopublication</groupId>
       <artifactId>nanopub-java</artifactId>
-      <version>40a757163ca02beeddc80b66b95eda8b93f19d08</version>
+      <version>e4e430b3b5f09caa1c852e67a15a86bfc7b5a986</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
