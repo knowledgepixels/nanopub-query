@@ -154,10 +154,11 @@ public class NanopubLoader {
 					// @ADMIN-TRIPLE-TABLE@ NANOPUB1, RELATION, NANOPUB2, npa:networkGraph, meta, any inter-nanopub relation found in NANOPUB1
 				}
 				if (st.getContext().equals(np.getPubinfoUri())) {
-					if (st.getPredicate().equals(INTRODUCES) || st.getPredicate().equals(DESCRIBES)) {
+					if (st.getPredicate().equals(INTRODUCES) || st.getPredicate().equals(DESCRIBES) || st.getPredicate().equals(EMBEDS)) {
 						metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));
 						// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:introduces, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
 						// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:describes, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
+						// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:embeds, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
 					}
 				}
 			}
@@ -665,6 +666,7 @@ public class NanopubLoader {
 	public static final IRI HAS_FILTER_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasFilterLiteral");
 	public static final IRI INTRODUCES = vf.createIRI("http://purl.org/nanopub/x/introduces");
 	public static final IRI DESCRIBES = vf.createIRI("http://purl.org/nanopub/x/describes");
+	public static final IRI EMBEDS = vf.createIRI("http://purl.org/nanopub/x/embeds");
 
 	// Template for .fetchRepoStatus
 	private static final String REPO_STATUS_QUERY_TEMPLATE = """

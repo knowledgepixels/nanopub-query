@@ -5,6 +5,7 @@ NANOPUB,npx:signedBy,SIGNER,npa:graph,meta,ID of signer
 NANOPUB1,RELATION,NANOPUB2,npa:networkGraph,meta,any inter-nanopub relation found in NANOPUB1
 NANOPUB,npx:introduces,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
 NANOPUB,npx:describes,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
+NANOPUB,npx:embeds,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
 NANOPUB,npx:hasSubIri,SUB_IRI,npa:graph,meta,for any IRI minted in the namespace of the NANOPUB
 NANOPUB1,npa:refersToNanopub,NANOPUB2,npa:networkGraph,meta,generic inter-nanopub relation
 NANOPUB,npx:invalidates,INVALIDATED_NANOPUB,npa:graph,meta,if the NANOPUB retracts or supersedes another nanopub
