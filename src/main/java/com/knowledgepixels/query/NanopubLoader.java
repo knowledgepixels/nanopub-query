@@ -190,7 +190,7 @@ public class NanopubLoader {
 		subIris.remove(np.getPubinfoUri());
 		for (IRI i : subIris) {
 			metaStatements.add(vf.createStatement(np.getUri(), HAS_SUB_IRI, i, ADMIN_GRAPH));
-			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasSubIri, SUB_IRI, npa:graph, meta, for any IRI minted in the namespace of the NANOPUB
+			// @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasSubIri, SUB_IRI, npa:graph, meta, for any IRI minted in the namespace of the NANOPUB
 		}
 		for (IRI i : otherNps) {
 			metaStatements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));
