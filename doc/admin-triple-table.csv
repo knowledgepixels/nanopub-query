@@ -6,7 +6,7 @@ NANOPUB1,RELATION,NANOPUB2,npa:networkGraph,meta,any inter-nanopub relation foun
 NANOPUB,npx:introduces,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
 NANOPUB,npx:describes,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
 NANOPUB,npx:embeds,THING,npa:graph,meta,when such a triple is present in pubinfo of NANOPUB
-NANOPUB,npx:hasSubIri,SUB_IRI,npa:graph,meta,for any IRI minted in the namespace of the NANOPUB
+NANOPUB,npa:hasSubIri,SUB_IRI,npa:graph,meta,for any IRI minted in the namespace of the NANOPUB
 NANOPUB1,npa:refersToNanopub,NANOPUB2,npa:networkGraph,meta,generic inter-nanopub relation
 NANOPUB,npx:invalidates,INVALIDATED_NANOPUB,npa:graph,meta,if the NANOPUB retracts or supersedes another nanopub
 NANOPUB,npx:retracts,RETRACTED_NANOPUB,npa:graph,meta,if the NANOPUB retracts another nanopub
