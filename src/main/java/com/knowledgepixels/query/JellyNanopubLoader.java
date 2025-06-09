@@ -178,7 +178,7 @@ public class JellyNanopubLoader {
                 }
             });
             // Make sure to save the last committed counter at the end of the batch
-            if (lastCommittedCounter > lastSavedCounter.get()) {
+            if (lastCommittedCounter >= lastSavedCounter.get()) {
                 saveCommittedCounter(type);
             }
         } catch (IOException e) {
