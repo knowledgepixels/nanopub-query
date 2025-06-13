@@ -9,7 +9,7 @@ You can check out Nanopub Query at these instances:
 
 - https://query.knowledgepixels.com/
 - https://query.np.trustyuri.net/
-- https://query.np.kpxl.org/
+- https://query.petapico.org/
 
 
 ## Repos and Triples
