@@ -19,8 +19,6 @@ import net.trustyuri.TrustyUriUtils;
 
 public class GrlcSpecPage {
 
-	public static final String MOUNT_PATH = "/grlc-spec";
-
 	public static final ValueFactory vf = SimpleValueFactory.getInstance();
 	public static final IRI HAS_SPARQL = vf.createIRI("https://w3id.org/kpxl/grlc/sparql");
 	public static final IRI HAS_ENDPOINT = vf.createIRI("https://w3id.org/kpxl/grlc/endpoint");

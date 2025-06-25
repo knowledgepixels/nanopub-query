@@ -15,3 +15,11 @@ services:
 # rdf4j:
 #   environment:
 #     - JAVA_OPTS=-Xmx16g -Xms1g -Xss100m -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000
+# swagger:
+#   image: docker.swagger.io/swaggerapi/swagger-ui
+#   ports:
+#     - 7777:8080
+#   logging:
+#     options:
+#       max-size: "10m"
+#       max-file: "3"

@@ -30,6 +30,7 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
 import io.vertx.httpproxy.HttpProxy;
 import io.vertx.httpproxy.ProxyContext;
@@ -59,6 +60,7 @@ public class MainVerticle extends AbstractVerticle {
 
 		HttpServer proxyServer = vertx.createHttpServer();
 		Router proxyRouter = Router.router(vertx);
+		proxyRouter.route().handler(CorsHandler.create().addRelativeOrigin(".*"));
 
 		// Metrics
 		final var metricsHttpServer = vertx.createHttpServer();
@@ -289,7 +291,17 @@ public class MainVerticle extends AbstractVerticle {
 			if (spec == null) {
 				req.response().setStatusCode(404).end("query definition not found / not valid");
 			} else {
-				req.response().putHeader("content-type", "text/plain").end(spec);
+				req.response().putHeader("content-type", "text/yaml").end(spec);
+			}
+		});
+
+		proxyRouter.route(HttpMethod.GET, "/openapi-spec/*").handler(req -> {
+			OpenApiSpecPage osp = new OpenApiSpecPage(req.normalizedPath(), req.queryParams());
+			String spec = osp.getSpec();
+			if (spec == null) {
+				req.response().setStatusCode(404).end("query definition not found / not valid");
+			} else {
+				req.response().putHeader("content-type", "text/yaml").end(spec);
 			}
 		});
 
