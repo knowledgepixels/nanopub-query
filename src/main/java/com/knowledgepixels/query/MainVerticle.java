@@ -31,6 +31,7 @@ import io.vertx.core.Promise;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.CorsHandler;
+import io.vertx.ext.web.handler.StaticHandler;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
 import io.vertx.httpproxy.HttpProxy;
 import io.vertx.httpproxy.ProxyContext;
@@ -284,6 +285,7 @@ public class MainVerticle extends AbstractVerticle {
 			}
 			req.response().end(css);
 		});
+		proxyRouter.route("/swagger*").handler(StaticHandler.create("com/knowledgepixels/query/swagger"));
 
 		proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
 			GrlcSpecPage gsp = new GrlcSpecPage(req.normalizedPath(), req.queryParams());
