@@ -23,7 +23,7 @@ public class GrlcSpecPage {
 	public static final IRI HAS_SPARQL = vf.createIRI("https://w3id.org/kpxl/grlc/sparql");
 	public static final IRI HAS_ENDPOINT = vf.createIRI("https://w3id.org/kpxl/grlc/endpoint");
 
-	public static final String nanopubQueryUrl = Utils.getEnvString("NANOPUB_QUERY_URL", "http://localhost:9393/");
+	public static final String nanopubQueryUrl = Utils.getEnvString("NANOPUB_QUERY_URL", "http://query:9393/");
 
 	private Nanopub np;
 	private String requestUrlBase;

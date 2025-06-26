@@ -305,45 +305,41 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 
-		proxyRouter.route("/api/*").handler(req -> {
-			final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)$";
-			if (req.normalizedPath().matches(apiPattern)) {
-				// TODO Make this an internal proxy pass instead of a 307 redirect
+		HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
+		grlcProxy.origin(80, "grlc");
+		grlcProxy.addInterceptor(new ProxyInterceptor() {
 
-				String artifactCode = req.normalizedPath().replaceFirst(apiPattern, "$1");
-				String queryName = req.normalizedPath().replaceFirst(apiPattern, "$2");
-				String grlcUrlParams = "";
-				String grlcSpecUrlParams = "";
-				MultiMap pm = req.queryParams();
-				for (Entry<String,String> e : pm) {
-					if (e.getKey().equals("api-version")) {
-						grlcSpecUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
-					} else {
-						grlcUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+			@Override
+		    public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
+				final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
+				if (context.request().getURI().matches(apiPattern)) {
+					String artifactCode = context.request().getURI().replaceFirst(apiPattern, "$1");
+					String queryName = context.request().getURI().replaceFirst(apiPattern, "$2");
+					String grlcUrlParams = "";
+					String grlcSpecUrlParams = "";
+					MultiMap pm = context.request().proxiedRequest().params();
+					for (Entry<String,String> e : pm) {
+						if (e.getKey().equals("api-version")) {
+							grlcSpecUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+						} else {
+							grlcUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
+						}
 					}
+					String url = "/api-url/" + queryName +
+						"?specUrl=" +  URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
+						grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
+					context.request().setURI(url);
 				}
-				String url = GrlcSpecPage.nanopubQueryUrl + "api-url/" + queryName +
-					"?specUrl=" +  URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
-					grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
-				req.response().putHeader("Location", url).setStatusCode(307).end();
-			} else if (req.normalizedPath().equals("/api/")) {
-				req.response()
-				.putHeader("content-type", "text/html")
-				.end("<!DOCTYPE html>\n"
-						+ "<html lang='en'>\n"
-						+ "<head>\n"
-						+ "<title>Nanopub Query: APIs</title>\n"
-						+ "<meta charset='utf-8'>\n"
-						+ "<link rel=\"stylesheet\" href=\"/style.css\">\n"
-						+ "</head>\n"
-						+ "<body>\n"
-						+ "<h3>APIs</h3>"
-						+ "<p>Add '[nanopub-artifact-code]/[query-name]?[param]=[value]&...' to URL to access specific APIs.</p>"
-						+ "</body>\n"
-						+ "</html>");
-			} else {
-				req.response().setStatusCode(400).end("invalid API reference: " + req.normalizedPath());
+				return context.sendRequest();
+		    }
+
+			@Override
+			public Future<Void> handleProxyResponse(ProxyContext context) {
+				// To avoid double entries:
+				context.response().headers().remove("Access-Control-Allow-Origin");
+				return context.sendResponse();
 			}
+
 		});
 
 		proxyServer.requestHandler(req -> {
@@ -352,9 +348,7 @@ public class MainVerticle extends AbstractVerticle {
 		});
 		proxyServer.listen(9393);
 
-		HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
-		grlcProxy.origin(80, "grlc");
-		proxyRouter.route("/api-url/*").handler(ProxyHandler.create(grlcProxy));
+		proxyRouter.route("/api/*").handler(ProxyHandler.create(grlcProxy));
 		proxyRouter.route("/static/*").handler(ProxyHandler.create(grlcProxy));
 
 		vertx.createHttpServer().requestHandler(req -> {

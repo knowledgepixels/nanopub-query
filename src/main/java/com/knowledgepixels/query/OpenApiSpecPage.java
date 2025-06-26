@@ -35,8 +35,6 @@ public class OpenApiSpecPage {
 	public static final IRI HAS_SPARQL = vf.createIRI("https://w3id.org/kpxl/grlc/sparql");
 	public static final IRI HAS_ENDPOINT = vf.createIRI("https://w3id.org/kpxl/grlc/endpoint");
 
-	public static final String nanopubQueryUrl = Utils.getEnvString("NANOPUB_QUERY_URL", "http://localhost:9393/");
-
 	private Map<String,Object> dataMap = new LinkedHashMap<>();
 	private Nanopub np;
 
@@ -74,11 +72,11 @@ public class OpenApiSpecPage {
 //			} else if (st.getPredicate().equals(DCTERMS.LICENSE) && st.getObject() instanceof IRI) {
 //				license = st.getObject().stringValue();
 			} else if (st.getPredicate().equals(HAS_SPARQL)) {
-				queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/", nanopubQueryUrl);
+				queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpecPage.nanopubQueryUrl);
 			} else if (st.getPredicate().equals(HAS_ENDPOINT) && st.getObject() instanceof IRI) {
 				endpoint = st.getObject().stringValue();
 				if (endpoint.startsWith("https://w3id.org/np/l/nanopub-query-1.1/")) {
-					endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/", nanopubQueryUrl);
+					endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpecPage.nanopubQueryUrl);
 				}
 			}
 		}
@@ -110,7 +108,7 @@ public class OpenApiSpecPage {
 
 		List<Object> serversList = new ArrayList<>();
 		Map<String,Object> serverMap = new LinkedHashMap<>();
-		serverMap.put("url", nanopubQueryUrl + "api/" + artifactCode);
+		serverMap.put("url", Utils.getEnvString("NANOPUB_QUERY_URL", "http://localhost:9393/") + "api/" + artifactCode);
 		serverMap.put("description", "This Nanopub Query instance");
 		serversList.add(serverMap);
 		dataMap.put("servers", serversList);
