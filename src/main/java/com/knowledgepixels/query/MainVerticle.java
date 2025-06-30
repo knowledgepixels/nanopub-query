@@ -285,7 +285,6 @@ public class MainVerticle extends AbstractVerticle {
 			}
 			req.response().end(css);
 		});
-		proxyRouter.route("/swagger*").handler(StaticHandler.create("com/knowledgepixels/query/swagger"));
 
 		proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
 			GrlcSpecPage gsp = new GrlcSpecPage(req.normalizedPath(), req.queryParams());
@@ -297,7 +296,7 @@ public class MainVerticle extends AbstractVerticle {
 			}
 		});
 
-		proxyRouter.route(HttpMethod.GET, "/openapi-spec/*").handler(req -> {
+		proxyRouter.route(HttpMethod.GET, "/openapi/spec/*").handler(req -> {
 			OpenApiSpecPage osp = new OpenApiSpecPage(req.normalizedPath(), req.queryParams());
 			String spec = osp.getSpec();
 			if (spec == null) {
@@ -306,6 +305,8 @@ public class MainVerticle extends AbstractVerticle {
 				req.response().putHeader("content-type", "text/yaml").end(spec);
 			}
 		});
+
+		proxyRouter.route("/openapi/*").handler(StaticHandler.create("com/knowledgepixels/query/swagger"));
 
 		HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
 		grlcProxy.origin(80, "grlc");
