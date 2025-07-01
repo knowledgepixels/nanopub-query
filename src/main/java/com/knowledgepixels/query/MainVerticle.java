@@ -192,6 +192,18 @@ public class MainVerticle extends AbstractVerticle {
 				if (s.startsWith("pubkey_") || s.startsWith("type_")) continue;
 				repos += "<li><code><a href=\"/page/" + s + "\">" + s + "</a></code></li>";
 			}
+			String pinnedApisValue = Utils.getEnvString("NANOPUB_QUERY_PINNED_APIS", "");
+			String[] pinnedApis = pinnedApisValue.split(" ");
+			String pinnedApiLinks = "";
+			if (!pinnedApisValue.isEmpty()) {
+				for (String s : pinnedApis) {
+					pinnedApiLinks = pinnedApiLinks + "<li><a href=\"openapi/?url=spec/" + s + "\">" + s + "</a></li>";
+				}
+				pinnedApiLinks = "<p>Pinned APIs:</p>\n" +
+						"<ul>\n" +
+						pinnedApiLinks +
+						"</ul>\n";
+			}
 			req.response()
 			.putHeader("content-type", "text/html")
 			.end("<!DOCTYPE html>\n"
@@ -210,6 +222,12 @@ public class MainVerticle extends AbstractVerticle {
 					+ "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
 					+ "<li><a href=\"/types\">Type Repos</a></li>"
 					+ "</ul>"
+					+ "<p>Specific repos:</p>"
+					+ "<ul>"
+					+ "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
+					+ "<li><a href=\"/types\">Type Repos</a></li>"
+					+ "</ul>"
+					+ pinnedApiLinks
 					+ "</body>\n"
 					+ "</html>");
 		});

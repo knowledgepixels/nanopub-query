@@ -6,6 +6,7 @@ services:
       - REGISTRY_FIXED_URL=http://your.nanopub.registry.com/
       - RDF4J_PROXY_HOST=rdf4j
       - RDF4J_PROXY_PORT=8080
+#     - NANOPUB_QUERY_PINNED_APIS=RAkYh4UPJryajbtIDbLG-Bfd6A4JD2SbU9bmZdvaEdFRY/fdo-text-search RAs0HI_KRAds4w_OOEMl-_ed0nZHFWdfePPXsDHf4kQkU/get-fdo-by-id
     ports:
       - 5005:5005
     entrypoint: 'java -jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 nanopub-query.jar'
