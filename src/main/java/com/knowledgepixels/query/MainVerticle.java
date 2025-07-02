@@ -197,7 +197,7 @@ public class MainVerticle extends AbstractVerticle {
 			String pinnedApiLinks = "";
 			if (!pinnedApisValue.isEmpty()) {
 				for (String s : pinnedApis) {
-					pinnedApiLinks = pinnedApiLinks + "<li><a href=\"openapi/?url=spec/" + s + "\">" + s + "</a></li>";
+					pinnedApiLinks = pinnedApiLinks + "<li><a href=\"openapi/?url=spec/" + s + "%3Fapi-version=latest\">" + s.replaceFirst("^.*/", "") + "</a></li>";
 				}
 				pinnedApiLinks = "<p>Pinned APIs:</p>\n" +
 						"<ul>\n" +
@@ -217,11 +217,6 @@ public class MainVerticle extends AbstractVerticle {
 					+ "<h1>Nanopub Query</h1>"
 					+ "<p>General repos:</p>"
 					+ "<ul>" + repos + "</ul>"
-					+ "<p>Specific repos:</p>"
-					+ "<ul>"
-					+ "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
-					+ "<li><a href=\"/types\">Type Repos</a></li>"
-					+ "</ul>"
 					+ "<p>Specific repos:</p>"
 					+ "<ul>"
 					+ "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
