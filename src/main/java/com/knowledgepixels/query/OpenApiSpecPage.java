@@ -11,8 +11,6 @@ import java.util.Set;
 
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Statement;
-import org.eclipse.rdf4j.model.ValueFactory;
-import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.query.algebra.Var;
@@ -28,16 +26,20 @@ import org.yaml.snakeyaml.Yaml;
 import io.vertx.core.MultiMap;
 import net.trustyuri.TrustyUriUtils;
 
-
+/**
+ * Page for Open API compliant specification.
+ */
 public class OpenApiSpecPage {
-
-	public static final ValueFactory vf = SimpleValueFactory.getInstance();
-	public static final IRI HAS_SPARQL = vf.createIRI("https://w3id.org/kpxl/grlc/sparql");
-	public static final IRI HAS_ENDPOINT = vf.createIRI("https://w3id.org/kpxl/grlc/endpoint");
 
 	private Map<String,Object> dataMap = new LinkedHashMap<>();
 	private Nanopub np;
 
+	/**
+	 * Creates a new page instance.
+	 *
+	 * @param requestUrl The request URL
+	 * @param parameters The URL request parameters
+	 */
 	public OpenApiSpecPage(String requestUrl, MultiMap parameters) {
 		requestUrl = requestUrl.replaceFirst("\\?.*$", "");
 		if (!requestUrl.matches(".*/RA[A-Za-z0-9\\-_]{43}/(.*)?")) return;
@@ -71,9 +73,9 @@ public class OpenApiSpecPage {
 				desc = st.getObject().stringValue();
 //			} else if (st.getPredicate().equals(DCTERMS.LICENSE) && st.getObject() instanceof IRI) {
 //				license = st.getObject().stringValue();
-			} else if (st.getPredicate().equals(HAS_SPARQL)) {
+			} else if (st.getPredicate().equals(GrlcSpecPage.HAS_SPARQL)) {
 				queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpecPage.nanopubQueryUrl);
-			} else if (st.getPredicate().equals(HAS_ENDPOINT) && st.getObject() instanceof IRI) {
+			} else if (st.getPredicate().equals(GrlcSpecPage.HAS_ENDPOINT) && st.getObject() instanceof IRI) {
 				endpoint = st.getObject().stringValue();
 				if (endpoint.startsWith("https://w3id.org/np/l/nanopub-query-1.1/")) {
 					endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpecPage.nanopubQueryUrl);
@@ -145,6 +147,11 @@ public class OpenApiSpecPage {
 		dataMap.put("paths", pathsMap);
 	}
 
+	/**
+	 * Returns the Open API spec as a string.
+	 *
+	 * @return Open API specification string
+	 */
 	public String getSpec() {
 		if (np == null) return null;
 		final DumperOptions options = new DumperOptions();

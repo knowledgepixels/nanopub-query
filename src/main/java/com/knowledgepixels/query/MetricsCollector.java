@@ -9,6 +9,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Class to collect metrics for performance analysis.
+ */
 public final class MetricsCollector {
 
     private final AtomicInteger loadCounter = new AtomicInteger(0);
@@ -18,6 +21,11 @@ public final class MetricsCollector {
 
     private final Map<StatusController.State, AtomicInteger> statusStates = new ConcurrentHashMap<>();
 
+    /**
+     * Creates new metrics collector object.
+     *
+     * @param meterRegistry The registry instance
+     */
     public MetricsCollector(MeterRegistry meterRegistry) {
         // Numeric metrics
         Gauge.builder("registry.load.counter", loadCounter, AtomicInteger::get).register(meterRegistry);
@@ -36,6 +44,9 @@ public final class MetricsCollector {
         }
     }
 
+    /**
+     * Updates the metrics
+     */
     public void updateMetrics() {
         // Update numeric metrics
         loadCounter.set((int) StatusController.get().getState().loadCounter);

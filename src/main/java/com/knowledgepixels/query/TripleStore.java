@@ -27,6 +27,9 @@ import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
 import org.nanopub.NanopubUtils;
 
+/**
+ * Class to access the database in the form of triple stores.
+ */
 public class TripleStore {
 
 	public static final String ADMIN_REPO = "admin";
@@ -51,14 +54,13 @@ public class TripleStore {
 	private String endpointBase = null;
 	private String endpointType = null;
 
-	volatile boolean terminated = false;
-
-	public void terminate() {
-		this.terminated = true;
-	}
-
 	private static TripleStore tripleStoreInstance;
 
+	/**
+	 * Returns singleton triple store instance.
+	 *
+	 * @return Triple store instance
+	 */
 	public static TripleStore get() {
 		if (tripleStoreInstance == null) {
 			try {
@@ -113,6 +115,12 @@ public class TripleStore {
 		}
 	}
 
+	/**
+	 * Return the repository connection for the given repository name.
+	 *
+	 * @param name repository name
+	 * @return repository connection
+	 */
 	public RepositoryConnection getRepoConnection(String name) {
 		Repository repo = getRepository(name);
 		if (repo == null) return null;
@@ -245,6 +253,9 @@ public class TripleStore {
 		}
 	}
 
+	/**
+	 * Sends shutdown signal to all repositories.
+	 */
 	public void shutdownRepositories() {
 		for (Repository repo : repositories.values()) {
 			if (repo != null && repo.isInitialized()) {
@@ -253,10 +264,20 @@ public class TripleStore {
 		}
 	}
 
+	/**
+	 * Returns admin repo connection.
+	 *
+	 * @return repository connection to admin repository
+	 */
 	public RepositoryConnection getAdminRepoConnection() {
 		return get().getRepoConnection(ADMIN_REPO);
 	}
 
+	/**
+	 * Returns set of all repository names.
+	 *
+	 * @return Repository name set
+	 */
 	public Set<String> getRepositoryNames() {
 		Map<String,Boolean> repositoryNames = null;
 		try (CloseableHttpClient httpclient = HttpClients.createDefault()) {

@@ -64,6 +64,11 @@ public class NanopubLoader {
 		return httpClient;
 	}
 
+	/**
+	 * Load the given nanopublication into the database.
+	 *
+	 * @param nanopubUri Nanopublication identifier (URI)
+	 */
 	public static void load(String nanopubUri) {
 		if (isNanopubLoaded(nanopubUri)) {
 			System.err.println("Already loaded: " + nanopubUri);

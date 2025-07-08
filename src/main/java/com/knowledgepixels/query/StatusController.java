@@ -4,7 +4,14 @@ import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
+/**
+ * Class to control the load status of the database.
+ */
 public class StatusController {
+
+	/**
+	 * The load states in which the database can be.
+	 */
     public enum State {
         LAUNCHING,
         LOADING_INITIAL,

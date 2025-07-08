@@ -16,14 +16,29 @@ import org.nanopub.extra.services.QueryAccess;
 import io.vertx.core.MultiMap;
 import net.trustyuri.TrustyUriUtils;
 
-
+/**
+ * This class produces a page with the grlc specification. This is needed internally to tell grlc
+ * how to execute a particular query template.
+ */
 public class GrlcSpecPage {
 
-	public static final ValueFactory vf = SimpleValueFactory.getInstance();
+	private static final ValueFactory vf = SimpleValueFactory.getInstance();
+
+	/**
+	 * IRI for relation to link a grlc query instance to its SPARQL template.
+	 */
 	public static final IRI HAS_SPARQL = vf.createIRI("https://w3id.org/kpxl/grlc/sparql");
+
+	/**
+	 * IRI for relation to link a grlc query instance to its SPARQL endpoint URL.
+	 */
 	public static final IRI HAS_ENDPOINT = vf.createIRI("https://w3id.org/kpxl/grlc/endpoint");
 
+	/**
+	 * URL for the given Nanopub Query instance, needed for internal coordination.
+	 */
 	public static final String nanopubQueryUrl = Utils.getEnvString("NANOPUB_QUERY_URL", "http://query:9393/");
+
 
 	private Nanopub np;
 	private String requestUrlBase;
@@ -35,6 +50,12 @@ public class GrlcSpecPage {
 	private String queryContent;
 	private String endpoint;
 
+	/**
+	 * Creates a new page instance.
+	 *
+	 * @param requestUrl The request URL
+	 * @param parameters The URL request parameters
+	 */
 	public GrlcSpecPage(String requestUrl, MultiMap parameters) {
 		requestUrl = requestUrl.replaceFirst("\\?.*$", "");
 		if (!requestUrl.matches(".*/RA[A-Za-z0-9\\-_]{43}/(.*)?")) return;
@@ -74,6 +95,11 @@ public class GrlcSpecPage {
 		}
 	}
 
+	/**
+	 * Returns the grlc spec as a string.
+	 *
+	 * @return grlc specification string
+	 */
 	public String getSpec() {
 		if (np == null) return null;
 		String s = "";

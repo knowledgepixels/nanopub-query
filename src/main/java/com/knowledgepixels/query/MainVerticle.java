@@ -39,6 +39,9 @@ import io.vertx.httpproxy.ProxyInterceptor;
 import io.vertx.httpproxy.ProxyRequest;
 import io.vertx.httpproxy.ProxyResponse;
 
+/**
+ * Main verticle that coordinates the incoming HTTP requests.
+ */
 public class MainVerticle extends AbstractVerticle {
 
 	private boolean server1Started = false;
@@ -456,7 +459,7 @@ public class MainVerticle extends AbstractVerticle {
 		}));
 	}
 
-	public String getResourceAsString(String file) {
+	private String getResourceAsString(String file) {
 		InputStream is = getClass().getClassLoader().getResourceAsStream("com/knowledgepixels/query/" + file);
 		try (Scanner s = new Scanner(is).useDelimiter("\\A")) {
 			String fileContent = s.hasNext() ? s.next() : "";
@@ -464,7 +467,7 @@ public class MainVerticle extends AbstractVerticle {
 		}
 	}
 
-	public static void handleRedirect(RoutingContext req, String path) {
+	private static void handleRedirect(RoutingContext req, String path) {
 		String queryString = "";
 		if (!req.queryParam("query").isEmpty()) queryString = "?query=" + URLEncoder.encode(req.queryParam("query").get(0), Charsets.UTF_8);
 		if (req.queryParam("for-type").size() == 1) {
