@@ -55,6 +55,7 @@ public class JellyNanopubLoader {
     /**
      * Start or continue (after restart) the initial loading procedure. This simply loads all
      * nanopubs from the attached Registry.
+     *
      * @param afterCounter which counter to start from (-1 for the beginning)
      */
     public static void loadInitial(long afterCounter) {
@@ -122,8 +123,9 @@ public class JellyNanopubLoader {
      * The method requests the list of all nanopubs from the Registry and reads it for as long
      * as it can. If the stream is interrupted, the method will throw an exception, and you
      * can resume loading from the last known counter.
+     *
      * @param afterCounter the last known nanopub counter to have been committed in the DB
-     * @param type the type of loading operation (initial or update)
+     * @param type         the type of loading operation (initial or update)
      */
     private static void loadBatch(long afterCounter, LoadingType type) {
         CloseableHttpResponse response;
@@ -141,8 +143,8 @@ public class JellyNanopubLoader {
         }
 
         try (
-            var is = response.getEntity().getContent();
-            var npStream = NanopubStream.fromByteStream(is).getAsNanopubs()
+                var is = response.getEntity().getContent();
+                var npStream = NanopubStream.fromByteStream(is).getAsNanopubs()
         ) {
             AtomicLong checkpointTime = new AtomicLong(System.currentTimeMillis());
             AtomicLong checkpointCounter = new AtomicLong(lastCommittedCounter);
@@ -195,6 +197,7 @@ public class JellyNanopubLoader {
     /**
      * Save the last committed counter to the DB. Do this every N nanopubs to reduce DB load.
      * Remember to call this method at the end of the batch as well.
+     *
      * @param type the type of loading operation (initial or update)
      */
     private static void saveCommittedCounter(LoadingType type) {
@@ -211,6 +214,7 @@ public class JellyNanopubLoader {
 
     /**
      * Run a HEAD request to the Registry to fetch its current load counter.
+     *
      * @return the current load counter
      */
     private static long fetchRegistryLoadCounter() {
@@ -241,6 +245,7 @@ public class JellyNanopubLoader {
 
     /**
      * Inner logic for fetching the registry load counter.
+     *
      * @return the current load counter
      * @throws IOException if the HTTP request fails
      */
@@ -274,6 +279,7 @@ public class JellyNanopubLoader {
 
     /**
      * Construct the URL for fetching the Jelly stream.
+     *
      * @param afterCounter the last known nanopub counter to have been committed in the DB
      * @return the URL for fetching the Jelly stream
      */

@@ -38,39 +38,39 @@ public final class MetricsCollector {
             AtomicInteger stateGauge = new AtomicInteger(0);
             statusStates.put(status, stateGauge);
             Gauge.builder("registry.server.status", stateGauge, AtomicInteger::get)
-                .description("Server status (1 if current)")
-                .tag("status", status.name())
-                .register(meterRegistry);
+                    .description("Server status (1 if current)")
+                    .tag("status", status.name())
+                    .register(meterRegistry);
         }
     }
 
     /**
-     * Updates the metrics
+     * Updates the metrics based on the current state of the system.
      */
     public void updateMetrics() {
         // Update numeric metrics
         loadCounter.set((int) StatusController.get().getState().loadCounter);
         typeRepositoriesCounter.set(
-            (int) Optional
-                .ofNullable(TripleStore.get().getRepositoryNames())
-                .orElse(Set.of())
-                .stream()
-                .filter(repo -> repo.startsWith("type_"))
-                .count()
+                (int) Optional
+                        .ofNullable(TripleStore.get().getRepositoryNames())
+                        .orElse(Set.of())
+                        .stream()
+                        .filter(repo -> repo.startsWith("type_"))
+                        .count()
         );
         pubkeyRepositoriesCounter.set(
-            (int) Optional
-                .ofNullable(TripleStore.get().getRepositoryNames())
-                .orElse(Set.of())
-                .stream()
-                .filter(repo -> repo.startsWith("pubkey_"))
-                .count()
+                (int) Optional
+                        .ofNullable(TripleStore.get().getRepositoryNames())
+                        .orElse(Set.of())
+                        .stream()
+                        .filter(repo -> repo.startsWith("pubkey_"))
+                        .count()
         );
         fullRepositoriesCounter.set(
-            Optional
-                .ofNullable(TripleStore.get().getRepositoryNames())
-                .orElse(Set.of())
-                .size()
+                Optional
+                        .ofNullable(TripleStore.get().getRepositoryNames())
+                        .orElse(Set.of())
+                        .size()
         );
 
         // Update status gauge

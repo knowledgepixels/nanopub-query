@@ -9,9 +9,9 @@ import org.eclipse.rdf4j.repository.RepositoryConnection;
  */
 public class StatusController {
 
-	/**
-	 * The load states in which the database can be.
-	 */
+    /**
+     * The load states in which the database can be.
+     */
     public enum State {
         LAUNCHING,
         LOADING_INITIAL,
@@ -31,17 +31,29 @@ public class StatusController {
             this.loadCounter = loadCounter;
         }
 
+        /**
+         * Create a new LoadingStatus instance.
+         *
+         * @param state       the current state of the service
+         * @param loadCounter the current load counter
+         * @return a new LoadingStatus instance
+         */
         public static LoadingStatus of(State state, long loadCounter) {
             return new LoadingStatus(state, loadCounter);
         }
     }
 
+    /**
+     * Get the singleton instance of the StatusController.
+     *
+     * @return the StatusController instance
+     */
     public static StatusController get() {
         return instance;
     }
 
     private final static StatusController instance = new StatusController();
-    
+
     private boolean initialized = false;
     private State state = null;
     private long lastCommittedCounter = -1;
@@ -50,6 +62,7 @@ public class StatusController {
     /**
      * Initialize the StatusController, fetching the last known state from the DB.
      * This must be called right after service startup, before loading any nanopubs.
+     *
      * @return the current state and the last committed counter
      */
     public LoadingStatus initialize() {
@@ -111,6 +124,7 @@ public class StatusController {
 
     /**
      * Get the current state of the service.
+     *
      * @return the current state and the last committed counter
      */
     public LoadingStatus getState() {
@@ -122,8 +136,9 @@ public class StatusController {
     /**
      * Transition the service to the LOADING_INITIAL state and update the load counter.
      * This should be called in two situations:
-     *  - By the main loading thread (after calling initialize()) to start loading the initial nanopubs.
-     *  - By the initial nanopub loader, as it processes the initial nanopubs.
+     * - By the main loading thread (after calling initialize()) to start loading the initial nanopubs.
+     * - By the initial nanopub loader, as it processes the initial nanopubs.
+     *
      * @param loadCounter the new load counter
      */
     public void setLoadingInitial(long loadCounter) {
@@ -144,6 +159,7 @@ public class StatusController {
      * Transition the service to the LOADING_UPDATES state and update the load counter.
      * This should be called by the updates loader, when it starts processing new nanopubs, or
      * when it finishes processing a batch of nanopubs.
+     *
      * @param loadCounter the new load counter
      */
     public void setLoadingUpdates(long loadCounter) {
