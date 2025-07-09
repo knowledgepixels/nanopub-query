@@ -1,6 +1,7 @@
 # Nanopub Query FDO
 
-Nanopub Query FDO is a query service for nanopublications specifically targeted at FAIR Digital Objects (FDOs).
+Nanopub Query FDO is a query service for nanopublications, based on [Nanopub Query](https://github.com/knowledgepixels/nanopub-query)
+and specifically targeted at FAIR Digital Objects (FDOs).
 
 
 ## Repos and Triples
