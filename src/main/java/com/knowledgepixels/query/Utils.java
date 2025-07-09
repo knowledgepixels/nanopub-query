@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Utils class for Nanopub Registry
+ * Utils class for Nanopub Registry.
  */
 public class Utils {
 
@@ -114,10 +114,10 @@ public class Utils {
     /**
      * Executes a query on the given connection to return the first objects matching the input.
      *
-     * @param conn The repository connection
+     * @param conn  The repository connection
      * @param graph Graph (=context) IRI
-     * @param subj Subject IRI
-     * @param pred Predicate IRI
+     * @param subj  Subject IRI
+     * @param pred  Predicate IRI
      * @return the first object to match the pattern
      */
     public static Value getObjectForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
@@ -131,10 +131,10 @@ public class Utils {
     /**
      * Executes a query on the given connection to return all objects matching the input.
      *
-     * @param conn The repository connection
+     * @param conn  The repository connection
      * @param graph Graph (=context) IRI
-     * @param subj Subject IRI
-     * @param pred Predicate IRI
+     * @param subj  Subject IRI
+     * @param pred  Predicate IRI
      * @return a list of all objects matching the pattern
      */
     public static List<Value> getObjectsForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
@@ -151,7 +151,7 @@ public class Utils {
     /**
      * Returns the system environment variable content for the given environment variable name.
      *
-     * @param envVarName environment variable name
+     * @param envVarName   environment variable name
      * @param defaultValue default value if not found
      * @return environment variable value
      */
@@ -168,7 +168,7 @@ public class Utils {
     /**
      * Returns the system environment variable content as an integer for the given environment variable name.
      *
-     * @param envVarName environment variable name
+     * @param envVarName   environment variable name
      * @param defaultValue default value if not found
      * @return environment variable value interpreted as an integer
      */
