@@ -1,6 +1,6 @@
-# Nanopub Query
+# Nanopub Query FDO
 
-Nanopub Query is the second-generation query service for nanopublications.
+Nanopub Query FDO is a query service for nanopublications specifically targeted at FAIR Digital Objects (FDOs).
 
 
 ## Available Instances
@@ -81,6 +81,6 @@ Start with Docker Compose:
 
 ## License
 
-This software is made available under the MIT license. See LICENSE.txt for the details.
+This software is made available under the MIT license. See [LICENSE.txt](LICENSE.txt) for the details.
 
 For an overview of the dependencies and their licenses, run `mvn project-info-reports:dependencies` and then visit `target/reports/dependencies.html`.
