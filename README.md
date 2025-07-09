@@ -3,15 +3,6 @@
 Nanopub Query FDO is a query service for nanopublications specifically targeted at FAIR Digital Objects (FDOs).
 
 
-## Available Instances
-
-You can check out Nanopub Query at these instances:
-
-- https://query.knowledgepixels.com/
-- https://query.np.trustyuri.net/
-- https://query.petapico.org/
-
-
 ## Repos and Triples
 
 Each nanopublications is loaded into different repos in the form of RDF4J triple stores. There are these general repos:
