@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.knowledgepixels</groupId>
   <artifactId>nanopub-query</artifactId>
-  <version>1.2-SNAPSHOT</version>
+  <version>1.1.1</version>
   <url>https://github.com/knowledgepixels/nanopub-query</url>
   <name>Nanopub Query</name>
   <description>A P2P-enabled query service for nanopublications</description>
@@ -141,7 +139,7 @@
     <url>https://github.com/knowledgepixels/nanopub-query</url>
     <connection>scm:git:git@github.com:knowledgepixels/nanopub-query.git</connection>
     <developerConnection>scm:git:git@github.com:knowledgepixels/nanopub-query.git</developerConnection>
-    <tag>HEAD</tag>
+    <tag>nanopub-query-1.1.1</tag>
   </scm>
 
   <build>
@@ -180,14 +178,13 @@
             </goals>
             <configuration>
               <transformers>
-                <transformer
-                  implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <manifestEntries>
                     <Main-Class>${launcher.class}</Main-Class>
                     <Main-Verticle>${main.verticle}</Main-Verticle>
                   </manifestEntries>
                 </transformer>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
               </transformers>
               <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-fat.jar
               </outputFile>
