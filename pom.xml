@@ -127,9 +127,9 @@
   </dependencies>
 
   <scm>
-    <url>https://github.com/Nanopublication/nanopub-java</url>
-    <connection>scm:git:git@github.com:Nanopublication/nanopub-java.git</connection>
-    <developerConnection>scm:git:git@github.com:Nanopublication/nanopub-java.git</developerConnection>
+    <url>https://github.com/knowledgepixels/nanopub-query</url>
+    <connection>scm:git:git@github.com:knowledgepixels/nanopub-query.git</connection>
+    <developerConnection>scm:git:git@github.com:knowledgepixels/nanopub-query.git</developerConnection>
     <tag>HEAD</tag>
   </scm>
 
