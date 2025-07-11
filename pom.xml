@@ -1,14 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.knowledgepixels</groupId>
   <artifactId>nanopub-query</artifactId>
-  <version>1.2-SNAPSHOT</version>
-
+  <version>1.1.2-SNAPSHOT</version>
   <url>https://github.com/knowledgepixels/nanopub-query</url>
+  <name>Nanopub Query</name>
+  <description>A P2P-enabled query service for nanopublications</description>
+  <licenses>
+    <license>
+      <name>MIT license</name>
+      <url>http://www.opensource.org/licenses/mit-license</url>
+    </license>
+  </licenses>
+  <developers>
+    <developer><name>Tobias Kuhn</name><url>https://www.tkuhn.org/</url></developer>
+  </developers>
+
 
   <properties>
     <maven.compiler.source>21</maven.compiler.source>
@@ -86,17 +95,17 @@
       <version>${junit-jupiter.version}</version>
       <scope>test</scope>
     </dependency>
-    <!--    <dependency>-->
-    <!--      <groupId>org.nanopub</groupId>-->
-    <!--      <artifactId>nanopub</artifactId>-->
-    <!--      <version>1.70-snapshot</version>-->
-    <!--    </dependency>-->
-    <!-- Temporary: dependency on Jitpack for snapshot builds -->
     <dependency>
-      <groupId>com.github.Nanopublication</groupId>
-      <artifactId>nanopub-java</artifactId>
-      <version>e4e430b3b5f09caa1c852e67a15a86bfc7b5a986</version>
+      <groupId>org.nanopub</groupId>
+      <artifactId>nanopub</artifactId>
+      <version>1.78</version>
     </dependency>
+    <!-- Temporary: dependency on Jitpack for snapshot builds -->
+<!--    <dependency>-->
+<!--      <groupId>com.github.Nanopublication</groupId>-->
+<!--      <artifactId>nanopub-java</artifactId>-->
+<!--      <version>e4e430b3b5f09caa1c852e67a15a86bfc7b5a986</version>-->
+<!--    </dependency>-->
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-exec</artifactId>
@@ -125,6 +134,13 @@
           <scope>test</scope>
       </dependency>
   </dependencies>
+
+  <scm>
+    <url>https://github.com/knowledgepixels/nanopub-query</url>
+    <connection>scm:git:git@github.com:knowledgepixels/nanopub-query.git</connection>
+    <developerConnection>scm:git:git@github.com:knowledgepixels/nanopub-query.git</developerConnection>
+    <tag>HEAD</tag>
+  </scm>
 
   <build>
     <plugins>
@@ -162,14 +178,13 @@
             </goals>
             <configuration>
               <transformers>
-                <transformer
-                  implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <manifestEntries>
                     <Main-Class>${launcher.class}</Main-Class>
                     <Main-Verticle>${main.verticle}</Main-Verticle>
                   </manifestEntries>
                 </transformer>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
               </transformers>
               <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-fat.jar
               </outputFile>
@@ -193,8 +208,86 @@
           </arguments>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.sonatype.plugins</groupId>
+        <artifactId>nexus-staging-maven-plugin</artifactId>
+        <version>1.7.0</version>
+        <extensions>true</extensions>
+        <configuration>
+          <serverId>ossrh</serverId>
+          <nexusUrl>https://ossrh-staging-api.central.sonatype.com</nexusUrl>
+          <autoReleaseAfterClose>true</autoReleaseAfterClose>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-release-plugin</artifactId>
+        <version>3.1.1</version>
+        <configuration>
+          <autoVersionSubmodules>true</autoVersionSubmodules>
+          <useReleaseProfile>false</useReleaseProfile>
+          <releaseProfiles>release</releaseProfiles>
+          <goals>deploy</goals>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
 
+  <profiles>
+    <profile>
+      <id>release</id>
+      <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.11.2</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+                <configuration>
+                  <failOnError>false</failOnError>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.5</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>
