@@ -28,7 +28,14 @@ public class Utils {
 
     private static ValueFactory vf = SimpleValueFactory.getInstance();
 
+    /**
+     * IRI for the predicate thatindicates that a hash value is associated with an object.
+     */
     public static final IRI IS_HASH_OF = vf.createIRI("http://purl.org/nanopub/admin/isHashOf");
+
+    /**
+     * Prefix for the hash values stored in the admin graph.
+     */
     public static final IRI HASH_PREFIX = vf.createIRI("http://purl.org/nanopub/admin/hash/");
 
     private static Map<String, Value> hashToObjMap;

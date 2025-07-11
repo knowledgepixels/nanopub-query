@@ -1,15 +1,15 @@
 package com.knowledgepixels.query;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.MultiNanopubRdfHandler;
 import org.nanopub.MultiNanopubRdfHandler.NanopubHandler;
 import org.nanopub.Nanopub;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 
 /**
  * Local loader left here in case it's needed for testing or when the Jelly loader breaks.
@@ -18,13 +18,21 @@ public class LocalNanopubLoader {
 
     private LocalNanopubLoader() {}  // no instances allowed
 
+    /**
+     * File containing URIs of nanopubs to load.
+     */
     public final static File loadUrisFile = new File("load/nanopub-uris.txt");
+
+    /**
+     * File containing nanopubs in TRIG format to load.
+     */
     public final static File loadNanopubsFile = new File("load/nanopubs.trig.gz");
 
     private static final int WAIT_SECONDS = Utils.getEnvInt("INIT_WAIT_SECONDS", 120);
 
     /**
      * Load nanopubs from local files.
+     *
      * @return true if local nanopubs were found and loaded, false otherwise
      */
     public static boolean init() {
@@ -77,4 +85,5 @@ public class LocalNanopubLoader {
             }
         }
     }
+
 }

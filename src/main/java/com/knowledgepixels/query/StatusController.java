@@ -13,9 +13,21 @@ public class StatusController {
      * The load states in which the database can be.
      */
     public enum State {
+        /**
+         * The service is launching.
+         */
         LAUNCHING,
+        /**
+         * The service is loading.
+         */
         LOADING_INITIAL,
+        /**
+         * The service is loading updates.
+         */
         LOADING_UPDATES,
+        /**
+         * The service is ready to serve requests.
+         */
         READY,
     }
 
@@ -23,7 +35,15 @@ public class StatusController {
      * Represents the current status of the service, including the load counter.
      */
     public static class LoadingStatus {
+
+        /**
+         * The current state of the service.
+         */
         public final State state;
+
+        /**
+         * The current load counter.
+         */
         public final long loadCounter;
 
         private LoadingStatus(State state, long loadCounter) {
@@ -75,38 +95,18 @@ public class StatusController {
             // Serializable, as the service state needs to be strictly consistent
             adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
             // Fetch the state from the DB
-            try (var statements = adminRepoConn.getStatements(
-                    TripleStore.THIS_REPO_ID,
-                    TripleStore.HAS_STATUS,
-                    null,
-                    NanopubLoader.ADMIN_GRAPH
-            )) {
+            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, null, NanopubLoader.ADMIN_GRAPH)) {
                 if (!statements.hasNext()) {
-                    adminRepoConn.add(
-                            TripleStore.THIS_REPO_ID,
-                            TripleStore.HAS_STATUS,
-                            stateAsLiteral(state),
-                            NanopubLoader.ADMIN_GRAPH
-                    );
+                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, stateAsLiteral(state), NanopubLoader.ADMIN_GRAPH);
                 } else {
                     var stateStatement = statements.next();
                     state = State.valueOf(stateStatement.getObject().stringValue());
                 }
             }
             // Fetch the load counter from the DB
-            try (var statements = adminRepoConn.getStatements(
-                    TripleStore.THIS_REPO_ID,
-                    TripleStore.HAS_REGISTRY_LOAD_COUNTER,
-                    null,
-                    NanopubLoader.ADMIN_GRAPH
-            )) {
+            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, null, NanopubLoader.ADMIN_GRAPH)) {
                 if (!statements.hasNext()) {
-                    adminRepoConn.add(
-                            TripleStore.THIS_REPO_ID,
-                            TripleStore.HAS_REGISTRY_LOAD_COUNTER,
-                            adminRepoConn.getValueFactory().createLiteral(-1L),
-                            NanopubLoader.ADMIN_GRAPH
-                    );
+                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(-1L), NanopubLoader.ADMIN_GRAPH);
                 } else {
                     var counterStatement = statements.next();
                     var stringVal = counterStatement.getObject().stringValue();
@@ -144,12 +144,10 @@ public class StatusController {
     public void setLoadingInitial(long loadCounter) {
         synchronized (this) {
             if (state != State.LAUNCHING && state != State.LOADING_INITIAL) {
-                throw new IllegalStateException("Cannot transition to LOADING_INITIAL, as the " +
-                        "current state is " + state);
+                throw new IllegalStateException("Cannot transition to LOADING_INITIAL, as the " + "current state is " + state);
             }
             if (lastCommittedCounter > loadCounter) {
-                throw new IllegalStateException("Cannot update the load counter from " +
-                        lastCommittedCounter + " to " + loadCounter);
+                throw new IllegalStateException("Cannot update the load counter from " + lastCommittedCounter + " to " + loadCounter);
             }
             updateState(State.LOADING_INITIAL, loadCounter);
         }
@@ -165,12 +163,10 @@ public class StatusController {
     public void setLoadingUpdates(long loadCounter) {
         synchronized (this) {
             if (state != State.LAUNCHING && state != State.LOADING_UPDATES && state != State.READY) {
-                throw new IllegalStateException("Cannot transition to LOADING_UPDATES, as the " +
-                        "current state is " + state);
+                throw new IllegalStateException("Cannot transition to LOADING_UPDATES, as the " + "current state is " + state);
             }
             if (lastCommittedCounter > loadCounter) {
-                throw new IllegalStateException("Cannot update the load counter from " +
-                        lastCommittedCounter + " to " + loadCounter);
+                throw new IllegalStateException("Cannot update the load counter from " + lastCommittedCounter + " to " + loadCounter);
             }
             updateState(State.LOADING_UPDATES, loadCounter);
         }
@@ -194,30 +190,10 @@ public class StatusController {
             try {
                 // Serializable, as the service state needs to be strictly consistent
                 adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
-                adminRepoConn.remove(
-                        TripleStore.THIS_REPO_ID,
-                        TripleStore.HAS_STATUS,
-                        null,
-                        NanopubLoader.ADMIN_GRAPH
-                );
-                adminRepoConn.add(
-                        TripleStore.THIS_REPO_ID,
-                        TripleStore.HAS_STATUS,
-                        stateAsLiteral(newState),
-                        NanopubLoader.ADMIN_GRAPH
-                );
-                adminRepoConn.remove(
-                        TripleStore.THIS_REPO_ID,
-                        TripleStore.HAS_REGISTRY_LOAD_COUNTER,
-                        null,
-                        NanopubLoader.ADMIN_GRAPH
-                );
-                adminRepoConn.add(
-                        TripleStore.THIS_REPO_ID,
-                        TripleStore.HAS_REGISTRY_LOAD_COUNTER,
-                        adminRepoConn.getValueFactory().createLiteral(loadCounter),
-                        NanopubLoader.ADMIN_GRAPH
-                );
+                adminRepoConn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, null, NanopubLoader.ADMIN_GRAPH);
+                adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, stateAsLiteral(newState), NanopubLoader.ADMIN_GRAPH);
+                adminRepoConn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, null, NanopubLoader.ADMIN_GRAPH);
+                adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(loadCounter), NanopubLoader.ADMIN_GRAPH);
                 adminRepoConn.commit();
                 state = newState;
                 lastCommittedCounter = loadCounter;

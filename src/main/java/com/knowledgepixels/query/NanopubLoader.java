@@ -644,25 +644,104 @@ public class NanopubLoader {
 
     private static ValueFactory vf = SimpleValueFactory.getInstance();
 
+    /**
+     * Admin graph IRI.
+     */
     public static final IRI ADMIN_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/graph");
+
+    /**
+     * Admin network graph IRI.
+     */
     public static final IRI ADMIN_NETWORK_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/networkGraph");
+
+    /**
+     * IRI for the head graph of a nanopub.
+     */
     public static final IRI HAS_HEAD_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasHeadGraph");
+
+    /**
+     * IRI for the graph of a nanopub.
+     */
     public static final IRI HAS_GRAPH = vf.createIRI("http://purl.org/nanopub/admin/hasGraph");
+
+    /**
+     * IRI for the note about a nanopub.
+     */
     public static final IRI NOTE = vf.createIRI("http://purl.org/nanopub/admin/note");
+
+    /**
+     * IRI for the subIRI of a nanopub.
+     */
     public static final IRI HAS_SUB_IRI = vf.createIRI("http://purl.org/nanopub/admin/hasSubIri");
+
+    /**
+     * IRI for the refers to nanopub relation.
+     */
     public static final IRI REFERS_TO_NANOPUB = vf.createIRI("http://purl.org/nanopub/admin/refersToNanopub");
+
+    /**
+     * IRI for the has valid signature for public key relation.
+     */
     public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY = vf.createIRI("http://purl.org/nanopub/admin/hasValidSignatureForPublicKey");
+
+    /**
+     * IRI for the has valid signature for public key hash relation.
+     */
     public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH = vf.createIRI("http://purl.org/nanopub/admin/hasValidSignatureForPublicKeyHash");
+
+    /**
+     * IRI for the has artifact code relation.
+     */
     public static final IRI HAS_ARTIFACT_CODE = vf.createIRI("http://purl.org/nanopub/admin/artifactCode");
+
+    /**
+     * IRI for the is introduction of relation.
+     */
     public static final IRI IS_INTRO_OF = vf.createIRI("http://purl.org/nanopub/admin/isIntroductionOf");
+
+    /**
+     * IRI for the declares pubkey relation.
+     */
     public static final IRI DECLARES_KEY = vf.createIRI("http://purl.org/nanopub/admin/declaresPubkey");
+
+    /**
+     * IRI for the supersedes relation.
+     */
     public static final IRI SUPERSEDES = vf.createIRI("http://purl.org/nanopub/x/supersedes");
+
+    /**
+     * IRI for the retracts relation.
+     */
     public static final IRI RETRACTS = vf.createIRI("http://purl.org/nanopub/x/retracts");
+
+    /**
+     * IRI for the invalidates relation.
+     */
     public static final IRI INVALIDATES = vf.createIRI("http://purl.org/nanopub/x/invalidates");
+
+    /**
+     * IRI for the has nanopub type relation.
+     */
     public static final IRI HAS_NANOPUB_TYPE = vf.createIRI("http://purl.org/nanopub/x/hasNanopubType");
+
+    /**
+     * IRI for the has filter literal relation.
+     */
     public static final IRI HAS_FILTER_LITERAL = vf.createIRI("http://purl.org/nanopub/admin/hasFilterLiteral");
+
+    /**
+     * IRI for the introduces relation.
+     */
     public static final IRI INTRODUCES = vf.createIRI("http://purl.org/nanopub/x/introduces");
+
+    /**
+     * IRI for the describes relation.
+     */
     public static final IRI DESCRIBES = vf.createIRI("http://purl.org/nanopub/x/describes");
+
+    /**
+     * IRI for the embeds relation.
+     */
     public static final IRI EMBEDS = vf.createIRI("http://purl.org/nanopub/x/embeds");
 
     /**

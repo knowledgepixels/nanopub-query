@@ -26,6 +26,10 @@ public class JellyNanopubLoader {
     private static final int MAX_RETRIES_METADATA = 10;
     private static final int RETRY_DELAY_METADATA = 3000;
     private static final int RETRY_DELAY_JELLY = 5000;
+
+    /**
+     * The interval in milliseconds at which the updates loader should poll for new nanopubs.
+     */
     public static final int UPDATES_POLL_INTERVAL = 2000;
 
     private enum LoadingType {
