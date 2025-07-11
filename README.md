@@ -2,7 +2,6 @@
 
 Nanopub Query is the second-generation query service for nanopublications.
 
-
 ## Available Instances
 
 You can check out Nanopub Query at these instances:
@@ -10,6 +9,12 @@ You can check out Nanopub Query at these instances:
 - https://query.knowledgepixels.com/
 - https://query.np.trustyuri.net/
 - https://query.petapico.org/
+
+
+## Documentation
+
+See the [JavaDocs](https://javadoc.io/doc/com.knowledgepixels/nanopub-query/latest/index.html) for the API and
+source code documentation.
 
 
 ## Repos and Triples
