@@ -195,14 +195,13 @@ public class StatusController {
      */
     public void setReady() {
         synchronized (this) {
-            if (state == State.READY) {
-                return; // Nothing to do
+            if (state != State.READY) {
+                updateState(State.READY, lastCommittedCounter);
             }
-            updateState(State.READY, lastCommittedCounter);
         }
     }
 
-    private void updateState(State newState, long loadCounter) {
+    void updateState(State newState, long loadCounter) {
         synchronized (this) {
             try {
                 // Serializable, as the service state needs to be strictly consistent
