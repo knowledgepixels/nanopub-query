@@ -348,8 +348,8 @@ public class NanopubLoader {
     }
 
     private static Long lastUpdateOfLatestRepo = null;
-    private static long THIRTY_DAYS = 1000l * 60 * 60 * 24 * 30;
-    private static long ONE_HOUR = 1000l * 60 * 60;
+    private static long THIRTY_DAYS = 1000L * 60 * 60 * 24 * 30;
+    private static long ONE_HOUR = 1000L * 60 * 60;
 
     private static void loadNanopubToLatest(List<Statement> statements) {
         boolean success = false;
@@ -594,6 +594,7 @@ public class NanopubLoader {
         }
     }
 
+    // TODO remove this method and use SignatureUtils.hasValidSignature() instead?
     private static boolean hasValidSignature(NanopubSignatureElement el) {
         try {
             if (el != null && SignatureUtils.hasValidSignature(el) && el.getPublicKeyString() != null) {
@@ -629,7 +630,7 @@ public class NanopubLoader {
      * @param npId the nanopub ID
      * @return true if the nanopub is loaded, false otherwise
      */
-    private static boolean isNanopubLoaded(String npId) {
+    static boolean isNanopubLoaded(String npId) {
         boolean loaded = false;
         RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
         try (conn) {
@@ -643,6 +644,8 @@ public class NanopubLoader {
     }
 
     private static ValueFactory vf = SimpleValueFactory.getInstance();
+
+    // TODO remove the constants and use the ones from the nanopub library instead
 
     /**
      * Admin graph IRI.
