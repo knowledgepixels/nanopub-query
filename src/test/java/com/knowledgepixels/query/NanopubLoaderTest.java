@@ -1,15 +1,22 @@
 package com.knowledgepixels.query;
 
+import org.apache.http.client.HttpClient;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
+import org.nanopub.MalformedNanopubException;
+import org.nanopub.Nanopub;
+import org.nanopub.NanopubImpl;
+import org.nanopub.extra.server.GetNanopub;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class NanopubLoaderTest {
@@ -17,7 +24,7 @@ class NanopubLoaderTest {
     private static final String nanopubUri = "https://w3id.org/np/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA";
 
     @Test
-    void testLoadNanopubAlreadyLoaded() {
+    void loadWhenNanopubAlreadyLoaded() {
         try (MockedStatic<NanopubLoader> mockedLoader = mockStatic(NanopubLoader.class, CALLS_REAL_METHODS)) {
             mockedLoader.when(() -> NanopubLoader.isNanopubLoaded(nanopubUri)).thenReturn(true);
 
@@ -29,6 +36,23 @@ class NanopubLoaderTest {
 
             System.setErr(originalErr);
             assertTrue(errContent.toString().contains(nanopubUri));
+        }
+    }
+
+    @Test
+    void loadWhenNanopubNotLoaded() throws MalformedNanopubException, IOException {
+        try (MockedStatic<NanopubLoader> mockedLoader = mockStatic(NanopubLoader.class, CALLS_REAL_METHODS);
+             MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
+
+            HttpClient httpClient = mock(HttpClient.class);
+            Nanopub nanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+
+            mockedLoader.when(() -> NanopubLoader.isNanopubLoaded(nanopubUri)).thenReturn(false);
+            mockedLoader.when(NanopubLoader::getHttpClient).thenReturn(httpClient);
+            mockedGetNanopub.when(() -> GetNanopub.get(nanopubUri, httpClient)).thenReturn(nanopub);
+
+            NanopubLoader.load(nanopubUri);
+            mockedLoader.verify(() -> NanopubLoader.load(nanopub, -1), times(1));
         }
     }
 
@@ -54,6 +78,19 @@ class NanopubLoaderTest {
 
             assertTrue(NanopubLoader.isNanopubLoaded(nanopubUri));
         }
+    }
+
+    // TODO mock network calls
+    @Test
+    void getHttpClientWhenNull() {
+        assertNotNull(NanopubLoader.getHttpClient());
+    }
+
+    // TODO mock network calls
+    @Test
+    void getHttpClientWhenNotNull() {
+        HttpClient httpClient = NanopubLoader.getHttpClient();
+        assertSame(httpClient, NanopubLoader.getHttpClient());
     }
 
 }

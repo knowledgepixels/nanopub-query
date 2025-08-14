@@ -51,7 +51,7 @@ public class NanopubLoader {
      *
      * @return the HTTP client
      */
-    private static HttpClient getHttpClient() {
+    static HttpClient getHttpClient() {
         if (httpClient == null) {
             RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000).setConnectionRequestTimeout(100).setSocketTimeout(1000).setCookieSpec(CookieSpecs.STANDARD).build();
             httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
@@ -594,7 +594,6 @@ public class NanopubLoader {
         }
     }
 
-    // TODO remove this method and use SignatureUtils.hasValidSignature() instead?
     private static boolean hasValidSignature(NanopubSignatureElement el) {
         try {
             if (el != null && SignatureUtils.hasValidSignature(el) && el.getPublicKeyString() != null) {
