@@ -1,16 +1,20 @@
 package com.knowledgepixels.query;
 
+import com.github.jsonldjava.shaded.com.google.common.hash.Hashing;
 import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
-import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.util.Values;
 import org.eclipse.rdf4j.query.*;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.knowledgepixels.query.Utils.HASH_PREFIX;
@@ -23,11 +27,10 @@ import static org.mockito.Mockito.when;
 class UtilsTest {
 
     private final String mockValueString = "value";
-    private final Value mockValue = SimpleValueFactory.getInstance().createLiteral("testValue");
+    private final Value mockValue = Values.literal("testValue");
 
     private final String existingHash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
     private final String nonExistingHash = "e33d45cb2fa55238c2ef0ff905d407fe26c9343ff36b44f9b03cb6e44d6cb62c";
-
 
     @Test
     void getObjectForHash() {
@@ -64,10 +67,10 @@ class UtilsTest {
         TupleQueryResult mockResult = mock(TupleQueryResult.class);
         BindingSet mockBinding = mock(BindingSet.class);
 
-        IRI mockGraph = SimpleValueFactory.getInstance().createIRI("http://knowledgepixels.com/graph");
-        IRI mockSubj = SimpleValueFactory.getInstance().createIRI("http://knowledgepixels.com/subject");
-        IRI mockPred = SimpleValueFactory.getInstance().createIRI("http://knowledgepixels.com/predicate");
-        Value mockObject = SimpleValueFactory.getInstance().createLiteral("testValue");
+        IRI mockGraph = Values.iri("https://knowledgepixels.com/graph");
+        IRI mockSubj = Values.iri("https://knowledgepixels.com/subject");
+        IRI mockPred = Values.iri("https://knowledgepixels.com/predicate");
+        Value mockObject = Values.literal("testValue");
 
         when(mockConnection.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + mockGraph.stringValue() + "> { <" + mockSubj.stringValue() + "> <" + mockPred.stringValue() + "> ?o } }")).thenReturn(mockQuery);
         when(mockQuery.evaluate()).thenReturn(mockResult);
@@ -88,6 +91,32 @@ class UtilsTest {
 
     @Test
     void getObjectsForPattern() {
+        RepositoryConnection mockConnection = mock(RepositoryConnection.class);
+        TupleQuery mockQuery = mock(TupleQuery.class);
+        TupleQueryResult mockResult = mock(TupleQueryResult.class);
+        BindingSet mockBinding = mock(BindingSet.class);
+
+        IRI mockGraph = Values.iri("https://knowledgepixels.com/graph");
+        IRI mockSubj = Values.iri("https://knowledgepixels.com/subject");
+        IRI mockPred = Values.iri("https://knowledgepixels.com/predicate");
+        List<Value> mockObject = List.of(Values.literal("testValue1"), Values.literal("testValue2"));
+
+        when(mockConnection.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + mockGraph.stringValue() + "> { <" + mockSubj.stringValue() + "> <" + mockPred.stringValue() + "> ?o } }")).thenReturn(mockQuery);
+        when(mockQuery.evaluate()).thenReturn(mockResult);
+
+        when(mockResult.hasNext()).thenReturn(true, true, false);
+        when(mockResult.next()).thenReturn(mockBinding);
+        when(mockBinding.getBinding("o")).thenReturn(mock(Binding.class));
+        when(mockBinding.getBinding("o").getValue()).thenReturn(mockObject.get(0), mockObject.get(1));
+
+        // Test case: Match found
+        List<Value> result = Utils.getObjectsForPattern(mockConnection, mockGraph, mockSubj, mockPred);
+        assertEquals(mockObject, result);
+
+        // Test case: No match found
+        when(mockResult.hasNext()).thenReturn(false);
+        List<Value> noResult = Utils.getObjectsForPattern(mockConnection, mockGraph, mockSubj, mockPred);
+        assertEquals(List.of(), noResult);
     }
 
     @Test
@@ -106,6 +135,10 @@ class UtilsTest {
             assertEquals(defaultValue, Utils.getEnvString("NON_EXISTING_VAR", defaultValue));
             assertEquals(defaultValue, Utils.getEnvString("EMPTY_VAR", defaultValue));
             assertEquals(defaultValue, Utils.getEnvString("NULL_VAR", defaultValue));
+
+            mockedEnvUtils.when(EnvironmentUtils::getProcEnvironment).thenThrow(IOException.class);
+            assertEquals(defaultValue, Utils.getEnvString("EXISTING_VAR", defaultValue));
+
         }
     }
 
@@ -159,7 +192,7 @@ class UtilsTest {
                 when(mockResult.next()).thenReturn(mockBindingSet);
 
                 // Mock BindingSet values
-                Value mockSubject = SimpleValueFactory.getInstance().createIRI(HASH_PREFIX + UtilsTest.this.existingHash);
+                Value mockSubject = Values.iri(HASH_PREFIX + UtilsTest.this.existingHash);
 
                 when(mockBindingSet.getBinding("s")).thenReturn(mock(Binding.class));
                 when(mockBindingSet.getBinding("o")).thenReturn(mock(Binding.class));
@@ -172,6 +205,48 @@ class UtilsTest {
                 Map<String, Value> result = Utils.getHashToObjectMap();
                 assertEquals(mockMap, result);
             }
+        }
+    }
+
+    @Test
+    void getValueFromAValueObject() {
+        Value value = Values.literal("this is a test value");
+        Value retrievedValue = Utils.getValue(value);
+        assertEquals(value, retrievedValue);
+    }
+
+    @Test
+    void getValueFromAnObject() {
+        String value = "this is a test value as a string";
+        assertEquals(Utils.getValue(value), Values.literal(value));
+    }
+
+    @Test
+    void createHashWhenNotExists() {
+        try (MockedStatic<Utils> mockedUtils = Mockito.mockStatic(Utils.class, Mockito.CALLS_REAL_METHODS);
+             MockedStatic<TripleStore> mockedTripleStore = Mockito.mockStatic(TripleStore.class)) {
+            RepositoryConnection mockConnection = mock(RepositoryConnection.class);
+
+            Object obj = "testObject";
+            String expectedHash = Hashing.sha256().hashString(obj.toString(), StandardCharsets.UTF_8).toString();
+
+            mockedTripleStore.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mockConnection);
+            mockedUtils.when(Utils::getHashToObjectMap).thenReturn(new HashMap<>());
+
+            String resultHash = Utils.createHash(obj);
+            assertEquals(expectedHash, resultHash);
+        }
+    }
+
+    @Test
+    void createHashWhenAlreadyExists() {
+        try (MockedStatic<Utils> mockedUtils = Mockito.mockStatic(Utils.class, Mockito.CALLS_REAL_METHODS)) {
+            Object obj = "testObject";
+            String expectedHash = Hashing.sha256().hashString(obj.toString(), StandardCharsets.UTF_8).toString();
+            mockedUtils.when(Utils::getHashToObjectMap).thenReturn(Map.of(expectedHash, Values.literal("existingValue")));
+            String resultHash = Utils.createHash(obj);
+            assertEquals(expectedHash, resultHash);
         }
     }
 
