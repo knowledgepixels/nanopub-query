@@ -4,8 +4,8 @@ services:
     image: nanopub/query
     restart: unless-stopped
     ports:
-      - 9300:9300
-      - 9393:9393
+      - "9300:9300"
+      - "9393:9393"
       # :9394 is only accessible from localhost as it is used for the /metrics endpoint
       - "127.0.0.1:9394:9394"
     volumes:
@@ -17,8 +17,8 @@ services:
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/
       - REGISTRY_FIXED_URL=https://registry.knowledgepixels.com/
       - RDF4J_PROXY_HOST=rdf4j
-#     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
-#     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
+    #     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
+    #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
     logging:
       options:
         max-size: "10m"
@@ -26,7 +26,7 @@ services:
 
   rdf4j:
     image: nanopub/rdf4j-workbench:5.1.3-SNAPSHOT
-#   image: eclipse/rdf4j-workbench:5.0.3
+    #   image: eclipse/rdf4j-workbench:5.0.3
     restart: unless-stopped
     environment:
       - JAVA_OPTS=-Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000
@@ -36,7 +36,7 @@ services:
       - ./data/info:/var/info
       - ./entrypoint:/var/entrypoint
     ports:
-      - 8081:8080
+      - "8081:8080"
     entrypoint: /var/entrypoint/init.sh
     healthcheck:
       test: >
@@ -54,10 +54,10 @@ services:
 
   grlc:
     image: clariah/grlc:v1.3.9  # causes error locally ("failed to register layer: failed to Lchown ..."), but seems to work on the servers
-#    image: clariah/grlc:v1.3.8  # works locally but leads to problems on the servers
+    #    image: clariah/grlc:v1.3.8  # works locally but leads to problems on the servers
     restart: unless-stopped
-#   ports:
-#     - 8088:80
+    #   ports:
+    #     - 8088:80
     logging:
       options:
         max-size: "10m"

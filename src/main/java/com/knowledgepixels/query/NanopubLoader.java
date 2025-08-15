@@ -294,9 +294,7 @@ public class NanopubLoader {
         textStatements.addAll(invalidatingStatements);
 
         var runningTasks = new ArrayList<Future<?>>();
-        Consumer<Runnable> runTask = t -> {
-            runningTasks.add(loadingPool.submit(t));
-        };
+        Consumer<Runnable> runTask = t -> runningTasks.add(loadingPool.submit(t));
 
         if (timestamp != null) {
             if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.knowledgepixels</groupId>
@@ -15,7 +16,10 @@
     </license>
   </licenses>
   <developers>
-    <developer><name>Tobias Kuhn</name><url>https://www.tkuhn.org/</url></developer>
+    <developer>
+      <name>Tobias Kuhn</name>
+      <url>https://www.tkuhn.org/</url>
+    </developer>
   </developers>
 
 
@@ -81,6 +85,7 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-junit5</artifactId>
+      <version>${vertx.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -101,11 +106,11 @@
       <version>1.78</version>
     </dependency>
     <!-- Temporary: dependency on Jitpack for snapshot builds -->
-<!--    <dependency>-->
-<!--      <groupId>com.github.Nanopublication</groupId>-->
-<!--      <artifactId>nanopub-java</artifactId>-->
-<!--      <version>e4e430b3b5f09caa1c852e67a15a86bfc7b5a986</version>-->
-<!--    </dependency>-->
+    <!--    <dependency>-->
+    <!--      <groupId>com.github.Nanopublication</groupId>-->
+    <!--      <artifactId>nanopub-java</artifactId>-->
+    <!--      <version>e4e430b3b5f09caa1c852e67a15a86bfc7b5a986</version>-->
+    <!--    </dependency>-->
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-exec</artifactId>
@@ -127,12 +132,12 @@
       <artifactId>micrometer-registry-prometheus</artifactId>
       <version>1.10.13</version>
     </dependency>
-      <dependency>
-          <groupId>org.mockito</groupId>
-          <artifactId>mockito-core</artifactId>
-          <version>5.3.1</version>
-          <scope>test</scope>
-      </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>5.3.1</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <scm>
@@ -184,7 +189,7 @@
                     <Main-Verticle>${main.verticle}</Main-Verticle>
                   </manifestEntries>
                 </transformer>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
               </transformers>
               <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-fat.jar
               </outputFile>

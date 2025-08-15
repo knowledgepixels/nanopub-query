@@ -3,8 +3,6 @@ package com.knowledgepixels.query;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.MultiNanopubRdfHandler;
-import org.nanopub.MultiNanopubRdfHandler.NanopubHandler;
-import org.nanopub.Nanopub;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -16,7 +14,8 @@ import java.io.IOException;
  */
 public class LocalNanopubLoader {
 
-    private LocalNanopubLoader() {}  // no instances allowed
+    private LocalNanopubLoader() {
+    }  // no instances allowed
 
     /**
      * File containing URIs of nanopubs to load.
@@ -74,12 +73,7 @@ public class LocalNanopubLoader {
             System.err.println("No local nanopub file found.");
         } else {
             try {
-                MultiNanopubRdfHandler.process(RDFFormat.TRIG, loadNanopubsFile, new NanopubHandler() {
-                    @Override
-                    public void handleNanopub(Nanopub np) {
-                        NanopubLoader.load(np, -1);
-                    }
-                });
+                MultiNanopubRdfHandler.process(RDFFormat.TRIG, loadNanopubsFile, np -> NanopubLoader.load(np, -1));
             } catch (IOException | MalformedNanopubException ex) {
                 ex.printStackTrace();
             }
