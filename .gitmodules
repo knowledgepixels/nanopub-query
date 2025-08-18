@@ -1,0 +1,3 @@
+[submodule "testsuite"]
+	path = src/test/resources/testsuite
+	url = git@github.com:Nanopublication/nanopub-testsuite.git
