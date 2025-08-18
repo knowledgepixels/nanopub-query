@@ -55,7 +55,7 @@ public class LocalNanopubLoader {
         return true;
     }
 
-    private static void load() {
+    static void load() {
         if (!loadUrisFile.exists()) {
             System.err.println("No local nanopub URI file found.");
         } else {
