@@ -40,51 +40,8 @@ import java.util.function.Consumer;
  */
 public class NanopubLoader {
 
-    private NanopubLoader() {
-    }  // no instances allowed
-
     private static HttpClient httpClient;
     private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
-
-    /**
-     * Get the HTTP client used for fetching nanopublications.
-     *
-     * @return the HTTP client
-     */
-    static HttpClient getHttpClient() {
-        if (httpClient == null) {
-            RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000).setConnectionRequestTimeout(100).setSocketTimeout(1000).setCookieSpec(CookieSpecs.STANDARD).build();
-            httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
-        }
-        return httpClient;
-    }
-
-    /**
-     * Load the given nanopublication into the database.
-     *
-     * @param nanopubUri Nanopublication identifier (URI)
-     */
-    public static void load(String nanopubUri) {
-        if (isNanopubLoaded(nanopubUri)) {
-            System.err.println("Already loaded: " + nanopubUri);
-        } else {
-            Nanopub np = GetNanopub.get(nanopubUri, getHttpClient());
-            load(np, -1);
-        }
-    }
-
-    /**
-     * Load a nanopub into the database.
-     *
-     * @param np      the nanopub to load
-     * @param counter the load counter, only used for logging (or -1 if not known)
-     * @throws RDF4JException if the loading fails
-     */
-    public static void load(Nanopub np, long counter) throws RDF4JException {
-    	NanopubLoader loader = new NanopubLoader(np, counter);
-    	loader.executeLoading();
-    }
-
     private Nanopub np;
     private NanopubSignatureElement el = null;
     private List<Statement> metaStatements = new ArrayList<>();
@@ -97,8 +54,8 @@ public class NanopubLoader {
     private List<String> notes = new ArrayList<>();
     private boolean aborted = false;
 
-    private NanopubLoader(Nanopub np, long counter) {
-    	this.np = np;
+    NanopubLoader(Nanopub np, long counter) {
+        this.np = np;
         if (counter >= 0) {
             System.err.println("Loading " + counter + ": " + np.getUri());
         } else {
@@ -307,52 +264,91 @@ public class NanopubLoader {
         textStatements.addAll(invalidatingStatements);
     }
 
+    /**
+     * Get the HTTP client used for fetching nanopublications.
+     *
+     * @return the HTTP client
+     */
+    static HttpClient getHttpClient() {
+        if (httpClient == null) {
+            RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000).setConnectionRequestTimeout(100).setSocketTimeout(1000).setCookieSpec(CookieSpecs.STANDARD).build();
+            httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
+        }
+        return httpClient;
+    }
+
+    /**
+     * Load the given nanopublication into the database.
+     *
+     * @param nanopubUri Nanopublication identifier (URI)
+     */
+    public static void load(String nanopubUri) {
+        if (isNanopubLoaded(nanopubUri)) {
+            System.err.println("Already loaded: " + nanopubUri);
+        } else {
+            Nanopub np = GetNanopub.get(nanopubUri, getHttpClient());
+            load(np, -1);
+        }
+    }
+
+    /**
+     * Load a nanopub into the database.
+     *
+     * @param np      the nanopub to load
+     * @param counter the load counter, only used for logging (or -1 if not known)
+     * @throws RDF4JException if the loading fails
+     */
+    public static void load(Nanopub np, long counter) throws RDF4JException {
+        NanopubLoader loader = new NanopubLoader(np, counter);
+        loader.executeLoading();
+    }
+
     private void executeLoading() {
         var runningTasks = new ArrayList<Future<?>>();
         Consumer<Runnable> runTask = t -> runningTasks.add(loadingPool.submit(t));
 
         for (String note : notes) {
-        	loadNoteToRepo(np.getUri(), note);
+            loadNoteToRepo(np.getUri(), note);
         }
 
         if (!aborted) {
-	        if (timestamp != null) {
-	            if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
-	                runTask.accept(() -> loadNanopubToLatest(allStatements));
-	            }
-	        }
-	
-	        runTask.accept(() -> loadNanopubToRepo(np.getUri(), textStatements, "text"));
-	        runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "full"));
-	        runTask.accept(() -> loadNanopubToRepo(np.getUri(), metaStatements, "meta"));
-	
-	        runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString())));
-	//		loadNanopubToRepo(np.getUri(), textStatements, "text-pubkey_" + Utils.createHash(el.getPublicKeyString()));
-	        for (IRI typeIri : NanopubUtils.getTypes(np)) {
-	            // Exclude locally minted IRIs:
-	            if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-	            if (!typeIri.stringValue().matches("https?://.*")) continue;
-	            runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri)));
-	//			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
-	        }
-	//		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
-	//			// Exclude locally minted IRIs:
-	//			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-	//			if (!creatorIri.stringValue().matches("https?://.*")) continue;
-	//			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(creatorIri));
-	//			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(creatorIri));
-	//		}
-	//		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
-	//			// Exclude locally minted IRIs:
-	//			if (authorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-	//			if (!authorIri.stringValue().matches("https?://.*")) continue;
-	//			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(authorIri));
-	//			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(authorIri));
-	//		}
-	
-	        for (Statement st : invalidateStatements) {
-	            runTask.accept(() -> loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));
-	        }
+            if (timestamp != null) {
+                if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
+                    runTask.accept(() -> loadNanopubToLatest(allStatements));
+                }
+            }
+
+            runTask.accept(() -> loadNanopubToRepo(np.getUri(), textStatements, "text"));
+            runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "full"));
+            runTask.accept(() -> loadNanopubToRepo(np.getUri(), metaStatements, "meta"));
+
+            runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString())));
+            //		loadNanopubToRepo(np.getUri(), textStatements, "text-pubkey_" + Utils.createHash(el.getPublicKeyString()));
+            for (IRI typeIri : NanopubUtils.getTypes(np)) {
+                // Exclude locally minted IRIs:
+                if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+                if (!typeIri.stringValue().matches("https?://.*")) continue;
+                runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri)));
+                //			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
+            }
+            //		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
+            //			// Exclude locally minted IRIs:
+            //			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+            //			if (!creatorIri.stringValue().matches("https?://.*")) continue;
+            //			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(creatorIri));
+            //			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(creatorIri));
+            //		}
+            //		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
+            //			// Exclude locally minted IRIs:
+            //			if (authorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+            //			if (!authorIri.stringValue().matches("https?://.*")) continue;
+            //			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(authorIri));
+            //			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(authorIri));
+            //		}
+
+            for (Statement st : invalidateStatements) {
+                runTask.accept(() -> loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));
+            }
         }
 
         // Wait for all loading tasks to complete before returning
@@ -556,7 +552,7 @@ public class NanopubLoader {
         return conn;
     }
 
-    private static List<Statement> getInvalidatingStatements(IRI npId) {
+    static List<Statement> getInvalidatingStatements(IRI npId) {
         List<Statement> invalidatingStatements = new ArrayList<>();
         boolean success = false;
         while (!success) {
@@ -612,7 +608,7 @@ public class NanopubLoader {
         }
     }
 
-    private static boolean hasValidSignature(NanopubSignatureElement el) {
+    static boolean hasValidSignature(NanopubSignatureElement el) {
         try {
             if (el != null && SignatureUtils.hasValidSignature(el) && el.getPublicKeyString() != null) {
                 return true;
