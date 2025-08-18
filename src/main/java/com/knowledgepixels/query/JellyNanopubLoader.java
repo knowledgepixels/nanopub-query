@@ -32,7 +32,7 @@ public class JellyNanopubLoader {
      */
     public static final int UPDATES_POLL_INTERVAL = 2000;
 
-    private enum LoadingType {
+    enum LoadingType {
         INITIAL,
         UPDATE,
     }
@@ -131,7 +131,7 @@ public class JellyNanopubLoader {
      * @param afterCounter the last known nanopub counter to have been committed in the DB
      * @param type         the type of loading operation (initial or update)
      */
-    private static void loadBatch(long afterCounter, LoadingType type) {
+    static void loadBatch(long afterCounter, LoadingType type) {
         CloseableHttpResponse response;
         try {
             var request = new HttpGet(makeStreamFetchUrl(afterCounter));
@@ -221,7 +221,7 @@ public class JellyNanopubLoader {
      *
      * @return the current load counter
      */
-    private static long fetchRegistryLoadCounter() {
+    static long fetchRegistryLoadCounter() {
         int tries = 0;
         long counter = -1;
         while (counter == -1 && tries < MAX_RETRIES_METADATA) {
