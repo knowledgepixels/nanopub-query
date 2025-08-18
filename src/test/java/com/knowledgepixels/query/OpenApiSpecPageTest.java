@@ -31,7 +31,7 @@ class OpenApiSpecPageTest {
     @Test
     void constructWithParameters() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "latest");
@@ -43,7 +43,7 @@ class OpenApiSpecPageTest {
     @Test
     void getSpec() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             OpenApiSpecPage page = new OpenApiSpecPage(baseUri + artifactCode + "/" + queryName, parameters);

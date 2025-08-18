@@ -31,7 +31,7 @@ class GrlcSpecPageTest {
     @Test
     void constructWithParameters() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "latest");
@@ -43,7 +43,7 @@ class GrlcSpecPageTest {
     @Test
     void getSpecWithEmptyQueryPart() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/", MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
@@ -62,7 +62,7 @@ class GrlcSpecPageTest {
     @Test
     void getSpecWithRqExtension() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName + ".rq", MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
@@ -97,7 +97,7 @@ class GrlcSpecPageTest {
     @Test
     void getSpecWithInvalidQueryPart() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/invalid-query.rq", MultiMap.caseInsensitiveMultiMap());
             assertNull(page.getSpec());
