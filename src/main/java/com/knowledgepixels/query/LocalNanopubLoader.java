@@ -35,6 +35,7 @@ public class LocalNanopubLoader {
      * @return true if local nanopubs were found and loaded, false otherwise
      */
     public static boolean init() {
+        // FIXME should this be loadNanopubsFile.exists() || loadUrisFile.exists()?
         if (!(loadNanopubsFile.exists() || loadNanopubsFile.exists())) {
             System.err.println("No local nanopub files for loading found. Moving on to loading " +
                     "via Jelly...");

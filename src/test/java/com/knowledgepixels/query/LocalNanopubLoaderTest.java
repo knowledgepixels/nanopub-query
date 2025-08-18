@@ -13,8 +13,7 @@ import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.CALLS_REAL_METHODS;
-import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.*;
 
 class LocalNanopubLoaderTest {
 
@@ -85,12 +84,7 @@ class LocalNanopubLoaderTest {
     }
 
     @Test
-    void loadWithNoNanopubsFile() throws IOException {
-        new File(loadDirectory).mkdirs();
-        File loadUrisFile = new File(LocalNanopubLoader.loadUrisFile.getAbsolutePath());
-        loadUrisFile.createNewFile();
-        assertTrue(loadUrisFile.exists());
-
+    void loadWithNoNanopubsFile() {
         File loadNanopubsFile = new File(LocalNanopubLoader.loadNanopubsFile.getAbsolutePath());
         assertFalse(loadNanopubsFile.exists());
 
@@ -102,6 +96,29 @@ class LocalNanopubLoaderTest {
 
         System.setErr(originalErr);
         assertTrue(errContent.toString().contains("No local nanopub file found."));
+    }
+
+    @Test
+    void loadWithUrisFile() throws IOException {
+        File directory = new File(loadDirectory);
+        if (!directory.exists()) {
+            boolean created = directory.mkdirs();
+            if (!created) {
+                throw new IOException("Failed to create directory: " + directory.getAbsolutePath());
+            }
+        }
+        File loadUrisFile = new File(LocalNanopubLoader.loadUrisFile.getAbsolutePath());
+        loadUrisFile.createNewFile();
+        try (PrintStream out = new PrintStream(loadUrisFile)) {
+            out.println("https://w3id.org/np/RAAADa2kwJXzW0NH3yqeZ8YAJHzFQTg2NRJV-R2u5LTbU");
+            out.println("https://w3id.org/np/RAAADa2kwJXzW0NH3yqeZ8YAJHzFQTg2NRJV-R2u5LTbU");
+        }
+
+        try (MockedStatic<NanopubLoader> mockedLoader = mockStatic(NanopubLoader.class)) {
+            mockedLoader.when(() -> NanopubLoader.load(anyString())).thenAnswer(invocation -> null);
+            LocalNanopubLoader.load();
+            mockedLoader.verify(() -> NanopubLoader.load(anyString()), times(2));
+        }
     }
 
 }
