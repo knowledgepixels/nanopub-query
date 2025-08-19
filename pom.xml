@@ -207,21 +207,11 @@
         <version>${exec-maven-plugin.version}</version>
         <executions>
           <execution>
-            <id>run-main-verticle</id>
-            <configuration>
-              <mainClass>io.vertx.core.Launcher</mainClass>
-              <arguments>
-                <argument>run</argument>
-                <argument>${main.verticle}</argument>
-              </arguments>
-            </configuration>
+            <id>git-submodule-update</id>
+            <phase>generate-test-resources</phase>
             <goals>
               <goal>exec</goal>
             </goals>
-          </execution>
-          <execution>
-            <id>git-submodule-update</id>
-            <phase>test</phase>
             <configuration>
               <executable>git</executable>
               <arguments>
@@ -231,9 +221,6 @@
                 <argument>--recursive</argument>
               </arguments>
             </configuration>
-            <goals>
-              <goal>exec</goal>
-            </goals>
           </execution>
         </executions>
       </plugin>
