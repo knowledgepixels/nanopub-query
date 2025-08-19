@@ -231,6 +231,9 @@
                 <argument>--recursive</argument>
               </arguments>
             </configuration>
+            <goals>
+              <goal>exec</goal>
+            </goals>
           </execution>
         </executions>
       </plugin>
