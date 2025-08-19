@@ -207,12 +207,26 @@
         <version>${exec-maven-plugin.version}</version>
         <executions>
           <execution>
+            <id>run-main-verticle</id>
+            <configuration>
+              <mainClass>io.vertx.core.Launcher</mainClass>
+              <arguments>
+                <argument>run</argument>
+                <argument>${main.verticle}</argument>
+              </arguments>
+            </configuration>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+          </execution>
+          <execution>
             <id>git-submodule-update</id>
             <phase>generate-test-resources</phase>
             <goals>
               <goal>exec</goal>
             </goals>
             <configuration>
+              <skip>${maven.test.skip}</skip>
               <executable>git</executable>
               <arguments>
                 <argument>submodule</argument>
