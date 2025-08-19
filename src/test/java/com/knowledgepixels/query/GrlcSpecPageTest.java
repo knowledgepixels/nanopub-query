@@ -23,6 +23,29 @@ class GrlcSpecPageTest {
     private final String queryName = "get-participation";
 
     @Test
+    void constructWithNullApiVersion() throws MalformedNanopubException, IOException {
+        try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
+            mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
+            MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
+            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName, parameters);
+            assertNotNull(page);
+        }
+    }
+
+    @Test
+    void constructWithSpecificApiVersion() throws MalformedNanopubException, IOException {
+        try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
+            mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
+            MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
+            parameters.add("api-version", "random-version");
+            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName, parameters);
+            assertNotNull(page);
+        }
+    }
+
+    @Test
     void constructWithInvalidUrl() {
         GrlcSpecPage page = new GrlcSpecPage("https://invalid-url", MultiMap.caseInsensitiveMultiMap());
         assertNull(page.getSpec());
