@@ -1,0 +1,31 @@
+>
+Source_FilesSessionsNanopub_Query > com.knowledgepixels.query
+****** com.knowledgepixels.query ******
+Element                         Missed       Cov. Missed   Cov. Missed Cxty Missed Lines Missed Methods Missed Classes
+                                Instructions      Branches
+Total                           3,937 of     34%  339 of   30%  257    364  794    1,240 64     120     5      18
+                                6,028             488
+NanopubLoader                   [1,720][236] 12%  [162]    7%   102    111  284    338   17     23      0      1
+                                                  [14]
+MainVerticle                    [997]        0%   [56]     0%   53     53   241    241   25     25      1      1
+TripleStore                     [444][108]   19%  [42][4]  8%   29     33   95     124   6      10      0      1
+JellyNanopubLoader              [355][122]   25%  [31][11] 26%  26     31   97     135   6      10      0      1
+MainVerticle.new                [104]        0%   [6]      0%   6      6    20     20    3      3       1      1
+ProxyInterceptor()_{...}
+StatusController                [98][274]    73%  [15][11] 42%  10     23   18     65    1      10      0      1
+OpenApiSpecPage                 [61][372]    85%  [8][24]  75%  7      18   11     82    0      2       0      1
+Utils                           [51][181]    78%  [2][16]  88%  1      19   9      51    0      10      0      1
+MainVerticle.new                [41]         0%            n/a  3      3    8      8     3      3       1      1
+ProxyInterceptor()_{...}
+JellyNanopubLoader.LoadingType  [24]         0%            n/a  1      1    3      3     1      1       1      1
+LocalNanopubLoader              [91]         85%  [11]     91%  2      10   4      32    1      4       0      1
+NanopubLoader.RepoStatus                     0%            n/a  1      1    1      1     1      1       1      1
+GrlcSpecPage                    [365]        97%  [14][40] 74%  14     31   4      71    0      4       0      1
+OpenApiSpecPage.new
+AbstractSimpleQueryModelVisitor [24]         80%  [2][4]   66%  2      5    1      5     0      2       0      1
+()_{...}
+MetricsCollector                [191]        100% [6]      100% 0      7    0      39    0      4       0      1
+StatusController.LoadingStatus  [57]         100% [8]      100% 0      8    0      10    0      4       0      1
+StatusController.State          [44]         100%          n/a  0      1    0      9     0      1       0      1
+ApplicationLauncher             [26]         100%          n/a  0      3    0      9     0      3       0      1
+Created with JaCoCo 0.8.13.202504020838

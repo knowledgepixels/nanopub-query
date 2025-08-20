@@ -1,0 +1,10 @@
+>
+SessionsNanopub Query
+****** Nanopub Query ******
+Element                   Missed       Cov. Missed   Cov. Missed Cxty Missed Lines Missed Methods Missed Classes
+                          Instructions      Branches
+Total                     3,937 of     34%  339 of   30%  257    364  794    1,240 64     120     5      18
+                          6,028             488
+com.knowledgepixels.query [3,937]      34%  [339]    30%  257    364  794    1,240 64     120     5      18
+                          [2,091]           [149]
+Created with JaCoCo 0.8.13.202504020838
