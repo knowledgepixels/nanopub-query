@@ -20,10 +20,7 @@ public class ApplicationLauncher extends Launcher {
     }
 
     /**
-     * This method is called before Vert.x is started.
-     * It configures the Vert.x options to enable Micrometer metrics.
-     *
-     * @param options Vert.x options
+     * {@inheritDoc}
      */
     @Override
     public void beforeStartingVertx(VertxOptions options) {

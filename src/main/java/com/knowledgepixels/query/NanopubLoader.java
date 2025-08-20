@@ -51,7 +51,7 @@ public class NanopubLoader {
      *
      * @return the HTTP client
      */
-    private static HttpClient getHttpClient() {
+    static HttpClient getHttpClient() {
         if (httpClient == null) {
             RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000).setConnectionRequestTimeout(100).setSocketTimeout(1000).setCookieSpec(CookieSpecs.STANDARD).build();
             httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
@@ -294,9 +294,7 @@ public class NanopubLoader {
         textStatements.addAll(invalidatingStatements);
 
         var runningTasks = new ArrayList<Future<?>>();
-        Consumer<Runnable> runTask = t -> {
-            runningTasks.add(loadingPool.submit(t));
-        };
+        Consumer<Runnable> runTask = t -> runningTasks.add(loadingPool.submit(t));
 
         if (timestamp != null) {
             if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
@@ -348,8 +346,8 @@ public class NanopubLoader {
     }
 
     private static Long lastUpdateOfLatestRepo = null;
-    private static long THIRTY_DAYS = 1000l * 60 * 60 * 24 * 30;
-    private static long ONE_HOUR = 1000l * 60 * 60;
+    private static long THIRTY_DAYS = 1000L * 60 * 60 * 24 * 30;
+    private static long ONE_HOUR = 1000L * 60 * 60;
 
     private static void loadNanopubToLatest(List<Statement> statements) {
         boolean success = false;
@@ -629,7 +627,7 @@ public class NanopubLoader {
      * @param npId the nanopub ID
      * @return true if the nanopub is loaded, false otherwise
      */
-    private static boolean isNanopubLoaded(String npId) {
+    static boolean isNanopubLoaded(String npId) {
         boolean loaded = false;
         RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
         try (conn) {
@@ -643,6 +641,8 @@ public class NanopubLoader {
     }
 
     private static ValueFactory vf = SimpleValueFactory.getInstance();
+
+    // TODO remove the constants and use the ones from the nanopub library instead
 
     /**
      * Admin graph IRI.

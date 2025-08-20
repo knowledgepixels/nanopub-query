@@ -24,12 +24,13 @@ import java.util.Map;
  */
 public class Utils {
 
-    private Utils() {}  // no instances allowed
+    private Utils() {
+    }  // no instances allowed
 
-    private static ValueFactory vf = SimpleValueFactory.getInstance();
+    private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
     /**
-     * IRI for the predicate thatindicates that a hash value is associated with an object.
+     * IRI for the predicate that indicates that a hash value is associated with an object.
      */
     public static final IRI IS_HASH_OF = vf.createIRI("http://purl.org/nanopub/admin/isHashOf");
 
@@ -165,7 +166,9 @@ public class Utils {
     public static String getEnvString(String envVarName, String defaultValue) {
         try {
             String s = EnvironmentUtils.getProcEnvironment().get(envVarName);
-            if (s != null && !s.isEmpty()) return s;
+            if (s != null && !s.isEmpty()) {
+                return s;
+            }
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -182,7 +185,9 @@ public class Utils {
     public static int getEnvInt(String envVarName, int defaultValue) {
         try {
             String s = getEnvString(envVarName, null);
-            if (s != null && !s.isEmpty()) return Integer.parseInt(s);
+            if (s != null) {
+                return Integer.parseInt(s);
+            }
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -192,24 +197,24 @@ public class Utils {
     /**
      * Default query to be shown in YASGUI client.
      */
-    public static final String defaultQuery =
-            "prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n"
-                    + "prefix dct: <http://purl.org/dc/terms/>\n"
-                    + "prefix np: <http://www.nanopub.org/nschema#>\n"
-                    + "prefix npa: <http://purl.org/nanopub/admin/>\n"
-                    + "prefix npx: <http://purl.org/nanopub/x/>\n"
-                    + "\n"
-                    + "select * where {\n"
-                    + "## Info about this repo:\n"
-                    + "  npa:thisRepo ?pred ?obj .\n"
-                    + "## Search for nanopublications:\n"
-                    + "# graph npa:graph {\n"
-                    + "#   ?np npa:hasValidSignatureForPublicKey ?pubkey .\n"
-                    + "#   filter not exists { ?npx npx:invalidates ?np ; npa:hasValidSignatureForPublicKey ?pubkey . }\n"
-                    + "#   ?np dct:created ?date .\n"
-                    + "#   ?np np:hasAssertion ?a .\n"
-                    + "#   optional { ?np rdfs:label ?label }\n"
-                    + "# }\n"
-                    + "} limit 10";
+    public static final String defaultQuery = """
+            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            prefix dct: <http://purl.org/dc/terms/>
+            prefix np: <http://www.nanopub.org/nschema#>
+            prefix npa: <http://purl.org/nanopub/admin/>
+            prefix npx: <http://purl.org/nanopub/x/>
+            
+            select * where {
+            ## Info about this repo:
+              npa:thisRepo ?pred ?obj .
+            ## Search for nanopublications:
+            # graph npa:graph {
+            #   ?np npa:hasValidSignatureForPublicKey ?pubkey .
+            #   filter not exists { ?npx npx:invalidates ?np ; npa:hasValidSignatureForPublicKey ?pubkey . }
+            #   ?np dct:created ?date .
+            #   ?np np:hasAssertion ?a .
+            #   optional { ?np rdfs:label ?label }
+            # }
+            } limit 10""";
 
 }

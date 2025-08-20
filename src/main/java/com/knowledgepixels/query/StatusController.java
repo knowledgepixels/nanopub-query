@@ -4,6 +4,8 @@ import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
+import java.util.Objects;
+
 /**
  * Class to control the load status of the database.
  */
@@ -61,6 +63,21 @@ public class StatusController {
         public static LoadingStatus of(State state, long loadCounter) {
             return new LoadingStatus(state, loadCounter);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            LoadingStatus that = (LoadingStatus) o;
+            return loadCounter == that.loadCounter && state == that.state;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(state, loadCounter);
+        }
+
     }
 
     /**
@@ -178,14 +195,13 @@ public class StatusController {
      */
     public void setReady() {
         synchronized (this) {
-            if (state == State.READY) {
-                return; // Nothing to do
+            if (state != State.READY) {
+                updateState(State.READY, lastCommittedCounter);
             }
-            updateState(State.READY, lastCommittedCounter);
         }
     }
 
-    private void updateState(State newState, long loadCounter) {
+    void updateState(State newState, long loadCounter) {
         synchronized (this) {
             try {
                 // Serializable, as the service state needs to be strictly consistent

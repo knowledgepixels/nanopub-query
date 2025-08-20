@@ -109,9 +109,7 @@ public class MainVerticle extends AbstractVerticle {
         });
         // ----------
 
-        proxyRouter.route(HttpMethod.GET, "/repo").handler(req -> {
-            handleRedirect(req, "/repo");
-        });
+        proxyRouter.route(HttpMethod.GET, "/repo").handler(req -> handleRedirect(req, "/repo"));
         proxyRouter.route(HttpMethod.GET, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
         proxyRouter.route(HttpMethod.POST, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
         proxyRouter.route(HttpMethod.HEAD, "/repo/*").handler(ProxyHandler.create(rdf4jProxy));
@@ -152,9 +150,7 @@ public class MainVerticle extends AbstractVerticle {
                         .end("not found");
             }
         });
-        proxyRouter.route(HttpMethod.GET, "/page").handler(req -> {
-            handleRedirect(req, "/page");
-        });
+        proxyRouter.route(HttpMethod.GET, "/page").handler(req -> handleRedirect(req, "/page"));
         proxyRouter.route(HttpMethod.GET, "/page/*").handler(req -> {
             final String pagePattern = "^/page/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?$";
             if (req.normalizedPath().matches(pagePattern)) {
@@ -369,9 +365,7 @@ public class MainVerticle extends AbstractVerticle {
         vertx.createHttpServer().requestHandler(req -> {
             try {
                 final StringBuilder payload = new StringBuilder();
-                req.handler(data -> {
-                    payload.append(data.toString("UTF-8"));
-                });
+                req.handler(data -> payload.append(data.toString("UTF-8")));
                 req.endHandler(handler -> {
                     final String dataString = payload.toString();
                     try {
@@ -384,7 +378,6 @@ public class MainVerticle extends AbstractVerticle {
                         ex.printStackTrace();
                         return;
                     }
-                    ;
                     req.response()
                             .setStatusCode(HttpStatus.SC_OK)
                             .end();

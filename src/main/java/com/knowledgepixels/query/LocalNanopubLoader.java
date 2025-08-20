@@ -3,8 +3,6 @@ package com.knowledgepixels.query;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.MultiNanopubRdfHandler;
-import org.nanopub.MultiNanopubRdfHandler.NanopubHandler;
-import org.nanopub.Nanopub;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -16,7 +14,8 @@ import java.io.IOException;
  */
 public class LocalNanopubLoader {
 
-    private LocalNanopubLoader() {}  // no instances allowed
+    private LocalNanopubLoader() {
+    }  // no instances allowed
 
     /**
      * File containing URIs of nanopubs to load.
@@ -36,6 +35,7 @@ public class LocalNanopubLoader {
      * @return true if local nanopubs were found and loaded, false otherwise
      */
     public static boolean init() {
+        // FIXME should this be loadNanopubsFile.exists() || loadUrisFile.exists()?
         if (!(loadNanopubsFile.exists() || loadNanopubsFile.exists())) {
             System.err.println("No local nanopub files for loading found. Moving on to loading " +
                     "via Jelly...");
@@ -56,7 +56,7 @@ public class LocalNanopubLoader {
         return true;
     }
 
-    private static void load() {
+    static void load() {
         if (!loadUrisFile.exists()) {
             System.err.println("No local nanopub URI file found.");
         } else {
@@ -74,12 +74,7 @@ public class LocalNanopubLoader {
             System.err.println("No local nanopub file found.");
         } else {
             try {
-                MultiNanopubRdfHandler.process(RDFFormat.TRIG, loadNanopubsFile, new NanopubHandler() {
-                    @Override
-                    public void handleNanopub(Nanopub np) {
-                        NanopubLoader.load(np, -1);
-                    }
-                });
+                MultiNanopubRdfHandler.process(RDFFormat.TRIG, loadNanopubsFile, np -> NanopubLoader.load(np, -1));
             } catch (IOException | MalformedNanopubException ex) {
                 ex.printStackTrace();
             }
