@@ -34,6 +34,22 @@ public class StatusController {
     }
 
     /**
+     * Get the singleton instance of the StatusController.
+     *
+     * @return the StatusController instance
+     */
+    public static StatusController get() {
+        return instance;
+    }
+
+    private final static StatusController instance = new StatusController();
+
+    private boolean initialized = false;
+    private State state = null;
+    private long lastCommittedCounter = -1;
+    private RepositoryConnection adminRepoConn;
+
+    /**
      * Represents the current status of the service, including the load counter.
      */
     public static class LoadingStatus {
@@ -79,22 +95,6 @@ public class StatusController {
         }
 
     }
-
-    /**
-     * Get the singleton instance of the StatusController.
-     *
-     * @return the StatusController instance
-     */
-    public static StatusController get() {
-        return instance;
-    }
-
-    private final static StatusController instance = new StatusController();
-
-    private boolean initialized = false;
-    private State state = null;
-    private long lastCommittedCounter = -1;
-    private RepositoryConnection adminRepoConn;
 
     /**
      * Initialize the StatusController, fetching the last known state from the DB.
@@ -223,4 +223,18 @@ public class StatusController {
     private Literal stateAsLiteral(State s) {
         return adminRepoConn.getValueFactory().createLiteral(s.toString());
     }
+
+    /**
+     * Reset the StatusController for testing purposes.
+     * This will clear the state and allow re-initialization.
+     */
+    void resetForTest() {
+        synchronized (this) {
+            initialized = false;
+            state = null;
+            lastCommittedCounter = -1;
+            adminRepoConn = null;
+        }
+    }
+
 }
