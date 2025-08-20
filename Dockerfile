@@ -1,23 +1,20 @@
-FROM maven:3.9.9-eclipse-temurin-21
+FROM eclipse-temurin:21 AS build
 
 ENV APP_DIR /app
-ENV TMP_DIR /tmp
-
-WORKDIR $TMP_DIR
-
-COPY pom.xml pom.xml
-
-RUN mvn install
-
-COPY src src
-
-# should include '-o' as in 'RUN mvn install -o' but that stopped working:
-RUN mvn install && \
-    mkdir $APP_DIR && \
-    mv target/nanopub-query-*-fat.jar $APP_DIR/nanopub-query.jar && \
-    rm -rf $TMP_DIR
 
 WORKDIR $APP_DIR
+
+COPY . .
+
+RUN ./mvnw package -Dmaven.test.skip=true && \
+    mv target/nanopub-query-*-fat.jar $APP_DIR/nanopub-query.jar
+
+
+FROM eclipse-temurin:21
+
+WORKDIR /app
+
+COPY --from=build /app/nanopub-query.jar .
 
 EXPOSE 9300
 EXPOSE 9393

@@ -221,8 +221,12 @@
           </execution>
           <execution>
             <id>git-submodule-update</id>
-            <phase>test</phase>
+            <phase>generate-test-resources</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
             <configuration>
+              <skip>${maven.test.skip}</skip>
               <executable>git</executable>
               <arguments>
                 <argument>submodule</argument>
@@ -231,9 +235,6 @@
                 <argument>--recursive</argument>
               </arguments>
             </configuration>
-            <goals>
-              <goal>exec</goal>
-            </goals>
           </execution>
         </executions>
       </plugin>
