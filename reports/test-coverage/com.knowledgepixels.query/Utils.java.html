@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Utils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">Utils.java</span></div><h1>Utils.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
+
+import com.google.common.hash.Hashing;
+import org.apache.commons.exec.environment.EnvironmentUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Value;
+import org.eclipse.rdf4j.model.ValueFactory;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.query.BindingSet;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQuery;
+import org.eclipse.rdf4j.query.TupleQueryResult;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Utils class for Nanopub Registry.
+ */
+public class Utils {
+
+    private Utils() {
+    }  // no instances allowed
+
+<span class="fc" id="L30">    private static final ValueFactory vf = SimpleValueFactory.getInstance();</span>
+
+    /**
+     * IRI for the predicate that indicates that a hash value is associated with an object.
+     */
+<span class="fc" id="L35">    public static final IRI IS_HASH_OF = vf.createIRI(&quot;http://purl.org/nanopub/admin/isHashOf&quot;);</span>
+
+    /**
+     * Prefix for the hash values stored in the admin graph.
+     */
+<span class="fc" id="L40">    public static final IRI HASH_PREFIX = vf.createIRI(&quot;http://purl.org/nanopub/admin/hash/&quot;);</span>
+
+    private static Map&lt;String, Value&gt; hashToObjMap;
+
+    /**
+     * Returns reverse hashing map.
+     *
+     * @return Map from hashes to their original objects
+     */
+    static Map&lt;String, Value&gt; getHashToObjectMap() {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (hashToObjMap == null) {</span>
+<span class="fc" id="L51">            hashToObjMap = new HashMap&lt;&gt;();</span>
+<span class="pc" id="L52">            try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {</span>
+<span class="nc" id="L53">                TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph ?g { ?s ?p ?o } }&quot;);</span>
+<span class="nc" id="L54">                query.setBinding(&quot;g&quot;, NanopubLoader.ADMIN_GRAPH);</span>
+<span class="nc" id="L55">                query.setBinding(&quot;p&quot;, IS_HASH_OF);</span>
+<span class="nc" id="L56">                try (TupleQueryResult r = query.evaluate()) {</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">                    while (r.hasNext()) {</span>
+<span class="nc" id="L58">                        BindingSet b = r.next();</span>
+<span class="nc" id="L59">                        String hash = b.getBinding(&quot;s&quot;).getValue().stringValue();</span>
+<span class="nc" id="L60">                        hash = StringUtils.replace(hash, HASH_PREFIX.toString(), &quot;&quot;);</span>
+<span class="nc" id="L61">                        hashToObjMap.put(hash, b.getBinding(&quot;o&quot;).getValue());</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L66">        return hashToObjMap;</span>
+    }
+
+    /**
+     * Returns the original object for the given hash value.
+     *
+     * @param hash The hash value
+     * @return The original object
+     */
+    public static Value getObjectForHash(String hash) {
+<span class="fc" id="L76">        return getHashToObjectMap().get(hash);</span>
+    }
+
+    /**
+     * Creates a hash value for the object and remembers it.
+     *
+     * @param obj Object to be hashed
+     * @return hash value
+     */
+    public static String createHash(Object obj) {
+<span class="fc" id="L86">        String hash = Hashing.sha256().hashString(obj.toString(), StandardCharsets.UTF_8).toString();</span>
+
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (!getHashToObjectMap().containsKey(hash)) {</span>
+<span class="fc" id="L89">            Value objV = getValue(obj);</span>
+<span class="fc" id="L90">            try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {</span>
+<span class="fc" id="L91">                conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));</span>
+            }
+<span class="fc" id="L93">            getHashToObjectMap().put(hash, objV);</span>
+        }
+<span class="fc" id="L95">        return hash;</span>
+    }
+
+    /**
+     * Returns the object as a Value object.
+     *
+     * @param obj Input object
+     * @return A Value object with the string content of the input object
+     */
+    static Value getValue(Object obj) {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (obj instanceof Value) {</span>
+<span class="fc" id="L106">            return (Value) obj;</span>
+        } else {
+<span class="fc" id="L108">            return vf.createLiteral(obj.toString());</span>
+        }
+    }
+
+    /**
+     * Returns a short &quot;name&quot; for the given public key
+     *
+     * @param pubkey Public key string
+     * @return Short &quot;name&quot;
+     */
+    public static String getShortPubkeyName(String pubkey) {
+<span class="fc" id="L119">        return pubkey.replaceFirst(&quot;^(.).{39}(.{5}).*$&quot;, &quot;$1..$2..&quot;);</span>
+    }
+
+    /**
+     * Executes a query on the given connection to return the first objects matching the input.
+     *
+     * @param conn  The repository connection
+     * @param graph Graph (=context) IRI
+     * @param subj  Subject IRI
+     * @param pred  Predicate IRI
+     * @return the first object to match the pattern
+     */
+    public static Value getObjectForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
+<span class="fc" id="L132">        TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + graph.stringValue() + &quot;&gt; { &lt;&quot; + subj.stringValue() + &quot;&gt; &lt;&quot; + pred.stringValue() + &quot;&gt; ?o } }&quot;).evaluate();</span>
+<span class="fc" id="L133">        try (r) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (!r.hasNext()) return null;</span>
+<span class="fc" id="L135">            return r.next().getBinding(&quot;o&quot;).getValue();</span>
+        }
+    }
+
+    /**
+     * Executes a query on the given connection to return all objects matching the input.
+     *
+     * @param conn  The repository connection
+     * @param graph Graph (=context) IRI
+     * @param subj  Subject IRI
+     * @param pred  Predicate IRI
+     * @return a list of all objects matching the pattern
+     */
+    public static List&lt;Value&gt; getObjectsForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
+<span class="fc" id="L149">        List&lt;Value&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L150">        TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + graph.stringValue() + &quot;&gt; { &lt;&quot; + subj.stringValue() + &quot;&gt; &lt;&quot; + pred.stringValue() + &quot;&gt; ?o } }&quot;).evaluate();</span>
+<span class="fc" id="L151">        try (r) {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            while (r.hasNext()) {</span>
+<span class="fc" id="L153">                values.add(r.next().getBinding(&quot;o&quot;).getValue());</span>
+            }
+<span class="fc" id="L155">            return values;</span>
+        }
+    }
+
+    /**
+     * Returns the system environment variable content for the given environment variable name.
+     *
+     * @param envVarName   environment variable name
+     * @param defaultValue default value if not found
+     * @return environment variable value
+     */
+    public static String getEnvString(String envVarName, String defaultValue) {
+        try {
+<span class="fc" id="L168">            String s = EnvironmentUtils.getProcEnvironment().get(envVarName);</span>
+<span class="fc bfc" id="L169" title="All 4 branches covered.">            if (s != null &amp;&amp; !s.isEmpty()) {</span>
+<span class="fc" id="L170">                return s;</span>
+            }
+<span class="fc" id="L172">        } catch (Exception ex) {</span>
+<span class="fc" id="L173">            ex.printStackTrace();</span>
+        }
+<span class="fc" id="L175">        return defaultValue;</span>
+    }
+
+    /**
+     * Returns the system environment variable content as an integer for the given environment variable name.
+     *
+     * @param envVarName   environment variable name
+     * @param defaultValue default value if not found
+     * @return environment variable value interpreted as an integer
+     */
+    public static int getEnvInt(String envVarName, int defaultValue) {
+        try {
+<span class="fc" id="L187">            String s = getEnvString(envVarName, null);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">            if (s != null) {</span>
+<span class="fc" id="L189">                return Integer.parseInt(s);</span>
+            }
+<span class="fc" id="L191">        } catch (Exception ex) {</span>
+<span class="fc" id="L192">            ex.printStackTrace();</span>
+        }
+<span class="fc" id="L194">        return defaultValue;</span>
+    }
+
+    /**
+     * Default query to be shown in YASGUI client.
+     */
+    public static final String defaultQuery = &quot;&quot;&quot;
+            prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+            prefix dct: &lt;http://purl.org/dc/terms/&gt;
+            prefix np: &lt;http://www.nanopub.org/nschema#&gt;
+            prefix npa: &lt;http://purl.org/nanopub/admin/&gt;
+            prefix npx: &lt;http://purl.org/nanopub/x/&gt;
+            
+            select * where {
+            ## Info about this repo:
+              npa:thisRepo ?pred ?obj .
+            ## Search for nanopublications:
+            # graph npa:graph {
+            #   ?np npa:hasValidSignatureForPublicKey ?pubkey .
+            #   filter not exists { ?npx npx:invalidates ?np ; npa:hasValidSignatureForPublicKey ?pubkey . }
+            #   ?np dct:created ?date .
+            #   ?np np:hasAssertion ?a .
+            #   optional { ?np rdfs:label ?label }
+            # }
+<span class="fc" id="L218">            } limit 10&quot;&quot;&quot;;</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

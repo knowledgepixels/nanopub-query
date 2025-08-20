@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MetricsCollector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">MetricsCollector.java</span></div><h1>MetricsCollector.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
+
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Class to collect metrics for performance analysis.
+ */
+public final class MetricsCollector {
+
+<span class="fc" id="L17">    private final AtomicInteger loadCounter = new AtomicInteger(0);</span>
+<span class="fc" id="L18">    private final AtomicInteger typeRepositoriesCounter = new AtomicInteger(0);</span>
+<span class="fc" id="L19">    private final AtomicInteger pubkeyRepositoriesCounter = new AtomicInteger(0);</span>
+<span class="fc" id="L20">    private final AtomicInteger fullRepositoriesCounter = new AtomicInteger(0);</span>
+
+<span class="fc" id="L22">    private final Map&lt;StatusController.State, AtomicInteger&gt; statusStates = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /**
+     * Creates new metrics collector object.
+     *
+     * @param meterRegistry The registry instance
+     */
+<span class="fc" id="L29">    public MetricsCollector(MeterRegistry meterRegistry) {</span>
+        // Numeric metrics
+<span class="fc" id="L31">        Gauge.builder(&quot;registry.load.counter&quot;, loadCounter, AtomicInteger::get).register(meterRegistry);</span>
+<span class="fc" id="L32">        Gauge.builder(&quot;registry.type.repositories.counter&quot;, typeRepositoriesCounter, AtomicInteger::get).register(meterRegistry);</span>
+<span class="fc" id="L33">        Gauge.builder(&quot;registry.pubkey.repositories.counter&quot;, pubkeyRepositoriesCounter, AtomicInteger::get).register(meterRegistry);</span>
+<span class="fc" id="L34">        Gauge.builder(&quot;registry.full.repositories.counter&quot;, fullRepositoriesCounter, AtomicInteger::get).register(meterRegistry);</span>
+
+        // Status label metrics
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (final var status : StatusController.State.values()) {</span>
+<span class="fc" id="L38">            AtomicInteger stateGauge = new AtomicInteger(0);</span>
+<span class="fc" id="L39">            statusStates.put(status, stateGauge);</span>
+<span class="fc" id="L40">            Gauge.builder(&quot;registry.server.status&quot;, stateGauge, AtomicInteger::get)</span>
+<span class="fc" id="L41">                    .description(&quot;Server status (1 if current)&quot;)</span>
+<span class="fc" id="L42">                    .tag(&quot;status&quot;, status.name())</span>
+<span class="fc" id="L43">                    .register(meterRegistry);</span>
+        }
+<span class="fc" id="L45">    }</span>
+
+    /**
+     * Updates the metrics based on the current state of the system.
+     */
+    public void updateMetrics() {
+        // Update numeric metrics
+<span class="fc" id="L52">        loadCounter.set((int) StatusController.get().getState().loadCounter);</span>
+<span class="fc" id="L53">        typeRepositoriesCounter.set(</span>
+                (int) Optional
+<span class="fc" id="L55">                        .ofNullable(TripleStore.get().getRepositoryNames())</span>
+<span class="fc" id="L56">                        .orElse(Set.of())</span>
+<span class="fc" id="L57">                        .stream()</span>
+<span class="fc" id="L58">                        .filter(repo -&gt; repo.startsWith(&quot;type_&quot;))</span>
+<span class="fc" id="L59">                        .count()</span>
+        );
+<span class="fc" id="L61">        pubkeyRepositoriesCounter.set(</span>
+                (int) Optional
+<span class="fc" id="L63">                        .ofNullable(TripleStore.get().getRepositoryNames())</span>
+<span class="fc" id="L64">                        .orElse(Set.of())</span>
+<span class="fc" id="L65">                        .stream()</span>
+<span class="fc" id="L66">                        .filter(repo -&gt; repo.startsWith(&quot;pubkey_&quot;))</span>
+<span class="fc" id="L67">                        .count()</span>
+        );
+<span class="fc" id="L69">        fullRepositoriesCounter.set(</span>
+                Optional
+<span class="fc" id="L71">                        .ofNullable(TripleStore.get().getRepositoryNames())</span>
+<span class="fc" id="L72">                        .orElse(Set.of())</span>
+<span class="fc" id="L73">                        .size()</span>
+        );
+
+        // Update status gauge
+<span class="fc" id="L77">        final var currentStatus = StatusController.get().getState().state;</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (final var status : StatusController.State.values()) {</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            statusStates.get(status).set(status.equals(currentStatus) ? 1 : 0);</span>
+        }
+<span class="fc" id="L81">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

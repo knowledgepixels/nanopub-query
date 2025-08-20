@@ -54,6 +54,23 @@ Start with Docker Compose:
 
     $ sudo docker compose up -d
 
+## Test Coverage
+
+You can find the static pages of the last test coverage report in [reports/test-coverage/](reports/test-coverage/).
+
+Create the file target/jacoco.exec which includes the test coverage information in a binary format.
+```bash
+mvn clean verify
+```
+To create a HTML report out of jacoco.exec (target/site/jacoco/index.html) use:
+```bash
+mvn jacoco:report
+```
+Overwrite report in `reports` with latest report:
+```bash
+cp -r target/site/jacoco reports/test-coverage
+```
+
 ## License
 
 This software is made available under the MIT license. See [LICENSE.txt](LICENSE.txt) for the details.

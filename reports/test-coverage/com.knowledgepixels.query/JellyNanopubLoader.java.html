@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JellyNanopubLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">JellyNanopubLoader.java</span></div><h1>JellyNanopubLoader.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
+
+import org.apache.http.client.config.CookieSpecs;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpHead;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
+import org.nanopub.NanopubUtils;
+import org.nanopub.jelly.NanopubStream;
+
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
+ */
+<span class="nc" id="L20">public class JellyNanopubLoader {</span>
+    private static final String registryUrl;
+<span class="fc" id="L22">    private static long lastCommittedCounter = -1;</span>
+    private static final CloseableHttpClient metadataClient;
+    private static final CloseableHttpClient jellyStreamClient;
+
+    private static final int MAX_RETRIES_METADATA = 10;
+    private static final int RETRY_DELAY_METADATA = 3000;
+    private static final int RETRY_DELAY_JELLY = 5000;
+
+    /**
+     * The interval in milliseconds at which the updates loader should poll for new nanopubs.
+     */
+    public static final int UPDATES_POLL_INTERVAL = 2000;
+
+<span class="nc" id="L35">    enum LoadingType {</span>
+<span class="nc" id="L36">        INITIAL,</span>
+<span class="nc" id="L37">        UPDATE,</span>
+    }
+
+    static {
+        // Initialize registryUrl
+<span class="fc" id="L42">        var url = Utils.getEnvString(</span>
+<span class="fc" id="L43">                &quot;REGISTRY_FIXED_URL&quot;, &quot;https://registry.knowledgepixels.com/&quot;</span>
+        );
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        if (!url.endsWith(&quot;/&quot;)) url += &quot;/&quot;;</span>
+<span class="fc" id="L46">        registryUrl = url;</span>
+
+        // Initialize HTTP clients
+<span class="fc" id="L49">        var rqConfig = RequestConfig.custom()</span>
+<span class="fc" id="L50">                .setConnectTimeout(1000)</span>
+<span class="fc" id="L51">                .setConnectionRequestTimeout(1000)</span>
+<span class="fc" id="L52">                .setSocketTimeout(1000)</span>
+<span class="fc" id="L53">                .setCookieSpec(CookieSpecs.IGNORE_COOKIES)</span>
+<span class="fc" id="L54">                .build();</span>
+<span class="fc" id="L55">        metadataClient = HttpClientBuilder.create().setDefaultRequestConfig(rqConfig).build();</span>
+<span class="fc" id="L56">        jellyStreamClient = NanopubUtils.getHttpClient();</span>
+<span class="fc" id="L57">    }</span>
+
+    /**
+     * Start or continue (after restart) the initial loading procedure. This simply loads all
+     * nanopubs from the attached Registry.
+     *
+     * @param afterCounter which counter to start from (-1 for the beginning)
+     */
+    public static void loadInitial(long afterCounter) {
+<span class="fc" id="L66">        long targetCounter = fetchRegistryLoadCounter();</span>
+<span class="fc" id="L67">        System.err.println(&quot;Fetched Registry load counter: &quot; + targetCounter);</span>
+<span class="fc" id="L68">        lastCommittedCounter = afterCounter;</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        while (lastCommittedCounter &lt; targetCounter) {</span>
+            try {
+<span class="nc" id="L71">                loadBatch(lastCommittedCounter, LoadingType.INITIAL);</span>
+<span class="nc" id="L72">                System.err.println(&quot;Initial load: loaded batch up to counter &quot; + lastCommittedCounter);</span>
+<span class="nc" id="L73">            } catch (Exception e) {</span>
+<span class="nc" id="L74">                System.err.println(&quot;Failed to load batch starting from counter &quot; + lastCommittedCounter);</span>
+<span class="nc" id="L75">                System.err.println(e.getMessage());</span>
+                try {
+<span class="nc" id="L77">                    Thread.sleep(RETRY_DELAY_JELLY);</span>
+<span class="nc" id="L78">                } catch (InterruptedException e2) {</span>
+<span class="nc" id="L79">                    throw new RuntimeException(&quot;Interrupted while waiting to retry loading batch.&quot;);</span>
+                }
+            }
+        }
+<span class="fc" id="L83">        System.err.println(&quot;Initial load complete.&quot;);</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Check if the Registry has any new nanopubs. If it does, load them.
+     * This method should be called periodically, and you should wait for it to finish before
+     * calling it again.
+     */
+    public static void loadUpdates() {
+        try {
+<span class="nc" id="L93">            final var status = StatusController.get().getState();</span>
+<span class="nc" id="L94">            lastCommittedCounter = status.loadCounter;</span>
+<span class="nc" id="L95">            StatusController.get().setLoadingUpdates(status.loadCounter);</span>
+<span class="nc" id="L96">            long targetCounter = fetchRegistryLoadCounter();</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (lastCommittedCounter &gt;= targetCounter) {</span>
+                // Keep quiet so as not to spam the log every second
+                // System.err.println(&quot;No updates to load.&quot;);
+<span class="nc" id="L100">                StatusController.get().setReady();</span>
+<span class="nc" id="L101">                return;</span>
+            }
+<span class="nc" id="L103">            loadBatch(lastCommittedCounter, LoadingType.UPDATE);</span>
+<span class="nc" id="L104">            System.err.println(&quot;Loaded &quot; + (lastCommittedCounter - status.loadCounter) +</span>
+<span class="nc" id="L105">                    &quot; update(s). Counter: &quot; + lastCommittedCounter + &quot;, target was: &quot; + targetCounter);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (lastCommittedCounter &lt; targetCounter) {</span>
+<span class="nc" id="L107">                System.err.println(&quot;Warning: expected to load nanopubs up to (inclusive) counter &quot; +</span>
+<span class="nc" id="L108">                        targetCounter + &quot; based on the counter reported in Registry's headers, &quot; +</span>
+<span class="nc" id="L109">                        &quot;but loaded only up to &quot; + lastCommittedCounter + &quot;.&quot;);</span>
+            }
+<span class="nc" id="L111">        } catch (Exception e) {</span>
+<span class="nc" id="L112">            System.err.println(&quot;Failed to load updates. Current counter: &quot; + lastCommittedCounter);</span>
+<span class="nc" id="L113">            System.err.println(e.getMessage());</span>
+        } finally {
+            try {
+<span class="nc" id="L116">                StatusController.get().setReady();</span>
+<span class="nc" id="L117">            } catch (Exception e) {</span>
+<span class="nc" id="L118">                System.err.println(&quot;Update loader: failed to set status to READY.&quot;);</span>
+<span class="nc" id="L119">                System.err.println(e.getMessage());</span>
+            }
+        }
+<span class="nc" id="L122">    }</span>
+
+    /**
+     * Load a batch of nanopubs from the Jelly stream.
+     * &lt;p&gt;
+     * The method requests the list of all nanopubs from the Registry and reads it for as long
+     * as it can. If the stream is interrupted, the method will throw an exception, and you
+     * can resume loading from the last known counter.
+     *
+     * @param afterCounter the last known nanopub counter to have been committed in the DB
+     * @param type         the type of loading operation (initial or update)
+     */
+    static void loadBatch(long afterCounter, LoadingType type) {
+        CloseableHttpResponse response;
+        try {
+<span class="nc" id="L137">            var request = new HttpGet(makeStreamFetchUrl(afterCounter));</span>
+<span class="nc" id="L138">            response = jellyStreamClient.execute(request);</span>
+<span class="nc" id="L139">        } catch (IOException e) {</span>
+<span class="nc" id="L140">            throw new RuntimeException(&quot;Failed to fetch Jelly stream from the Registry (I/O error).&quot;, e);</span>
+        }
+
+<span class="nc" id="L143">        int httpStatus = response.getStatusLine().getStatusCode();</span>
+<span class="nc bnc" id="L144" title="All 4 branches missed.">        if (httpStatus &lt; 200 || httpStatus &gt;= 300) {</span>
+<span class="nc" id="L145">            EntityUtils.consumeQuietly(response.getEntity());</span>
+<span class="nc" id="L146">            throw new RuntimeException(&quot;Jelly stream HTTP status is not 2xx: &quot; + httpStatus + &quot;.&quot;);</span>
+        }
+
+<span class="nc" id="L149">        try (</span>
+<span class="nc" id="L150">                var is = response.getEntity().getContent();</span>
+<span class="nc" id="L151">                var npStream = NanopubStream.fromByteStream(is).getAsNanopubs()</span>
+        ) {
+<span class="nc" id="L153">            AtomicLong checkpointTime = new AtomicLong(System.currentTimeMillis());</span>
+<span class="nc" id="L154">            AtomicLong checkpointCounter = new AtomicLong(lastCommittedCounter);</span>
+<span class="nc" id="L155">            AtomicLong lastSavedCounter = new AtomicLong(lastCommittedCounter);</span>
+<span class="nc" id="L156">            AtomicLong loaded = new AtomicLong(0L);</span>
+
+<span class="nc" id="L158">            npStream.forEach(m -&gt; {</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">                if (!m.isSuccess()) throw new RuntimeException(&quot;Failed to load &quot; +</span>
+<span class="nc" id="L160">                        &quot;nanopub from Jelly stream. Last known counter: &quot; + lastCommittedCounter,</span>
+<span class="nc" id="L161">                        m.getException()</span>
+                );
+<span class="nc bnc" id="L163" title="All 2 branches missed.">                if (m.getCounter() &lt; lastCommittedCounter) {</span>
+<span class="nc" id="L164">                    throw new RuntimeException(&quot;Received a nanopub with a counter lower than &quot; +</span>
+<span class="nc" id="L165">                            &quot;the last known counter. Last known counter: &quot; + lastCommittedCounter +</span>
+<span class="nc" id="L166">                            &quot;, received counter: &quot; + m.getCounter());</span>
+                }
+<span class="nc" id="L168">                NanopubLoader.load(m.getNanopub(), m.getCounter());</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">                if (m.getCounter() % 10 == 0) {</span>
+                    // Save the committed counter only every 10 nanopubs to reduce DB load
+<span class="nc" id="L171">                    saveCommittedCounter(type);</span>
+<span class="nc" id="L172">                    lastSavedCounter.set(m.getCounter());</span>
+                }
+<span class="nc" id="L174">                lastCommittedCounter = m.getCounter();</span>
+<span class="nc" id="L175">                loaded.getAndIncrement();</span>
+
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                if (loaded.get() % 50 == 0) {</span>
+<span class="nc" id="L178">                    long currTime = System.currentTimeMillis();</span>
+<span class="nc" id="L179">                    double speed = 50 / ((currTime - checkpointTime.get()) / 1000.0);</span>
+<span class="nc" id="L180">                    System.err.println(&quot;Loading speed: &quot; + String.format(&quot;%.2f&quot;, speed) +</span>
+<span class="nc" id="L181">                            &quot; np/s. Counter: &quot; + lastCommittedCounter);</span>
+<span class="nc" id="L182">                    checkpointTime.set(currTime);</span>
+<span class="nc" id="L183">                    checkpointCounter.set(lastCommittedCounter);</span>
+                }
+<span class="nc" id="L185">            });</span>
+            // Make sure to save the last committed counter at the end of the batch
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (lastCommittedCounter &gt;= lastSavedCounter.get()) {</span>
+<span class="nc" id="L188">                saveCommittedCounter(type);</span>
+            }
+<span class="nc" id="L190">        } catch (IOException e) {</span>
+<span class="nc" id="L191">            throw new RuntimeException(&quot;I/O error while reading the response Jelly stream.&quot;, e);</span>
+        } finally {
+            try {
+<span class="nc" id="L194">                response.close();</span>
+<span class="nc" id="L195">            } catch (IOException e) {</span>
+<span class="nc" id="L196">                System.err.println(&quot;Failed to close the Jelly stream response.&quot;);</span>
+            }
+        }
+<span class="nc" id="L199">    }</span>
+
+    /**
+     * Save the last committed counter to the DB. Do this every N nanopubs to reduce DB load.
+     * Remember to call this method at the end of the batch as well.
+     *
+     * @param type the type of loading operation (initial or update)
+     */
+    private static void saveCommittedCounter(LoadingType type) {
+        try {
+<span class="nc bnc" id="L209" title="All 2 branches missed.">            if (type == LoadingType.INITIAL) {</span>
+<span class="nc" id="L210">                StatusController.get().setLoadingInitial(lastCommittedCounter);</span>
+<span class="nc" id="L211">            } else {</span>
+<span class="nc" id="L212">                StatusController.get().setLoadingUpdates(lastCommittedCounter);</span>
+            }
+<span class="nc" id="L214">        } catch (Exception e) {</span>
+<span class="nc" id="L215">            throw new RuntimeException(&quot;Could not update the nanopub counter in DB&quot;, e);</span>
+        }
+<span class="nc" id="L217">    }</span>
+
+    /**
+     * Run a HEAD request to the Registry to fetch its current load counter.
+     *
+     * @return the current load counter
+     */
+    static long fetchRegistryLoadCounter() {
+<span class="fc" id="L225">        int tries = 0;</span>
+<span class="fc" id="L226">        long counter = -1;</span>
+<span class="pc bpc" id="L227" title="1 of 4 branches missed.">        while (counter == -1 &amp;&amp; tries &lt; MAX_RETRIES_METADATA) {</span>
+            try {
+<span class="fc" id="L229">                counter = fetchRegistryLoadCounterInner();</span>
+<span class="pc" id="L230">            } catch (Exception e) {</span>
+<span class="nc" id="L231">                tries++;</span>
+<span class="nc" id="L232">                System.err.println(&quot;Failed to fetch registry load counter, try &quot; + tries +</span>
+                        &quot;. Retrying in &quot; + RETRY_DELAY_METADATA + &quot;ms...&quot;);
+<span class="nc" id="L234">                System.err.println(e.getMessage());</span>
+                try {
+<span class="nc" id="L236">                    Thread.sleep(RETRY_DELAY_METADATA);</span>
+<span class="nc" id="L237">                } catch (InterruptedException e2) {</span>
+<span class="nc" id="L238">                    throw new RuntimeException(</span>
+<span class="nc" id="L239">                            &quot;Interrupted while waiting to retry fetching registry load counter.&quot;);</span>
+                }
+            }
+        }
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (counter == -1) {</span>
+<span class="nc" id="L244">            throw new RuntimeException(&quot;Failed to fetch registry load counter after &quot; +</span>
+                    MAX_RETRIES_METADATA + &quot; retries.&quot;);
+        }
+<span class="fc" id="L247">        return counter;</span>
+    }
+
+    /**
+     * Inner logic for fetching the registry load counter.
+     *
+     * @return the current load counter
+     * @throws IOException if the HTTP request fails
+     */
+    private static long fetchRegistryLoadCounterInner() throws IOException {
+<span class="fc" id="L257">        var request = new HttpHead(registryUrl);</span>
+<span class="fc" id="L258">        try (var response = metadataClient.execute(request)) {</span>
+<span class="fc" id="L259">            int status = response.getStatusLine().getStatusCode();</span>
+<span class="fc" id="L260">            EntityUtils.consumeQuietly(response.getEntity());</span>
+<span class="pc bpc" id="L261" title="2 of 4 branches missed.">            if (status &lt; 200 || status &gt;= 300) {</span>
+<span class="nc" id="L262">                throw new RuntimeException(&quot;Registry load counter HTTP status is not 2xx: &quot; +</span>
+<span class="nc" id="L263">                        status + &quot;.&quot;);</span>
+            }
+
+            // Check if the registry is ready
+<span class="fc" id="L267">            var hStatus = response.getHeaders(&quot;Nanopub-Registry-Status&quot;);</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">            if (hStatus.length == 0) {</span>
+<span class="nc" id="L269">                throw new RuntimeException(&quot;Registry did not return a Nanopub-Registry-Status header.&quot;);</span>
+            }
+<span class="pc bpc" id="L271" title="3 of 4 branches missed.">            if (!&quot;ready&quot;.equals(hStatus[0].getValue()) &amp;&amp; !&quot;updating&quot;.equals(hStatus[0].getValue())) {</span>
+<span class="nc" id="L272">                throw new RuntimeException(&quot;Registry is not in ready state.&quot;);</span>
+            }
+
+            // Get the actual load counter
+<span class="fc" id="L276">            var hCounter = response.getHeaders(&quot;Nanopub-Registry-Load-Counter&quot;);</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">            if (hCounter.length == 0) {</span>
+<span class="nc" id="L278">                throw new RuntimeException(&quot;Registry did not return a Nanopub-Registry-Load-Counter header.&quot;);</span>
+            }
+<span class="fc" id="L280">            return Long.parseLong(hCounter[0].getValue());</span>
+        }
+    }
+
+    /**
+     * Construct the URL for fetching the Jelly stream.
+     *
+     * @param afterCounter the last known nanopub counter to have been committed in the DB
+     * @return the URL for fetching the Jelly stream
+     */
+    private static String makeStreamFetchUrl(long afterCounter) {
+<span class="nc" id="L291">        return registryUrl + &quot;nanopubs.jelly?afterCounter=&quot; + afterCounter;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

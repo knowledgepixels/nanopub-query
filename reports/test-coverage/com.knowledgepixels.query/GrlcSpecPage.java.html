@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrlcSpecPage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">GrlcSpecPage.java</span></div><h1>GrlcSpecPage.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
+
+import io.vertx.core.MultiMap;
+import net.trustyuri.TrustyUriUtils;
+import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Statement;
+import org.eclipse.rdf4j.model.ValueFactory;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
+import org.eclipse.rdf4j.model.vocabulary.RDFS;
+import org.nanopub.Nanopub;
+import org.nanopub.SimpleCreatorPattern;
+import org.nanopub.extra.server.GetNanopub;
+import org.nanopub.extra.services.QueryAccess;
+
+import java.util.Set;
+
+/**
+ * This class produces a page with the grlc specification. This is needed internally to tell grlc
+ * how to execute a particular query template.
+ */
+public class GrlcSpecPage {
+
+<span class="fc" id="L24">    private static final ValueFactory vf = SimpleValueFactory.getInstance();</span>
+
+    /**
+     * IRI for relation to link a grlc query instance to its SPARQL template.
+     */
+<span class="fc" id="L29">    public static final IRI HAS_SPARQL = vf.createIRI(&quot;https://w3id.org/kpxl/grlc/sparql&quot;);</span>
+
+    /**
+     * IRI for relation to link a grlc query instance to its SPARQL endpoint URL.
+     */
+<span class="fc" id="L34">    public static final IRI HAS_ENDPOINT = vf.createIRI(&quot;https://w3id.org/kpxl/grlc/endpoint&quot;);</span>
+
+    /**
+     * URL for the given Nanopub Query instance, needed for internal coordination.
+     */
+<span class="fc" id="L39">    public static final String nanopubQueryUrl = Utils.getEnvString(&quot;NANOPUB_QUERY_URL&quot;, &quot;http://query:9393/&quot;);</span>
+
+    private Nanopub np;
+    private String requestUrlBase;
+    private String artifactCode, queryPart;
+    private String queryName;
+    private String label;
+    private String desc;
+    private String license;
+    private String queryContent;
+    private String endpoint;
+
+    /**
+     * Creates a new page instance.
+     *
+     * @param requestUrl The request URL
+     * @param parameters The URL request parameters
+     */
+<span class="fc" id="L57">    public GrlcSpecPage(String requestUrl, MultiMap parameters) {</span>
+<span class="fc" id="L58">        requestUrl = requestUrl.replaceFirst(&quot;\\?.*$&quot;, &quot;&quot;);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (!requestUrl.matches(&quot;.*/RA[A-Za-z0-9\\-_]{43}/(.*)?&quot;)) return;</span>
+<span class="fc" id="L60">        artifactCode = requestUrl.replaceFirst(&quot;^(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$&quot;, &quot;$2&quot;);</span>
+<span class="fc" id="L61">        queryPart = requestUrl.replaceFirst(&quot;^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$&quot;, &quot;$3&quot;);</span>
+<span class="fc" id="L62">        requestUrlBase = requestUrl.replaceFirst(&quot;^/(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$&quot;, &quot;$1&quot;);</span>
+
+        // TODO Get the nanopub from the local store:
+<span class="fc" id="L65">        np = GetNanopub.get(artifactCode);</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">        if (parameters.get(&quot;api-version&quot;) != null &amp;&amp; parameters.get(&quot;api-version&quot;).equals(&quot;latest&quot;)) {</span>
+            // TODO Get the latest version from the local store:
+<span class="fc" id="L68">            np = GetNanopub.get(QueryAccess.getLatestVersionId(np.getUri().stringValue()));</span>
+<span class="fc" id="L69">            artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (Statement st : np.getAssertion()) {</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (!st.getSubject().stringValue().startsWith(np.getUri().stringValue())) continue;</span>
+<span class="fc" id="L73">            String qn = st.getSubject().stringValue().replaceFirst(&quot;^.*[#/](.*)$&quot;, &quot;$1&quot;);</span>
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">            if (queryName != null &amp;&amp; !qn.equals(queryName)) {</span>
+<span class="nc" id="L75">                np = null;</span>
+<span class="nc" id="L76">                break;</span>
+            }
+<span class="fc" id="L78">            queryName = qn;</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (st.getPredicate().equals(RDFS.LABEL)) {</span>
+<span class="fc" id="L80">                label = st.getObject().stringValue();</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            } else if (st.getPredicate().equals(DCTERMS.DESCRIPTION)) {</span>
+<span class="fc" id="L82">                desc = st.getObject().stringValue();</span>
+<span class="pc bpc" id="L83" title="1 of 4 branches missed.">            } else if (st.getPredicate().equals(DCTERMS.LICENSE) &amp;&amp; st.getObject() instanceof IRI) {</span>
+<span class="fc" id="L84">                license = st.getObject().stringValue();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            } else if (st.getPredicate().equals(HAS_SPARQL)) {</span>
+<span class="fc" id="L86">                queryContent = st.getObject().stringValue().replace(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;, nanopubQueryUrl);</span>
+<span class="pc bpc" id="L87" title="1 of 4 branches missed.">            } else if (st.getPredicate().equals(HAS_ENDPOINT) &amp;&amp; st.getObject() instanceof IRI) {</span>
+<span class="fc" id="L88">                endpoint = st.getObject().stringValue();</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                if (endpoint.startsWith(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;)) {</span>
+<span class="fc" id="L90">                    endpoint = endpoint.replace(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;, nanopubQueryUrl);</span>
+                }
+            }
+        }
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Returns the grlc spec as a string.
+     *
+     * @return grlc specification string
+     */
+    public String getSpec() {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (np == null) return null;</span>
+<span class="fc" id="L103">        String s = &quot;&quot;;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (queryPart.isEmpty()) {</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">            if (label == null) {</span>
+<span class="nc" id="L106">                s += &quot;title: \&quot;untitled query\&quot;\n&quot;;</span>
+<span class="nc" id="L107">            } else {</span>
+<span class="fc" id="L108">                s += &quot;title: \&quot;&quot; + escape(label) + &quot;\&quot;\n&quot;;</span>
+            }
+<span class="fc" id="L110">            s += &quot;description: \&quot;&quot; + escape(desc) + &quot;\&quot;\n&quot;;</span>
+<span class="fc" id="L111">            StringBuilder userName = new StringBuilder();</span>
+<span class="fc" id="L112">            Set&lt;IRI&gt; creators = SimpleCreatorPattern.getCreators(np);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            for (IRI userIri : creators) {</span>
+<span class="fc" id="L114">                userName.append(&quot;, &quot;).append(userIri);</span>
+            }
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">            if (!userName.isEmpty()) userName = new StringBuilder(userName.substring(2));</span>
+<span class="fc" id="L117">            String url = &quot;&quot;;</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if (!creators.isEmpty()) url = creators.iterator().next().stringValue();</span>
+<span class="fc" id="L119">            s += &quot;contact:\n&quot;;</span>
+<span class="fc" id="L120">            s += &quot;  name: \&quot;&quot; + escape(userName.toString()) + &quot;\&quot;\n&quot;;</span>
+<span class="fc" id="L121">            s += &quot;  url: &quot; + url + &quot;\n&quot;;</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            if (license != null) {</span>
+<span class="fc" id="L123">                s += &quot;licence: &quot; + license + &quot;\n&quot;;</span>
+            }
+<span class="fc" id="L125">            s += &quot;queries:\n&quot;;</span>
+<span class="fc" id="L126">            s += &quot;  - &quot; + nanopubQueryUrl + requestUrlBase + artifactCode + &quot;/&quot; + queryName + &quot;.rq&quot;;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        } else if (queryPart.equals(queryName + &quot;.rq&quot;)) {</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (label != null) {</span>
+<span class="fc" id="L129">                s += &quot;#+ summary: \&quot;&quot; + escape(label) + &quot;\&quot;\n&quot;;</span>
+            }
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (desc != null) {</span>
+<span class="fc" id="L132">                s += &quot;#+ description: \&quot;&quot; + escape(desc) + &quot;\&quot;\n&quot;;</span>
+            }
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            if (license != null) {</span>
+<span class="fc" id="L135">                s += &quot;#+ licence: &quot; + license + &quot;\n&quot;;</span>
+            }
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (endpoint != null) {</span>
+<span class="fc" id="L138">                s += &quot;#+ endpoint: &quot; + endpoint + &quot;\n&quot;;</span>
+            }
+<span class="fc" id="L140">            s += &quot;\n&quot;;</span>
+<span class="fc" id="L141">            s += queryContent;</span>
+<span class="fc" id="L142">        } else {</span>
+<span class="fc" id="L143">            return null;</span>
+        }
+<span class="fc" id="L145">        return s;</span>
+    }
+
+    private static String escape(String s) {
+<span class="fc" id="L149">        return s.replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot;\n&quot;, &quot;\\n&quot;).replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

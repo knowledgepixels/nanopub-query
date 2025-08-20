@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpenApiSpecPage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">OpenApiSpecPage.java</span></div><h1>OpenApiSpecPage.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
+
+import io.vertx.core.MultiMap;
+import net.trustyuri.TrustyUriUtils;
+import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Statement;
+import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
+import org.eclipse.rdf4j.model.vocabulary.RDFS;
+import org.eclipse.rdf4j.query.algebra.Var;
+import org.eclipse.rdf4j.query.algebra.helpers.AbstractSimpleQueryModelVisitor;
+import org.eclipse.rdf4j.query.parser.ParsedQuery;
+import org.eclipse.rdf4j.query.parser.sparql.SPARQLParser;
+import org.nanopub.Nanopub;
+import org.nanopub.extra.server.GetNanopub;
+import org.nanopub.extra.services.QueryAccess;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
+
+import java.util.*;
+
+/**
+ * Page for Open API compliant specification.
+ */
+public class OpenApiSpecPage {
+
+<span class="fc" id="L26">    private Map&lt;String, Object&gt; dataMap = new LinkedHashMap&lt;&gt;();</span>
+    private Nanopub np;
+
+    /**
+     * Creates a new page instance.
+     *
+     * @param requestUrl The request URL
+     * @param parameters The URL request parameters
+     */
+<span class="fc" id="L35">    public OpenApiSpecPage(String requestUrl, MultiMap parameters) {</span>
+<span class="fc" id="L36">        requestUrl = requestUrl.replaceFirst(&quot;\\?.*$&quot;, &quot;&quot;);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (!requestUrl.matches(&quot;.*/RA[A-Za-z0-9\\-_]{43}/(.*)?&quot;)) return;</span>
+<span class="fc" id="L38">        String artifactCode = requestUrl.replaceFirst(&quot;^(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$&quot;, &quot;$2&quot;);</span>
+//		String queryPart = requestUrl.replaceFirst(&quot;^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$&quot;, &quot;$3&quot;);
+//		String requestUrlBase = requestUrl.replaceFirst(&quot;^/(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$&quot;, &quot;$1&quot;);
+
+        // TODO Get the nanopub from the local store:
+<span class="fc" id="L43">        np = GetNanopub.get(artifactCode);</span>
+<span class="pc bpc" id="L44" title="1 of 4 branches missed.">        if (parameters.get(&quot;api-version&quot;) != null &amp;&amp; parameters.get(&quot;api-version&quot;).equals(&quot;latest&quot;)) {</span>
+            // TODO Get the latest version from the local store:
+<span class="fc" id="L46">            np = GetNanopub.get(QueryAccess.getLatestVersionId(np.getUri().stringValue()));</span>
+<span class="fc" id="L47">            artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());</span>
+        }
+<span class="fc" id="L49">        String queryName = null;</span>
+<span class="fc" id="L50">        String label = null;</span>
+<span class="fc" id="L51">        String desc = null;</span>
+<span class="fc" id="L52">        String queryContent = null;</span>
+<span class="fc" id="L53">        String endpoint = null;</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (Statement st : np.getAssertion()) {</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">            if (!st.getSubject().stringValue().startsWith(np.getUri().stringValue())) continue;</span>
+<span class="fc" id="L56">            String qn = st.getSubject().stringValue().replaceFirst(&quot;^.*[#/](.*)$&quot;, &quot;$1&quot;);</span>
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">            if (queryName != null &amp;&amp; !qn.equals(queryName)) {</span>
+<span class="nc" id="L58">                np = null;</span>
+<span class="nc" id="L59">                break;</span>
+            }
+<span class="fc" id="L61">            queryName = qn;</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (st.getPredicate().equals(RDFS.LABEL)) {</span>
+<span class="fc" id="L63">                label = st.getObject().stringValue();</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            } else if (st.getPredicate().equals(DCTERMS.DESCRIPTION)) {</span>
+<span class="fc" id="L65">                desc = st.getObject().stringValue();</span>
+//			} else if (st.getPredicate().equals(DCTERMS.LICENSE) &amp;&amp; st.getObject() instanceof IRI) {
+//				license = st.getObject().stringValue();
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            } else if (st.getPredicate().equals(GrlcSpecPage.HAS_SPARQL)) {</span>
+<span class="fc" id="L69">                queryContent = st.getObject().stringValue().replace(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;, GrlcSpecPage.nanopubQueryUrl);</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">            } else if (st.getPredicate().equals(GrlcSpecPage.HAS_ENDPOINT) &amp;&amp; st.getObject() instanceof IRI) {</span>
+<span class="fc" id="L71">                endpoint = st.getObject().stringValue();</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                if (endpoint.startsWith(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;)) {</span>
+<span class="fc" id="L73">                    endpoint = endpoint.replace(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;, GrlcSpecPage.nanopubQueryUrl);</span>
+                }
+            }
+        }
+
+        // TODO Code duplicated from com.knowledgepixels.nanodash.GrlcQuery:
+<span class="fc" id="L79">        final Set&lt;String&gt; placeholders = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L80">        ParsedQuery query = new SPARQLParser().parseQuery(queryContent, null);</span>
+<span class="fc" id="L81">        query.getTupleExpr().visitChildren(new AbstractSimpleQueryModelVisitor&lt;&gt;() {</span>
+
+            @Override
+            public void meet(Var node) throws RuntimeException {
+<span class="fc" id="L85">                super.meet(node);</span>
+<span class="pc bpc" id="L86" title="2 of 6 branches missed.">                if (!node.isConstant() &amp;&amp; !node.isAnonymous() &amp;&amp; node.getName().startsWith(&quot;_&quot;)) {</span>
+<span class="nc" id="L87">                    placeholders.add(node.getName());</span>
+                }
+<span class="fc" id="L89">            }</span>
+
+        });
+<span class="fc" id="L92">        List&lt;String&gt; placeholdersList = new ArrayList&lt;&gt;(placeholders);</span>
+<span class="fc" id="L93">        Collections.sort(placeholdersList);</span>
+
+<span class="fc" id="L95">        dataMap.put(&quot;openapi&quot;, &quot;3.0.4&quot;);</span>
+
+<span class="fc" id="L97">        Map&lt;String, Object&gt; infoMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L98">        infoMap.put(&quot;title&quot;, label);</span>
+<span class="fc" id="L99">        infoMap.put(&quot;description&quot;, &quot;API definition source: &lt;a target=\&quot;_blank\&quot; href=\&quot;&quot; + np.getUri() + &quot;\&quot;&gt;&lt;svg height=\&quot;0.8em\&quot; xmlns=\&quot;http://www.w3.org/2000/svg\&quot; viewBox=\&quot;0 0 8 8\&quot;&gt;&lt;path d=\&quot;M5,8H8L3,0H0M8,4.8V0H5M0,3.2V8H3\&quot;/&gt;&lt;/svg&gt; &quot; + artifactCode.substring(0, 10) + &quot;&lt;/a&gt;&quot;);</span>
+<span class="fc" id="L100">        infoMap.put(&quot;version&quot;, artifactCode.substring(0, 10));</span>
+<span class="fc" id="L101">        dataMap.put(&quot;info&quot;, infoMap);</span>
+
+<span class="fc" id="L103">        List&lt;Object&gt; serversList = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L104">        Map&lt;String, Object&gt; serverMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L105">        serverMap.put(&quot;url&quot;, Utils.getEnvString(&quot;NANOPUB_QUERY_URL&quot;, &quot;http://localhost:9393/&quot;) + &quot;api/&quot; + artifactCode);</span>
+<span class="fc" id="L106">        serverMap.put(&quot;description&quot;, &quot;This Nanopub Query instance&quot;);</span>
+<span class="fc" id="L107">        serversList.add(serverMap);</span>
+<span class="fc" id="L108">        dataMap.put(&quot;servers&quot;, serversList);</span>
+
+<span class="fc" id="L110">        Map&lt;String, Object&gt; pathsMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L111">        Map&lt;String, Object&gt; rootPathMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L112">        Map&lt;String, Object&gt; getOpMap = new LinkedHashMap&lt;&gt;();</span>
+        //getOpMap.put(&quot;summary&quot;, label);
+<span class="fc" id="L114">        getOpMap.put(&quot;description&quot;, desc);</span>
+<span class="fc" id="L115">        Map&lt;String, Object&gt; responsesMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L116">        Map&lt;String, Object&gt; successrespMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L117">        Map&lt;String, Object&gt; contentMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L118">        contentMap.put(&quot;text/csv&quot;, new HashMap&lt;&gt;());</span>
+<span class="fc" id="L119">        contentMap.put(&quot;application/json&quot;, new HashMap&lt;&gt;());</span>
+<span class="fc" id="L120">        successrespMap.put(&quot;content&quot;, contentMap);</span>
+<span class="fc" id="L121">        successrespMap.put(&quot;description&quot;, &quot;result table&quot;);</span>
+<span class="fc" id="L122">        responsesMap.put(&quot;200&quot;, successrespMap);</span>
+<span class="fc" id="L123">        List&lt;Object&gt; parametersList = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        for (String p : placeholdersList) {</span>
+<span class="nc" id="L125">            Map&lt;String, Object&gt; paramMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L126">            paramMap.put(&quot;in&quot;, &quot;query&quot;);</span>
+<span class="nc" id="L127">            String name = p.replaceFirst(&quot;^_*&quot;, &quot;&quot;).replaceFirst(&quot;_iri$&quot;, &quot;&quot;);</span>
+<span class="nc" id="L128">            paramMap.put(&quot;name&quot;, name);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            paramMap.put(&quot;required&quot;, !p.startsWith(&quot;__&quot;));</span>
+<span class="nc" id="L130">            Map&lt;String, Object&gt; stringType = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L131">            stringType.put(&quot;type&quot;, &quot;string&quot;);</span>
+<span class="nc" id="L132">            paramMap.put(&quot;schema&quot;, stringType);</span>
+<span class="nc" id="L133">            parametersList.add(paramMap);</span>
+        }
+<span class="fc" id="L135">        getOpMap.put(&quot;parameters&quot;, parametersList);</span>
+<span class="fc" id="L136">        getOpMap.put(&quot;responses&quot;, responsesMap);</span>
+<span class="fc" id="L137">        rootPathMap.put(&quot;get&quot;, getOpMap);</span>
+<span class="fc" id="L138">        pathsMap.put(&quot;/&quot; + queryName, rootPathMap);</span>
+<span class="fc" id="L139">        dataMap.put(&quot;paths&quot;, pathsMap);</span>
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * Returns the Open API spec as a string.
+     *
+     * @return Open API specification string
+     */
+    public String getSpec() {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (np == null) return null;</span>
+<span class="fc" id="L149">        final DumperOptions options = new DumperOptions();</span>
+<span class="fc" id="L150">        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);</span>
+<span class="fc" id="L151">        options.setPrettyFlow(true);</span>
+<span class="fc" id="L152">        return new Yaml(options).dump(dataMap);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

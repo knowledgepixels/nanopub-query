@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StatusController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">StatusController.java</span></div><h1>StatusController.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
+
+import org.eclipse.rdf4j.common.transaction.IsolationLevels;
+import org.eclipse.rdf4j.model.Literal;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
+
+import java.util.Objects;
+
+/**
+ * Class to control the load status of the database.
+ */
+<span class="fc" id="L12">public class StatusController {</span>
+
+    /**
+     * The load states in which the database can be.
+     */
+<span class="fc" id="L17">    public enum State {</span>
+<span class="fc" id="L18">        /**</span>
+         * The service is launching.
+         */
+<span class="fc" id="L21">        LAUNCHING,</span>
+<span class="fc" id="L22">        /**</span>
+         * The service is loading.
+         */
+<span class="fc" id="L25">        LOADING_INITIAL,</span>
+<span class="fc" id="L26">        /**</span>
+         * The service is loading updates.
+         */
+<span class="fc" id="L29">        LOADING_UPDATES,</span>
+<span class="fc" id="L30">        /**</span>
+         * The service is ready to serve requests.
+         */
+<span class="fc" id="L33">        READY,</span>
+    }
+
+    /**
+     * Represents the current status of the service, including the load counter.
+     */
+    public static class LoadingStatus {
+
+        /**
+         * The current state of the service.
+         */
+        public final State state;
+
+        /**
+         * The current load counter.
+         */
+        public final long loadCounter;
+
+<span class="fc" id="L51">        private LoadingStatus(State state, long loadCounter) {</span>
+<span class="fc" id="L52">            this.state = state;</span>
+<span class="fc" id="L53">            this.loadCounter = loadCounter;</span>
+<span class="fc" id="L54">        }</span>
+
+        /**
+         * Create a new LoadingStatus instance.
+         *
+         * @param state       the current state of the service
+         * @param loadCounter the current load counter
+         * @return a new LoadingStatus instance
+         */
+        public static LoadingStatus of(State state, long loadCounter) {
+<span class="fc" id="L64">            return new LoadingStatus(state, loadCounter);</span>
+        }
+
+        @Override
+        public boolean equals(Object o) {
+<span class="fc bfc" id="L69" title="All 4 branches covered.">            if (o == null || getClass() != o.getClass()) {</span>
+<span class="fc" id="L70">                return false;</span>
+            }
+<span class="fc" id="L72">            LoadingStatus that = (LoadingStatus) o;</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">            return loadCounter == that.loadCounter &amp;&amp; state == that.state;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="fc" id="L78">            return Objects.hash(state, loadCounter);</span>
+        }
+
+    }
+
+    /**
+     * Get the singleton instance of the StatusController.
+     *
+     * @return the StatusController instance
+     */
+    public static StatusController get() {
+<span class="fc" id="L89">        return instance;</span>
+    }
+
+<span class="fc" id="L92">    private final static StatusController instance = new StatusController();</span>
+
+<span class="fc" id="L94">    private boolean initialized = false;</span>
+<span class="fc" id="L95">    private State state = null;</span>
+<span class="fc" id="L96">    private long lastCommittedCounter = -1;</span>
+    private RepositoryConnection adminRepoConn;
+
+    /**
+     * Initialize the StatusController, fetching the last known state from the DB.
+     * This must be called right after service startup, before loading any nanopubs.
+     *
+     * @return the current state and the last committed counter
+     */
+    public LoadingStatus initialize() {
+<span class="fc" id="L106">        synchronized (this) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (initialized) {</span>
+<span class="fc" id="L108">                throw new IllegalStateException(&quot;Already initialized&quot;);</span>
+            }
+<span class="fc" id="L110">            state = State.LAUNCHING;</span>
+<span class="fc" id="L111">            adminRepoConn = TripleStore.get().getAdminRepoConnection();</span>
+            // Serializable, as the service state needs to be strictly consistent
+<span class="fc" id="L113">            adminRepoConn.begin(IsolationLevels.SERIALIZABLE);</span>
+            // Fetch the state from the DB
+<span class="fc" id="L115">            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, null, NanopubLoader.ADMIN_GRAPH)) {</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                if (!statements.hasNext()) {</span>
+<span class="fc" id="L117">                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, stateAsLiteral(state), NanopubLoader.ADMIN_GRAPH);</span>
+<span class="fc" id="L118">                } else {</span>
+<span class="nc" id="L119">                    var stateStatement = statements.next();</span>
+<span class="nc" id="L120">                    state = State.valueOf(stateStatement.getObject().stringValue());</span>
+                }
+            }
+            // Fetch the load counter from the DB
+<span class="fc" id="L124">            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, null, NanopubLoader.ADMIN_GRAPH)) {</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                if (!statements.hasNext()) {</span>
+<span class="fc" id="L126">                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(-1L), NanopubLoader.ADMIN_GRAPH);</span>
+<span class="fc" id="L127">                } else {</span>
+<span class="nc" id="L128">                    var counterStatement = statements.next();</span>
+<span class="nc" id="L129">                    var stringVal = counterStatement.getObject().stringValue();</span>
+<span class="nc" id="L130">                    lastCommittedCounter = Long.parseLong(stringVal);</span>
+                }
+<span class="fc" id="L132">                adminRepoConn.commit();</span>
+<span class="nc" id="L133">            } catch (Exception e) {</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                if (adminRepoConn.isActive()) adminRepoConn.rollback();</span>
+<span class="nc" id="L135">                throw new RuntimeException(e);</span>
+            }
+<span class="fc" id="L137">            initialized = true;</span>
+<span class="fc" id="L138">            return getState();</span>
+        }
+    }
+
+    /**
+     * Get the current state of the service.
+     *
+     * @return the current state and the last committed counter
+     */
+    public LoadingStatus getState() {
+<span class="fc" id="L148">        synchronized (this) {</span>
+<span class="fc" id="L149">            return LoadingStatus.of(state, lastCommittedCounter);</span>
+        }
+    }
+
+    /**
+     * Transition the service to the LOADING_INITIAL state and update the load counter.
+     * This should be called in two situations:
+     * - By the main loading thread (after calling initialize()) to start loading the initial nanopubs.
+     * - By the initial nanopub loader, as it processes the initial nanopubs.
+     *
+     * @param loadCounter the new load counter
+     */
+    public void setLoadingInitial(long loadCounter) {
+<span class="fc" id="L162">        synchronized (this) {</span>
+<span class="fc bfc" id="L163" title="All 4 branches covered.">            if (state != State.LAUNCHING &amp;&amp; state != State.LOADING_INITIAL) {</span>
+<span class="fc" id="L164">                throw new IllegalStateException(&quot;Cannot transition to LOADING_INITIAL, as the &quot; + &quot;current state is &quot; + state);</span>
+            }
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (lastCommittedCounter &gt; loadCounter) {</span>
+<span class="fc" id="L167">                throw new IllegalStateException(&quot;Cannot update the load counter from &quot; + lastCommittedCounter + &quot; to &quot; + loadCounter);</span>
+            }
+<span class="fc" id="L169">            updateState(State.LOADING_INITIAL, loadCounter);</span>
+        }
+<span class="fc" id="L171">    }</span>
+
+    /**
+     * Transition the service to the LOADING_UPDATES state and update the load counter.
+     * This should be called by the updates loader, when it starts processing new nanopubs, or
+     * when it finishes processing a batch of nanopubs.
+     *
+     * @param loadCounter the new load counter
+     */
+    public void setLoadingUpdates(long loadCounter) {
+<span class="nc" id="L181">        synchronized (this) {</span>
+<span class="nc bnc" id="L182" title="All 6 branches missed.">            if (state != State.LAUNCHING &amp;&amp; state != State.LOADING_UPDATES &amp;&amp; state != State.READY) {</span>
+<span class="nc" id="L183">                throw new IllegalStateException(&quot;Cannot transition to LOADING_UPDATES, as the &quot; + &quot;current state is &quot; + state);</span>
+            }
+<span class="nc bnc" id="L185" title="All 2 branches missed.">            if (lastCommittedCounter &gt; loadCounter) {</span>
+<span class="nc" id="L186">                throw new IllegalStateException(&quot;Cannot update the load counter from &quot; + lastCommittedCounter + &quot; to &quot; + loadCounter);</span>
+            }
+<span class="nc" id="L188">            updateState(State.LOADING_UPDATES, loadCounter);</span>
+        }
+<span class="nc" id="L190">    }</span>
+
+    /**
+     * Transition the service to the READY state.
+     * This should be called by the loaders, after they finish their work.
+     */
+    public void setReady() {
+<span class="fc" id="L197">        synchronized (this) {</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">            if (state != State.READY) {</span>
+<span class="nc" id="L199">                updateState(State.READY, lastCommittedCounter);</span>
+            }
+        }
+<span class="fc" id="L202">    }</span>
+
+    void updateState(State newState, long loadCounter) {
+<span class="fc" id="L205">        synchronized (this) {</span>
+            try {
+                // Serializable, as the service state needs to be strictly consistent
+<span class="fc" id="L208">                adminRepoConn.begin(IsolationLevels.SERIALIZABLE);</span>
+<span class="fc" id="L209">                adminRepoConn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, null, NanopubLoader.ADMIN_GRAPH);</span>
+<span class="fc" id="L210">                adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, stateAsLiteral(newState), NanopubLoader.ADMIN_GRAPH);</span>
+<span class="fc" id="L211">                adminRepoConn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, null, NanopubLoader.ADMIN_GRAPH);</span>
+<span class="fc" id="L212">                adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(loadCounter), NanopubLoader.ADMIN_GRAPH);</span>
+<span class="fc" id="L213">                adminRepoConn.commit();</span>
+<span class="fc" id="L214">                state = newState;</span>
+<span class="fc" id="L215">                lastCommittedCounter = loadCounter;</span>
+<span class="pc" id="L216">            } catch (Exception e) {</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">                if (adminRepoConn.isActive()) adminRepoConn.rollback();</span>
+<span class="nc" id="L218">                throw new RuntimeException(e);</span>
+            }
+        }
+<span class="fc" id="L221">    }</span>
+
+    private Literal stateAsLiteral(State s) {
+<span class="fc" id="L224">        return adminRepoConn.getValueFactory().createLiteral(s.toString());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
