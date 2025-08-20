@@ -23,6 +23,29 @@ class GrlcSpecPageTest {
     private final String queryName = "get-participation";
 
     @Test
+    void constructWithNullApiVersion() throws MalformedNanopubException, IOException {
+        try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
+            mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
+            MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
+            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName, parameters);
+            assertNotNull(page);
+        }
+    }
+
+    @Test
+    void constructWithSpecificApiVersion() throws MalformedNanopubException, IOException {
+        try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
+            mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
+            MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
+            parameters.add("api-version", "random-version");
+            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName, parameters);
+            assertNotNull(page);
+        }
+    }
+
+    @Test
     void constructWithInvalidUrl() {
         GrlcSpecPage page = new GrlcSpecPage("https://invalid-url", MultiMap.caseInsensitiveMultiMap());
         assertNull(page.getSpec());
@@ -31,7 +54,7 @@ class GrlcSpecPageTest {
     @Test
     void constructWithParameters() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "latest");
@@ -43,7 +66,7 @@ class GrlcSpecPageTest {
     @Test
     void getSpecWithEmptyQueryPart() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/", MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
@@ -62,7 +85,7 @@ class GrlcSpecPageTest {
     @Test
     void getSpecWithRqExtension() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName + ".rq", MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
@@ -71,24 +94,24 @@ class GrlcSpecPageTest {
                     #+ licence: http://www.apache.org/licenses/LICENSE-2.0
                     #+ endpoint: http://query:9393/repo/full
                     
-                    prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                    prefix dct: <http://purl.org/dc/terms/>
-                    prefix np: <http://www.nanopub.org/nschema#>
-                    prefix npa: <http://purl.org/nanopub/admin/>
-                    prefix npx: <http://purl.org/nanopub/x/>
-                    prefix wd: <http://www.wikidata.org/entity/>
-                    
-                    select ?person ?event ?np ?date where {
-                      graph npa:graph {
-                        ?np npa:hasValidSignatureForPublicKey ?pubkey .
-                        filter not exists { ?npx npx:invalidates ?np ; npa:hasValidSignatureForPublicKey ?pubkey . }
-                        ?np dct:created ?date .
-                        ?np np:hasAssertion ?a .
-                        optional { ?np rdfs:label ?label }
-                      }
-                      graph ?a {
-                        ?person wd:P1344 ?event .
-                      }
+                    prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>\r
+                    prefix dct: <http://purl.org/dc/terms/>\r
+                    prefix np: <http://www.nanopub.org/nschema#>\r
+                    prefix npa: <http://purl.org/nanopub/admin/>\r
+                    prefix npx: <http://purl.org/nanopub/x/>\r
+                    prefix wd: <http://www.wikidata.org/entity/>\r
+                    \r
+                    select ?person ?event ?np ?date where {\r
+                      graph npa:graph {\r
+                        ?np npa:hasValidSignatureForPublicKey ?pubkey .\r
+                        filter not exists { ?npx npx:invalidates ?np ; npa:hasValidSignatureForPublicKey ?pubkey . }\r
+                        ?np dct:created ?date .\r
+                        ?np np:hasAssertion ?a .\r
+                        optional { ?np rdfs:label ?label }\r
+                      }\r
+                      graph ?a {\r
+                        ?person wd:P1344 ?event .\r
+                      }\r
                     } order by desc(?date)""";
             assertEquals(expectedSpec, page.getSpec());
         }
@@ -97,7 +120,7 @@ class GrlcSpecPageTest {
     @Test
     void getSpecWithInvalidQueryPart() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/grlc-query.trig")).getPath()));
+            Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/invalid-query.rq", MultiMap.caseInsensitiveMultiMap());
             assertNull(page.getSpec());

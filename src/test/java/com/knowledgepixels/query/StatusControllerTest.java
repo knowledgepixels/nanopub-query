@@ -3,6 +3,7 @@ package com.knowledgepixels.query;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.RepositoryResult;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
@@ -12,6 +13,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class StatusControllerTest {
+
+    @BeforeEach
+    void setUp() {
+        StatusController.get().resetForTest();
+    }
 
     @Test
     void getNotNull() {
@@ -57,6 +63,7 @@ class StatusControllerTest {
             when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
             when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
 
+            controller.initialize();
             assertThrows(IllegalStateException.class, controller::initialize);
         }
     }
@@ -107,8 +114,12 @@ class StatusControllerTest {
             when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
             when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
 
+            controller.initialize();
             controller.setReady();
             StatusController.LoadingStatus loadingStatus = controller.getState();
+            assertEquals(StatusController.State.READY, loadingStatus.state);
+
+            controller.setReady();
             assertEquals(StatusController.State.READY, loadingStatus.state);
         }
     }
@@ -124,7 +135,7 @@ class StatusControllerTest {
             when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
             when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
 
-
+            controller.initialize();
             controller.updateState(StatusController.State.LAUNCHING, 0);
             controller.setLoadingInitial(10);
             StatusController.LoadingStatus loadingStatus = controller.getState();
@@ -142,7 +153,7 @@ class StatusControllerTest {
         }
     }
 
-    /*@Test
+    @Test
     void setLoadingUpdates() {
         try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
             StatusController controller = StatusController.get();
@@ -153,7 +164,7 @@ class StatusControllerTest {
             when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
             when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
 
-
+            controller.initialize();
             controller.updateState(StatusController.State.LAUNCHING, 0);
             controller.setLoadingUpdates(10);
             StatusController.LoadingStatus loadingStatus = controller.getState();
@@ -173,7 +184,10 @@ class StatusControllerTest {
             assertThrows(IllegalStateException.class, () -> controller.setLoadingUpdates(10));
 
             assertThrows(IllegalStateException.class, () -> controller.setLoadingUpdates(5));
+
+            controller.updateState(StatusController.State.LAUNCHING, 0);
+            assertThrows(IllegalStateException.class, () -> controller.setLoadingUpdates(-1));
         }
-    }*/
+    }
 
 }
