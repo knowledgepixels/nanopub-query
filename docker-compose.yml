@@ -4,7 +4,6 @@ services:
     image: nanopub/query
     restart: unless-stopped
     ports:
-      - "9300:9300"
       - "9393:9393"
       # :9394 is only accessible from localhost as it is used for the /metrics endpoint
       - "127.0.0.1:9394:9394"

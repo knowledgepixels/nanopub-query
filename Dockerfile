@@ -16,7 +16,6 @@ WORKDIR /app
 
 COPY --from=build /app/nanopub-query.jar .
 
-EXPOSE 9300
 EXPOSE 9393
 
 ENTRYPOINT ["java","-jar","nanopub-query.jar"]
