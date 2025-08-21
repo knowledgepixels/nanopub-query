@@ -1,7 +1,8 @@
 package com.knowledgepixels.query;
 
-import org.apache.http.client.config.CookieSpecs;
-import org.apache.http.client.config.RequestConfig;
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
@@ -10,9 +11,6 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 import org.nanopub.NanopubUtils;
 import org.nanopub.jelly.NanopubStream;
-
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
@@ -45,14 +43,7 @@ public class JellyNanopubLoader {
         if (!url.endsWith("/")) url += "/";
         registryUrl = url;
 
-        // Initialize HTTP clients
-        var rqConfig = RequestConfig.custom()
-                .setConnectTimeout(1000)
-                .setConnectionRequestTimeout(1000)
-                .setSocketTimeout(1000)
-                .setCookieSpec(CookieSpecs.IGNORE_COOKIES)
-                .build();
-        metadataClient = HttpClientBuilder.create().setDefaultRequestConfig(rqConfig).build();
+        metadataClient = HttpClientBuilder.create().setDefaultRequestConfig(Utils.getHttpRequestConfig()).build();
         jellyStreamClient = NanopubUtils.getHttpClient();
     }
 

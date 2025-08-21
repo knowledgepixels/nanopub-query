@@ -55,8 +55,11 @@ public class MainVerticle extends AbstractVerticle {
     public void start(Promise<Void> startPromise) throws Exception {
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
-                        .setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS)
-                        .setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),
+                        .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))
+                        .setIdleTimeoutUnit(TimeUnit.SECONDS)
+                        .setIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_IDLE_TIMEOUT", 60))
+                        .setReadIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_IDLE_TIMEOUT", 60))
+                        .setWriteIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_IDLE_TIMEOUT", 60)),
                 new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
         );
 
