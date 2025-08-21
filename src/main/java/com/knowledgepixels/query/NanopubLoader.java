@@ -311,6 +311,7 @@ public class NanopubLoader {
         loader.executeLoading();
     }
 
+    @GeneratedFlagForDependentElements
     private void executeLoading() {
         var runningTasks = new ArrayList<Future<?>>();
         Consumer<Runnable> runTask = t -> runningTasks.add(loadingPool.submit(t));
@@ -373,6 +374,7 @@ public class NanopubLoader {
     private static long THIRTY_DAYS = 1000L * 60 * 60 * 24 * 30;
     private static long ONE_HOUR = 1000L * 60 * 60;
 
+    @GeneratedFlagForDependentElements
     private static void loadNanopubToLatest(List<Statement> statements) {
         boolean success = false;
         while (!success) {
@@ -419,6 +421,7 @@ public class NanopubLoader {
         }
     }
 
+    @GeneratedFlagForDependentElements
     private static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
         boolean success = false;
         while (!success) {
@@ -474,6 +477,7 @@ public class NanopubLoader {
      * @param npId nanopub ID
      * @return the current status
      */
+    @GeneratedFlagForDependentElements
     private static RepoStatus fetchRepoStatus(RepositoryConnection conn, IRI npId) {
         var result = conn.prepareTupleQuery(QueryLanguage.SPARQL, REPO_STATUS_QUERY_TEMPLATE.formatted(npId)).evaluate();
         try (result) {
@@ -486,6 +490,7 @@ public class NanopubLoader {
         }
     }
 
+    @GeneratedFlagForDependentElements
     private static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
         boolean success = false;
         while (!success) {
@@ -550,6 +555,7 @@ public class NanopubLoader {
         }
     }
 
+    @GeneratedFlagForDependentElements
     private static RepositoryConnection loadStatements(String repoName, Statement... statements) {
         RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
         // Basic isolation: we only append new statements
@@ -560,6 +566,7 @@ public class NanopubLoader {
         return conn;
     }
 
+    @GeneratedFlagForDependentElements
     static List<Statement> getInvalidatingStatements(IRI npId) {
         List<Statement> invalidatingStatements = new ArrayList<>();
         boolean success = false;
@@ -594,6 +601,7 @@ public class NanopubLoader {
         return invalidatingStatements;
     }
 
+    @GeneratedFlagForDependentElements
     private static void loadNoteToRepo(Resource subj, String note) {
         boolean success = false;
         while (!success) {
@@ -651,6 +659,7 @@ public class NanopubLoader {
      * @param npId the nanopub ID
      * @return true if the nanopub is loaded, false otherwise
      */
+    @GeneratedFlagForDependentElements
     static boolean isNanopubLoaded(String npId) {
         boolean loaded = false;
         RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");

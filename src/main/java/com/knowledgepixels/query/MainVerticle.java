@@ -41,6 +41,7 @@ import io.vertx.micrometer.backends.BackendRegistries;
 /**
  * Main verticle that coordinates the incoming HTTP requests.
  */
+@GeneratedFlagForDependentElements
 public class MainVerticle extends AbstractVerticle {
 
     private static String css = null;
