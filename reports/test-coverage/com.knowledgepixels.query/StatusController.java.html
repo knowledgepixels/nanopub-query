@@ -15,23 +15,39 @@ import java.util.Objects;
      * The load states in which the database can be.
      */
 <span class="fc" id="L17">    public enum State {</span>
-<span class="fc" id="L18">        /**</span>
+        /**
          * The service is launching.
          */
 <span class="fc" id="L21">        LAUNCHING,</span>
-<span class="fc" id="L22">        /**</span>
+        /**
          * The service is loading.
          */
 <span class="fc" id="L25">        LOADING_INITIAL,</span>
-<span class="fc" id="L26">        /**</span>
+        /**
          * The service is loading updates.
          */
 <span class="fc" id="L29">        LOADING_UPDATES,</span>
-<span class="fc" id="L30">        /**</span>
+        /**
          * The service is ready to serve requests.
          */
 <span class="fc" id="L33">        READY,</span>
     }
+
+    /**
+     * Get the singleton instance of the StatusController.
+     *
+     * @return the StatusController instance
+     */
+    public static StatusController get() {
+<span class="fc" id="L42">        return instance;</span>
+    }
+
+<span class="fc" id="L45">    private final static StatusController instance = new StatusController();</span>
+
+<span class="fc" id="L47">    private boolean initialized = false;</span>
+<span class="fc" id="L48">    private State state = null;</span>
+<span class="fc" id="L49">    private long lastCommittedCounter = -1;</span>
+    private RepositoryConnection adminRepoConn;
 
     /**
      * Represents the current status of the service, including the load counter.
@@ -48,10 +64,10 @@ import java.util.Objects;
          */
         public final long loadCounter;
 
-<span class="fc" id="L51">        private LoadingStatus(State state, long loadCounter) {</span>
-<span class="fc" id="L52">            this.state = state;</span>
-<span class="fc" id="L53">            this.loadCounter = loadCounter;</span>
-<span class="fc" id="L54">        }</span>
+<span class="fc" id="L67">        private LoadingStatus(State state, long loadCounter) {</span>
+<span class="fc" id="L68">            this.state = state;</span>
+<span class="fc" id="L69">            this.loadCounter = loadCounter;</span>
+<span class="fc" id="L70">        }</span>
 
         /**
          * Create a new LoadingStatus instance.
@@ -61,40 +77,24 @@ import java.util.Objects;
          * @return a new LoadingStatus instance
          */
         public static LoadingStatus of(State state, long loadCounter) {
-<span class="fc" id="L64">            return new LoadingStatus(state, loadCounter);</span>
+<span class="fc" id="L80">            return new LoadingStatus(state, loadCounter);</span>
         }
 
         @Override
         public boolean equals(Object o) {
-<span class="fc bfc" id="L69" title="All 4 branches covered.">            if (o == null || getClass() != o.getClass()) {</span>
-<span class="fc" id="L70">                return false;</span>
+<span class="fc bfc" id="L85" title="All 4 branches covered.">            if (o == null || getClass() != o.getClass()) {</span>
+<span class="fc" id="L86">                return false;</span>
             }
-<span class="fc" id="L72">            LoadingStatus that = (LoadingStatus) o;</span>
-<span class="fc bfc" id="L73" title="All 4 branches covered.">            return loadCounter == that.loadCounter &amp;&amp; state == that.state;</span>
+<span class="fc" id="L88">            LoadingStatus that = (LoadingStatus) o;</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            return loadCounter == that.loadCounter &amp;&amp; state == that.state;</span>
         }
 
         @Override
         public int hashCode() {
-<span class="fc" id="L78">            return Objects.hash(state, loadCounter);</span>
+<span class="fc" id="L94">            return Objects.hash(state, loadCounter);</span>
         }
 
     }
-
-    /**
-     * Get the singleton instance of the StatusController.
-     *
-     * @return the StatusController instance
-     */
-    public static StatusController get() {
-<span class="fc" id="L89">        return instance;</span>
-    }
-
-<span class="fc" id="L92">    private final static StatusController instance = new StatusController();</span>
-
-<span class="fc" id="L94">    private boolean initialized = false;</span>
-<span class="fc" id="L95">    private State state = null;</span>
-<span class="fc" id="L96">    private long lastCommittedCounter = -1;</span>
-    private RepositoryConnection adminRepoConn;
 
     /**
      * Initialize the StatusController, fetching the last known state from the DB.
@@ -115,7 +115,7 @@ import java.util.Objects;
 <span class="fc" id="L115">            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, null, NanopubLoader.ADMIN_GRAPH)) {</span>
 <span class="pc bpc" id="L116" title="1 of 2 branches missed.">                if (!statements.hasNext()) {</span>
 <span class="fc" id="L117">                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, stateAsLiteral(state), NanopubLoader.ADMIN_GRAPH);</span>
-<span class="fc" id="L118">                } else {</span>
+                } else {
 <span class="nc" id="L119">                    var stateStatement = statements.next();</span>
 <span class="nc" id="L120">                    state = State.valueOf(stateStatement.getObject().stringValue());</span>
                 }
@@ -124,7 +124,7 @@ import java.util.Objects;
 <span class="fc" id="L124">            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, null, NanopubLoader.ADMIN_GRAPH)) {</span>
 <span class="pc bpc" id="L125" title="1 of 2 branches missed.">                if (!statements.hasNext()) {</span>
 <span class="fc" id="L126">                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(-1L), NanopubLoader.ADMIN_GRAPH);</span>
-<span class="fc" id="L127">                } else {</span>
+                } else {
 <span class="nc" id="L128">                    var counterStatement = statements.next();</span>
 <span class="nc" id="L129">                    var stringVal = counterStatement.getObject().stringValue();</span>
 <span class="nc" id="L130">                    lastCommittedCounter = Long.parseLong(stringVal);</span>
@@ -133,7 +133,7 @@ import java.util.Objects;
 <span class="nc" id="L133">            } catch (Exception e) {</span>
 <span class="nc bnc" id="L134" title="All 2 branches missed.">                if (adminRepoConn.isActive()) adminRepoConn.rollback();</span>
 <span class="nc" id="L135">                throw new RuntimeException(e);</span>
-            }
+<span class="fc" id="L136">            }</span>
 <span class="fc" id="L137">            initialized = true;</span>
 <span class="fc" id="L138">            return getState();</span>
         }
@@ -167,7 +167,7 @@ import java.util.Objects;
 <span class="fc" id="L167">                throw new IllegalStateException(&quot;Cannot update the load counter from &quot; + lastCommittedCounter + &quot; to &quot; + loadCounter);</span>
             }
 <span class="fc" id="L169">            updateState(State.LOADING_INITIAL, loadCounter);</span>
-        }
+<span class="fc" id="L170">        }</span>
 <span class="fc" id="L171">    }</span>
 
     /**
@@ -178,16 +178,16 @@ import java.util.Objects;
      * @param loadCounter the new load counter
      */
     public void setLoadingUpdates(long loadCounter) {
-<span class="nc" id="L181">        synchronized (this) {</span>
-<span class="nc bnc" id="L182" title="All 6 branches missed.">            if (state != State.LAUNCHING &amp;&amp; state != State.LOADING_UPDATES &amp;&amp; state != State.READY) {</span>
-<span class="nc" id="L183">                throw new IllegalStateException(&quot;Cannot transition to LOADING_UPDATES, as the &quot; + &quot;current state is &quot; + state);</span>
+<span class="fc" id="L181">        synchronized (this) {</span>
+<span class="fc bfc" id="L182" title="All 6 branches covered.">            if (state != State.LAUNCHING &amp;&amp; state != State.LOADING_UPDATES &amp;&amp; state != State.READY) {</span>
+<span class="fc" id="L183">                throw new IllegalStateException(&quot;Cannot transition to LOADING_UPDATES, as the &quot; + &quot;current state is &quot; + state);</span>
             }
-<span class="nc bnc" id="L185" title="All 2 branches missed.">            if (lastCommittedCounter &gt; loadCounter) {</span>
-<span class="nc" id="L186">                throw new IllegalStateException(&quot;Cannot update the load counter from &quot; + lastCommittedCounter + &quot; to &quot; + loadCounter);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            if (lastCommittedCounter &gt; loadCounter) {</span>
+<span class="fc" id="L186">                throw new IllegalStateException(&quot;Cannot update the load counter from &quot; + lastCommittedCounter + &quot; to &quot; + loadCounter);</span>
             }
-<span class="nc" id="L188">            updateState(State.LOADING_UPDATES, loadCounter);</span>
-        }
-<span class="nc" id="L190">    }</span>
+<span class="fc" id="L188">            updateState(State.LOADING_UPDATES, loadCounter);</span>
+<span class="fc" id="L189">        }</span>
+<span class="fc" id="L190">    }</span>
 
     /**
      * Transition the service to the READY state.
@@ -195,10 +195,10 @@ import java.util.Objects;
      */
     public void setReady() {
 <span class="fc" id="L197">        synchronized (this) {</span>
-<span class="pc bpc" id="L198" title="1 of 2 branches missed.">            if (state != State.READY) {</span>
-<span class="nc" id="L199">                updateState(State.READY, lastCommittedCounter);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (state != State.READY) {</span>
+<span class="fc" id="L199">                updateState(State.READY, lastCommittedCounter);</span>
             }
-        }
+<span class="fc" id="L201">        }</span>
 <span class="fc" id="L202">    }</span>
 
     void updateState(State newState, long loadCounter) {
@@ -213,15 +213,29 @@ import java.util.Objects;
 <span class="fc" id="L213">                adminRepoConn.commit();</span>
 <span class="fc" id="L214">                state = newState;</span>
 <span class="fc" id="L215">                lastCommittedCounter = loadCounter;</span>
-<span class="pc" id="L216">            } catch (Exception e) {</span>
+<span class="nc" id="L216">            } catch (Exception e) {</span>
 <span class="nc bnc" id="L217" title="All 2 branches missed.">                if (adminRepoConn.isActive()) adminRepoConn.rollback();</span>
 <span class="nc" id="L218">                throw new RuntimeException(e);</span>
-            }
-        }
+<span class="fc" id="L219">            }</span>
+<span class="fc" id="L220">        }</span>
 <span class="fc" id="L221">    }</span>
 
     private Literal stateAsLiteral(State s) {
 <span class="fc" id="L224">        return adminRepoConn.getValueFactory().createLiteral(s.toString());</span>
     }
+
+    /**
+     * Reset the StatusController for testing purposes.
+     * This will clear the state and allow re-initialization.
+     */
+    void resetForTest() {
+<span class="fc" id="L232">        synchronized (this) {</span>
+<span class="fc" id="L233">            initialized = false;</span>
+<span class="fc" id="L234">            state = null;</span>
+<span class="fc" id="L235">            lastCommittedCounter = -1;</span>
+<span class="fc" id="L236">            adminRepoConn = null;</span>
+<span class="fc" id="L237">        }</span>
+<span class="fc" id="L238">    }</span>
+
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

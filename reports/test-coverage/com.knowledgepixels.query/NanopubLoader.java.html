@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NanopubLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">NanopubLoader.java</span></div><h1>NanopubLoader.java</h1><pre class="source lang-java linenums"><span class="nc" id="L1">package com.knowledgepixels.query;</span>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NanopubLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">NanopubLoader.java</span></div><h1>NanopubLoader.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
 
 import net.trustyuri.TrustyUriUtils;
 import org.apache.http.client.HttpClient;
@@ -40,11 +40,229 @@ import java.util.function.Consumer;
  */
 public class NanopubLoader {
 
-    private NanopubLoader() {
-    }  // no instances allowed
-
     private static HttpClient httpClient;
-<span class="fc" id="L47">    private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);</span>
+<span class="fc" id="L44">    private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);</span>
+    private Nanopub np;
+<span class="fc" id="L46">    private NanopubSignatureElement el = null;</span>
+<span class="fc" id="L47">    private List&lt;Statement&gt; metaStatements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L48">    private List&lt;Statement&gt; nanopubStatements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L49">    private List&lt;Statement&gt; literalStatements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L50">    private List&lt;Statement&gt; invalidateStatements = new ArrayList&lt;&gt;();</span>
+    private List&lt;Statement&gt; textStatements, allStatements;
+<span class="fc" id="L52">    private Calendar timestamp = null;</span>
+    private Statement pubkeyStatement, pubkeyStatementX;
+<span class="fc" id="L54">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L55">    private boolean aborted = false;</span>
+
+<span class="fc" id="L57">    NanopubLoader(Nanopub np, long counter) {</span>
+<span class="fc" id="L58">        this.np = np;</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (counter &gt;= 0) {</span>
+<span class="fc" id="L60">            System.err.println(&quot;Loading &quot; + counter + &quot;: &quot; + np.getUri());</span>
+        } else {
+<span class="fc" id="L62">            System.err.println(&quot;Loading: &quot; + np.getUri());</span>
+        }
+
+        // TODO Ensure proper synchronization and DB rollbacks
+
+        // TODO Check for null characters (&quot;\0&quot;), which can cause problems in Virtuoso.
+
+<span class="fc" id="L69">        String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());</span>
+<span class="pc bpc" id="L70" title="4 of 8 branches missed.">        if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) || !np.getProvenanceUri().toString().contains(ac) || !np.getPubinfoUri().toString().contains(ac)) {</span>
+<span class="nc" id="L71">            notes.add(&quot;could not load nanopub as not all graphs contained the artifact code&quot;);</span>
+<span class="nc" id="L72">            aborted = true;</span>
+<span class="nc" id="L73">            return;</span>
+        }
+
+        try {
+<span class="fc" id="L77">            el = SignatureUtils.getSignatureElement(np);</span>
+<span class="nc" id="L78">        } catch (MalformedCryptoElementException ex) {</span>
+<span class="nc" id="L79">            notes.add(&quot;Signature error&quot;);</span>
+<span class="fc" id="L80">        }</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (!hasValidSignature(el)) {</span>
+<span class="fc" id="L82">            aborted = true;</span>
+<span class="fc" id="L83">            return;</span>
+        }
+
+<span class="fc" id="L86">        pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasValidSignatureForPublicKey, FULL_PUBKEY, npa:graph, meta, full pubkey if signature is valid
+<span class="fc" id="L88">        metaStatements.add(pubkeyStatement);</span>
+<span class="fc" id="L89">        pubkeyStatementX = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, vf.createLiteral(Utils.createHash(el.getPublicKeyString())), ADMIN_GRAPH);</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasValidSignatureForPublicKeyHash, PUBKEY_HASH, npa:graph, meta, hex-encoded SHA256 hash if signature is valid
+<span class="fc" id="L91">        metaStatements.add(pubkeyStatementX);</span>
+
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (el.getSigners().size() == 1) {  // &gt; 1 is deprecated</span>
+<span class="fc" id="L94">            metaStatements.add(vf.createStatement(np.getUri(), NanopubSignatureElement.SIGNED_BY, el.getSigners().iterator().next(), ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:signedBy, SIGNER, npa:graph, meta, ID of signer
+        }
+
+<span class="fc" id="L98">        Set&lt;IRI&gt; subIris = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L99">        Set&lt;IRI&gt; otherNps = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L100">        Set&lt;IRI&gt; invalidated = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L101">        Set&lt;IRI&gt; retracted = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L102">        Set&lt;IRI&gt; superseded = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L103">        String combinedLiterals = &quot;&quot;;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (Statement st : NanopubUtils.getStatements(np)) {</span>
+<span class="fc" id="L105">            nanopubStatements.add(st);</span>
+
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (st.getPredicate().toString().contains(ac)) {</span>
+<span class="nc" id="L108">                subIris.add(st.getPredicate());</span>
+            } else {
+<span class="fc" id="L110">                IRI b = getBaseTrustyUri(st.getPredicate());</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                if (b != null) otherNps.add(b);</span>
+            }
+<span class="pc bpc" id="L113" title="3 of 4 branches missed.">            if (st.getPredicate().equals(RETRACTS) &amp;&amp; st.getObject() instanceof IRI) {</span>
+<span class="nc" id="L114">                retracted.add((IRI) st.getObject());</span>
+            }
+<span class="pc bpc" id="L116" title="3 of 4 branches missed.">            if (st.getPredicate().equals(INVALIDATES) &amp;&amp; st.getObject() instanceof IRI) {</span>
+<span class="nc" id="L117">                invalidated.add((IRI) st.getObject());</span>
+            }
+<span class="fc bfc" id="L119" title="All 4 branches covered.">            if (st.getSubject().equals(np.getUri()) &amp;&amp; st.getObject() instanceof IRI) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (st.getPredicate().equals(SUPERSEDES)) {</span>
+<span class="fc" id="L121">                    superseded.add((IRI) st.getObject());</span>
+                }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                if (st.getObject().toString().matches(&quot;.*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}&quot;)) {</span>
+<span class="fc" id="L124">                    metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_NETWORK_GRAPH));</span>
+                    // @ADMIN-TRIPLE-TABLE@ NANOPUB1, RELATION, NANOPUB2, npa:networkGraph, meta, any inter-nanopub relation found in NANOPUB1
+                }
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                if (st.getContext().equals(np.getPubinfoUri())) {</span>
+<span class="pc bpc" id="L128" title="1 of 6 branches missed.">                    if (st.getPredicate().equals(INTRODUCES) || st.getPredicate().equals(DESCRIBES) || st.getPredicate().equals(EMBEDS)) {</span>
+<span class="fc" id="L129">                        metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));</span>
+                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:introduces, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
+                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:describes, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
+                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:embeds, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
+                    }
+                }
+            }
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (st.getSubject().toString().contains(ac)) {</span>
+<span class="fc" id="L137">                subIris.add((IRI) st.getSubject());</span>
+            } else {
+<span class="fc" id="L139">                IRI b = getBaseTrustyUri(st.getSubject());</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                if (b != null) otherNps.add(b);</span>
+            }
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (st.getObject() instanceof IRI) {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (st.getObject().toString().contains(ac)) {</span>
+<span class="fc" id="L144">                    subIris.add((IRI) st.getObject());</span>
+                } else {
+<span class="fc" id="L146">                    IRI b = getBaseTrustyUri(st.getObject());</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                    if (b != null) otherNps.add(b);</span>
+<span class="fc" id="L148">                }</span>
+            } else {
+<span class="fc" id="L150">                combinedLiterals += st.getObject().stringValue().replaceAll(&quot;\\s+&quot;, &quot; &quot;) + &quot;\n&quot;;</span>
+//				if (st.getSubject().equals(np.getUri()) &amp;&amp; !st.getSubject().equals(HAS_FILTER_LITERAL)) {
+//					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), LITERAL_GRAPH));
+//				} else {
+//					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), LITERAL_GRAPH));
+//				}
+            }
+<span class="fc" id="L157">        }</span>
+<span class="fc" id="L158">        subIris.remove(np.getUri());</span>
+<span class="fc" id="L159">        subIris.remove(np.getAssertionUri());</span>
+<span class="fc" id="L160">        subIris.remove(np.getProvenanceUri());</span>
+<span class="fc" id="L161">        subIris.remove(np.getPubinfoUri());</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        for (IRI i : subIris) {</span>
+<span class="fc" id="L163">            metaStatements.add(vf.createStatement(np.getUri(), HAS_SUB_IRI, i, ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasSubIri, SUB_IRI, npa:graph, meta, for any IRI minted in the namespace of the NANOPUB
+<span class="fc" id="L165">        }</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        for (IRI i : otherNps) {</span>
+<span class="fc" id="L167">            metaStatements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB1, npa:refersToNanopub, NANOPUB2, npa:networkGraph, meta, generic inter-nanopub relation
+<span class="fc" id="L169">        }</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        for (IRI i : invalidated) {</span>
+<span class="nc" id="L171">            invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:invalidates, INVALIDATED_NANOPUB, npa:graph, meta, if the NANOPUB retracts or supersedes another nanopub
+<span class="nc" id="L173">        }</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">        for (IRI i : retracted) {</span>
+<span class="nc" id="L175">            invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));</span>
+<span class="nc" id="L176">            metaStatements.add(vf.createStatement(np.getUri(), RETRACTS, i, ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:retracts, RETRACTED_NANOPUB, npa:graph, meta, if the NANOPUB retracts another nanopub
+<span class="nc" id="L178">        }</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (IRI i : superseded) {</span>
+<span class="fc" id="L180">            invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));</span>
+<span class="fc" id="L181">            metaStatements.add(vf.createStatement(np.getUri(), SUPERSEDES, i, ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:supersedes, SUPERSEDED_NANOPUB, npa:graph, meta, if the NANOPUB supersedes another nanopub
+<span class="fc" id="L183">        }</span>
+
+<span class="fc" id="L185">        metaStatements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasHeadGraph, HEAD_GRAPH, npa:graph, meta, direct link to the head graph of the NANOPUB
+<span class="fc" id="L187">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getHeadUri(), ADMIN_GRAPH));</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasGraph, GRAPH, npa:graph, meta, generic link to all four graphs of the given NANOPUB
+<span class="fc" id="L189">        metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_GRAPH));</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasAssertion, ASSERTION_GRAPH, npa:graph, meta, direct link to the assertion graph of the NANOPUB
+<span class="fc" id="L191">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getAssertionUri(), ADMIN_GRAPH));</span>
+<span class="fc" id="L192">        metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_GRAPH));</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasProvenance, PROVENANCE_GRAPH, npa:graph, meta, direct link to the provenance graph of the NANOPUB
+<span class="fc" id="L194">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getProvenanceUri(), ADMIN_GRAPH));</span>
+<span class="fc" id="L195">        metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_GRAPH));</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasPublicationInfo, PUBINFO_GRAPH, npa:graph, meta, direct link to the pubinfo graph of the NANOPUB
+<span class="fc" id="L197">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getPubinfoUri(), ADMIN_GRAPH));</span>
+
+<span class="fc" id="L199">        String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());</span>
+<span class="fc" id="L200">        metaStatements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));</span>
+        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:artifactCode, ARTIFACT_CODE, npa:graph, meta, artifact code starting with 'RA...'
+
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (isIntroNanopub(np)) {</span>
+<span class="fc" id="L204">            IntroNanopub introNp = new IntroNanopub(np);</span>
+<span class="fc" id="L205">            metaStatements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:isIntroductionOf, AGENT, npa:graph, meta, linking intro nanopub to the agent it is introducing
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            for (KeyDeclaration kc : introNp.getKeyDeclarations()) {</span>
+<span class="fc" id="L208">                metaStatements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));</span>
+                // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:declaresPubkey, FULL_PUBKEY, npa:graph, meta, full pubkey declared by the given intro NANOPUB
+<span class="fc" id="L210">            }</span>
+        }
+
+        try {
+<span class="fc" id="L214">            timestamp = SimpleTimestampPattern.getCreationTime(np);</span>
+<span class="nc" id="L215">        } catch (IllegalArgumentException ex) {</span>
+<span class="nc" id="L216">            notes.add(&quot;Illegal date/time&quot;);</span>
+<span class="fc" id="L217">        }</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        if (timestamp != null) {</span>
+<span class="fc" id="L219">            metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:created, CREATION_DATE, npa:graph, meta, normalized creation timestamp
+        }
+
+<span class="fc" id="L223">        String literalFilter = &quot;_pubkey_&quot; + Utils.createHash(el.getPublicKeyString());</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (IRI typeIri : NanopubUtils.getTypes(np)) {</span>
+<span class="fc" id="L225">            metaStatements.add(vf.createStatement(np.getUri(), HAS_NANOPUB_TYPE, typeIri, ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
+<span class="fc" id="L227">            literalFilter += &quot; _type_&quot; + Utils.createHash(typeIri);</span>
+<span class="fc" id="L228">        }</span>
+<span class="fc" id="L229">        String label = NanopubUtils.getLabel(np);</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (label != null) {</span>
+<span class="fc" id="L231">            metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, rdfs:label, LABEL, npa:graph, meta, label of NANOPUB
+        }
+<span class="fc" id="L234">        String description = NanopubUtils.getDescription(np);</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (description != null) {</span>
+<span class="fc" id="L236">            metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.DESCRIPTION, vf.createLiteral(description), ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:description, LABEL, npa:graph, meta, description of NANOPUB
+        }
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {</span>
+<span class="fc" id="L240">            metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATOR, creatorIri, ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:creator, CREATOR, npa:graph, meta, creator of NANOPUB (can be several)
+<span class="fc" id="L242">        }</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {</span>
+<span class="nc" id="L244">            metaStatements.add(vf.createStatement(np.getUri(), SimpleCreatorPattern.PAV_AUTHOREDBY, authorIri, ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, pav:authoredBy, AUTHOR, npa:graph, meta, author of NANOPUB (can be several)
+<span class="nc" id="L246">        }</span>
+
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (!combinedLiterals.isEmpty()) {</span>
+<span class="fc" id="L249">            literalStatements.add(vf.createStatement(np.getUri(), HAS_FILTER_LITERAL, vf.createLiteral(literalFilter + &quot;\n&quot; + combinedLiterals), ADMIN_GRAPH));</span>
+            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasFilterLiteral, FILTER_LITERAL, npa:graph, literal, auxiliary literal for filtering by type and pubkey in text repo
+        }
+
+        // Any statements that express that the currently processed nanopub is already invalidated:
+<span class="fc" id="L254">        List&lt;Statement&gt; invalidatingStatements = getInvalidatingStatements(np.getUri());</span>
+
+<span class="fc" id="L256">        metaStatements.addAll(invalidateStatements);</span>
+
+<span class="fc" id="L258">        allStatements = new ArrayList&lt;&gt;(nanopubStatements);</span>
+<span class="fc" id="L259">        allStatements.addAll(metaStatements);</span>
+<span class="fc" id="L260">        allStatements.addAll(invalidatingStatements);</span>
+
+<span class="fc" id="L262">        textStatements = new ArrayList&lt;&gt;(literalStatements);</span>
+<span class="fc" id="L263">        textStatements.addAll(metaStatements);</span>
+<span class="fc" id="L264">        textStatements.addAll(invalidatingStatements);</span>
+<span class="fc" id="L265">    }</span>
 
     /**
      * Get the HTTP client used for fetching nanopublications.
@@ -52,11 +270,11 @@ public class NanopubLoader {
      * @return the HTTP client
      */
     static HttpClient getHttpClient() {
-<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (httpClient == null) {</span>
-<span class="fc" id="L56">            RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000).setConnectionRequestTimeout(100).setSocketTimeout(1000).setCookieSpec(CookieSpecs.STANDARD).build();</span>
-<span class="fc" id="L57">            httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (httpClient == null) {</span>
+<span class="fc" id="L274">            RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000).setConnectionRequestTimeout(100).setSocketTimeout(1000).setCookieSpec(CookieSpecs.STANDARD).build();</span>
+<span class="fc" id="L275">            httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();</span>
         }
-<span class="fc" id="L59">        return httpClient;</span>
+<span class="fc" id="L277">        return httpClient;</span>
     }
 
     /**
@@ -65,13 +283,13 @@ public class NanopubLoader {
      * @param nanopubUri Nanopublication identifier (URI)
      */
     public static void load(String nanopubUri) {
-<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (isNanopubLoaded(nanopubUri)) {</span>
-<span class="fc" id="L69">            System.err.println(&quot;Already loaded: &quot; + nanopubUri);</span>
-<span class="fc" id="L70">        } else {</span>
-<span class="fc" id="L71">            Nanopub np = GetNanopub.get(nanopubUri, getHttpClient());</span>
-<span class="fc" id="L72">            load(np, -1);</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        if (isNanopubLoaded(nanopubUri)) {</span>
+<span class="fc" id="L287">            System.err.println(&quot;Already loaded: &quot; + nanopubUri);</span>
+        } else {
+<span class="fc" id="L289">            Nanopub np = GetNanopub.get(nanopubUri, getHttpClient());</span>
+<span class="fc" id="L290">            load(np, -1);</span>
         }
-<span class="fc" id="L74">    }</span>
+<span class="fc" id="L292">    }</span>
 
     /**
      * Load a nanopub into the database.
@@ -81,364 +299,162 @@ public class NanopubLoader {
      * @throws RDF4JException if the loading fails
      */
     public static void load(Nanopub np, long counter) throws RDF4JException {
-<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (counter &gt;= 0) {</span>
-<span class="nc" id="L85">            System.err.println(&quot;Loading &quot; + counter + &quot;: &quot; + np.getUri());</span>
-<span class="nc" id="L86">        } else {</span>
-<span class="fc" id="L87">            System.err.println(&quot;Loading: &quot; + np.getUri());</span>
-        }
+<span class="fc" id="L302">        NanopubLoader loader = new NanopubLoader(np, counter);</span>
+<span class="fc" id="L303">        loader.executeLoading();</span>
+<span class="fc" id="L304">    }</span>
 
-        // TODO Ensure proper synchronization and DB rollbacks
+    private void executeLoading() {
+<span class="fc" id="L307">        var runningTasks = new ArrayList&lt;Future&lt;?&gt;&gt;();</span>
+<span class="pc" id="L308">        Consumer&lt;Runnable&gt; runTask = t -&gt; runningTasks.add(loadingPool.submit(t));</span>
 
-        // TODO Check for null characters (&quot;\0&quot;), which can cause problems in Virtuoso.
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">        for (String note : notes) {</span>
+<span class="nc" id="L311">            loadNoteToRepo(np.getUri(), note);</span>
+<span class="nc" id="L312">        }</span>
 
-<span class="fc" id="L94">        String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());</span>
-<span class="pc bpc" id="L95" title="4 of 8 branches missed.">        if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) || !np.getProvenanceUri().toString().contains(ac) || !np.getPubinfoUri().toString().contains(ac)) {</span>
-<span class="nc" id="L96">            loadNoteToRepo(np.getUri(), &quot;could not load nanopub as not all graphs contained the artifact code&quot;);</span>
-<span class="nc" id="L97">            return;</span>
-        }
-
-<span class="fc" id="L100">        NanopubSignatureElement el = null;</span>
-        try {
-<span class="fc" id="L102">            el = SignatureUtils.getSignatureElement(np);</span>
-<span class="pc" id="L103">        } catch (MalformedCryptoElementException ex) {</span>
-<span class="nc" id="L104">            loadNoteToRepo(np.getUri(), &quot;Signature error&quot;);</span>
-        }
-<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (!hasValidSignature(el)) {</span>
-<span class="fc" id="L107">            return;</span>
-        }
-
-<span class="nc" id="L110">        List&lt;Statement&gt; metaStatements = new ArrayList&lt;&gt;();</span>
-<span class="nc" id="L111">        List&lt;Statement&gt; nanopubStatements = new ArrayList&lt;&gt;();</span>
-<span class="nc" id="L112">        List&lt;Statement&gt; literalStatements = new ArrayList&lt;&gt;();</span>
-<span class="nc" id="L113">        List&lt;Statement&gt; invalidateStatements = new ArrayList&lt;&gt;();</span>
-
-<span class="nc" id="L115">        final Statement pubkeyStatement = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, vf.createLiteral(el.getPublicKeyString()), ADMIN_GRAPH);</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasValidSignatureForPublicKey, FULL_PUBKEY, npa:graph, meta, full pubkey if signature is valid
-<span class="nc" id="L117">        metaStatements.add(pubkeyStatement);</span>
-<span class="nc" id="L118">        final Statement pubkeyStatementX = vf.createStatement(np.getUri(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, vf.createLiteral(Utils.createHash(el.getPublicKeyString())), ADMIN_GRAPH);</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasValidSignatureForPublicKeyHash, PUBKEY_HASH, npa:graph, meta, hex-encoded SHA256 hash if signature is valid
-<span class="nc" id="L120">        metaStatements.add(pubkeyStatementX);</span>
-
-<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (el.getSigners().size() == 1) {  // &gt; 1 is deprecated</span>
-<span class="nc" id="L123">            metaStatements.add(vf.createStatement(np.getUri(), NanopubSignatureElement.SIGNED_BY, el.getSigners().iterator().next(), ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:signedBy, SIGNER, npa:graph, meta, ID of signer
-        }
-
-<span class="nc" id="L127">        Set&lt;IRI&gt; subIris = new HashSet&lt;&gt;();</span>
-<span class="nc" id="L128">        Set&lt;IRI&gt; otherNps = new HashSet&lt;&gt;();</span>
-<span class="nc" id="L129">        Set&lt;IRI&gt; invalidated = new HashSet&lt;&gt;();</span>
-<span class="nc" id="L130">        Set&lt;IRI&gt; retracted = new HashSet&lt;&gt;();</span>
-<span class="nc" id="L131">        Set&lt;IRI&gt; superseded = new HashSet&lt;&gt;();</span>
-<span class="nc" id="L132">        String combinedLiterals = &quot;&quot;;</span>
-<span class="nc bnc" id="L133" title="All 2 branches missed.">        for (Statement st : NanopubUtils.getStatements(np)) {</span>
-<span class="nc" id="L134">            nanopubStatements.add(st);</span>
-
-<span class="nc bnc" id="L136" title="All 2 branches missed.">            if (st.getPredicate().toString().contains(ac)) {</span>
-<span class="nc" id="L137">                subIris.add(st.getPredicate());</span>
-<span class="nc" id="L138">            } else {</span>
-<span class="nc" id="L139">                IRI b = getBaseTrustyUri(st.getPredicate());</span>
-<span class="nc bnc" id="L140" title="All 2 branches missed.">                if (b != null) otherNps.add(b);</span>
-            }
-<span class="nc bnc" id="L142" title="All 4 branches missed.">            if (st.getPredicate().equals(RETRACTS) &amp;&amp; st.getObject() instanceof IRI) {</span>
-<span class="nc" id="L143">                retracted.add((IRI) st.getObject());</span>
-            }
-<span class="nc bnc" id="L145" title="All 4 branches missed.">            if (st.getPredicate().equals(INVALIDATES) &amp;&amp; st.getObject() instanceof IRI) {</span>
-<span class="nc" id="L146">                invalidated.add((IRI) st.getObject());</span>
-            }
-<span class="nc bnc" id="L148" title="All 4 branches missed.">            if (st.getSubject().equals(np.getUri()) &amp;&amp; st.getObject() instanceof IRI) {</span>
-<span class="nc bnc" id="L149" title="All 2 branches missed.">                if (st.getPredicate().equals(SUPERSEDES)) {</span>
-<span class="nc" id="L150">                    superseded.add((IRI) st.getObject());</span>
-                }
-<span class="nc bnc" id="L152" title="All 2 branches missed.">                if (st.getObject().toString().matches(&quot;.*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}&quot;)) {</span>
-<span class="nc" id="L153">                    metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_NETWORK_GRAPH));</span>
-                    // @ADMIN-TRIPLE-TABLE@ NANOPUB1, RELATION, NANOPUB2, npa:networkGraph, meta, any inter-nanopub relation found in NANOPUB1
-                }
-<span class="nc bnc" id="L156" title="All 2 branches missed.">                if (st.getContext().equals(np.getPubinfoUri())) {</span>
-<span class="nc bnc" id="L157" title="All 6 branches missed.">                    if (st.getPredicate().equals(INTRODUCES) || st.getPredicate().equals(DESCRIBES) || st.getPredicate().equals(EMBEDS)) {</span>
-<span class="nc" id="L158">                        metaStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), ADMIN_GRAPH));</span>
-                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:introduces, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
-                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:describes, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
-                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:embeds, THING, npa:graph, meta, when such a triple is present in pubinfo of NANOPUB
-                    }
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">        if (!aborted) {</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            if (timestamp != null) {</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">                if (new Date().getTime() - timestamp.getTimeInMillis() &lt; THIRTY_DAYS) {</span>
+<span class="nc" id="L317">                    runTask.accept(() -&gt; loadNanopubToLatest(allStatements));</span>
                 }
             }
-<span class="nc bnc" id="L165" title="All 2 branches missed.">            if (st.getSubject().toString().contains(ac)) {</span>
-<span class="nc" id="L166">                subIris.add((IRI) st.getSubject());</span>
-<span class="nc" id="L167">            } else {</span>
-<span class="nc" id="L168">                IRI b = getBaseTrustyUri(st.getSubject());</span>
-<span class="nc bnc" id="L169" title="All 2 branches missed.">                if (b != null) otherNps.add(b);</span>
-            }
-<span class="nc bnc" id="L171" title="All 2 branches missed.">            if (st.getObject() instanceof IRI) {</span>
-<span class="nc bnc" id="L172" title="All 2 branches missed.">                if (st.getObject().toString().contains(ac)) {</span>
-<span class="nc" id="L173">                    subIris.add((IRI) st.getObject());</span>
-<span class="nc" id="L174">                } else {</span>
-<span class="nc" id="L175">                    IRI b = getBaseTrustyUri(st.getObject());</span>
-<span class="nc bnc" id="L176" title="All 2 branches missed.">                    if (b != null) otherNps.add(b);</span>
-                }
-<span class="nc" id="L178">            } else {</span>
-<span class="nc" id="L179">                combinedLiterals += st.getObject().stringValue().replaceAll(&quot;\\s+&quot;, &quot; &quot;) + &quot;\n&quot;;</span>
-//				if (st.getSubject().equals(np.getUri()) &amp;&amp; !st.getSubject().equals(HAS_FILTER_LITERAL)) {
-//					literalStatements.add(vf.createStatement(np.getUri(), st.getPredicate(), st.getObject(), LITERAL_GRAPH));
-//				} else {
-//					literalStatements.add(vf.createStatement(np.getUri(), HAS_LITERAL, st.getObject(), LITERAL_GRAPH));
-//				}
-            }
-        }
-<span class="nc" id="L187">        subIris.remove(np.getUri());</span>
-<span class="nc" id="L188">        subIris.remove(np.getAssertionUri());</span>
-<span class="nc" id="L189">        subIris.remove(np.getProvenanceUri());</span>
-<span class="nc" id="L190">        subIris.remove(np.getPubinfoUri());</span>
-<span class="nc bnc" id="L191" title="All 2 branches missed.">        for (IRI i : subIris) {</span>
-<span class="nc" id="L192">            metaStatements.add(vf.createStatement(np.getUri(), HAS_SUB_IRI, i, ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasSubIri, SUB_IRI, npa:graph, meta, for any IRI minted in the namespace of the NANOPUB
-        }
-<span class="nc bnc" id="L195" title="All 2 branches missed.">        for (IRI i : otherNps) {</span>
-<span class="nc" id="L196">            metaStatements.add(vf.createStatement(np.getUri(), REFERS_TO_NANOPUB, i, ADMIN_NETWORK_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB1, npa:refersToNanopub, NANOPUB2, npa:networkGraph, meta, generic inter-nanopub relation
-        }
-<span class="nc bnc" id="L199" title="All 2 branches missed.">        for (IRI i : invalidated) {</span>
-<span class="nc" id="L200">            invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:invalidates, INVALIDATED_NANOPUB, npa:graph, meta, if the NANOPUB retracts or supersedes another nanopub
-        }
-<span class="nc bnc" id="L203" title="All 2 branches missed.">        for (IRI i : retracted) {</span>
-<span class="nc" id="L204">            invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));</span>
-<span class="nc" id="L205">            metaStatements.add(vf.createStatement(np.getUri(), RETRACTS, i, ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:retracts, RETRACTED_NANOPUB, npa:graph, meta, if the NANOPUB retracts another nanopub
-        }
-<span class="nc bnc" id="L208" title="All 2 branches missed.">        for (IRI i : superseded) {</span>
-<span class="nc" id="L209">            invalidateStatements.add(vf.createStatement(np.getUri(), INVALIDATES, i, ADMIN_GRAPH));</span>
-<span class="nc" id="L210">            metaStatements.add(vf.createStatement(np.getUri(), SUPERSEDES, i, ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:supersedes, SUPERSEDED_NANOPUB, npa:graph, meta, if the NANOPUB supersedes another nanopub
-        }
 
-<span class="nc" id="L214">        metaStatements.add(vf.createStatement(np.getUri(), HAS_HEAD_GRAPH, np.getHeadUri(), ADMIN_GRAPH));</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasHeadGraph, HEAD_GRAPH, npa:graph, meta, direct link to the head graph of the NANOPUB
-<span class="nc" id="L216">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getHeadUri(), ADMIN_GRAPH));</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasGraph, GRAPH, npa:graph, meta, generic link to all four graphs of the given NANOPUB
-<span class="nc" id="L218">        metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_ASSERTION_URI, np.getAssertionUri(), ADMIN_GRAPH));</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasAssertion, ASSERTION_GRAPH, npa:graph, meta, direct link to the assertion graph of the NANOPUB
-<span class="nc" id="L220">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getAssertionUri(), ADMIN_GRAPH));</span>
-<span class="nc" id="L221">        metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PROVENANCE_URI, np.getProvenanceUri(), ADMIN_GRAPH));</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasProvenance, PROVENANCE_GRAPH, npa:graph, meta, direct link to the provenance graph of the NANOPUB
-<span class="nc" id="L223">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getProvenanceUri(), ADMIN_GRAPH));</span>
-<span class="nc" id="L224">        metaStatements.add(vf.createStatement(np.getUri(), Nanopub.HAS_PUBINFO_URI, np.getPubinfoUri(), ADMIN_GRAPH));</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, np:hasPublicationInfo, PUBINFO_GRAPH, npa:graph, meta, direct link to the pubinfo graph of the NANOPUB
-<span class="nc" id="L226">        metaStatements.add(vf.createStatement(np.getUri(), HAS_GRAPH, np.getPubinfoUri(), ADMIN_GRAPH));</span>
+<span class="nc" id="L321">            runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), textStatements, &quot;text&quot;));</span>
+<span class="nc" id="L322">            runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), allStatements, &quot;full&quot;));</span>
+<span class="nc" id="L323">            runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), metaStatements, &quot;meta&quot;));</span>
 
-<span class="nc" id="L228">        String artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());</span>
-<span class="nc" id="L229">        metaStatements.add(vf.createStatement(np.getUri(), HAS_ARTIFACT_CODE, vf.createLiteral(artifactCode), ADMIN_GRAPH));</span>
-        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:artifactCode, ARTIFACT_CODE, npa:graph, meta, artifact code starting with 'RA...'
+<span class="nc" id="L325">            runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), allStatements, &quot;pubkey_&quot; + Utils.createHash(el.getPublicKeyString())));</span>
+            //		loadNanopubToRepo(np.getUri(), textStatements, &quot;text-pubkey_&quot; + Utils.createHash(el.getPublicKeyString()));
+<span class="nc bnc" id="L327" title="All 2 branches missed.">            for (IRI typeIri : NanopubUtils.getTypes(np)) {</span>
+                // Exclude locally minted IRIs:
+<span class="nc bnc" id="L329" title="All 2 branches missed.">                if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">                if (!typeIri.stringValue().matches(&quot;https?://.*&quot;)) continue;</span>
+<span class="nc" id="L331">                runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), allStatements, &quot;type_&quot; + Utils.createHash(typeIri)));</span>
+                //			loadNanopubToRepo(np.getUri(), textStatements, &quot;text-type_&quot; + Utils.createHash(typeIri));
+<span class="nc" id="L333">            }</span>
+            //		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
+            //			// Exclude locally minted IRIs:
+            //			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+            //			if (!creatorIri.stringValue().matches(&quot;https?://.*&quot;)) continue;
+            //			loadNanopubToRepo(np.getUri(), allStatements, &quot;user_&quot; + Utils.createHash(creatorIri));
+            //			loadNanopubToRepo(np.getUri(), textStatements, &quot;text-user_&quot; + Utils.createHash(creatorIri));
+            //		}
+            //		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
+            //			// Exclude locally minted IRIs:
+            //			if (authorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+            //			if (!authorIri.stringValue().matches(&quot;https?://.*&quot;)) continue;
+            //			loadNanopubToRepo(np.getUri(), allStatements, &quot;user_&quot; + Utils.createHash(authorIri));
+            //			loadNanopubToRepo(np.getUri(), textStatements, &quot;text-user_&quot; + Utils.createHash(authorIri));
+            //		}
 
-<span class="nc bnc" id="L232" title="All 2 branches missed.">        if (isIntroNanopub(np)) {</span>
-<span class="nc" id="L233">            IntroNanopub introNp = new IntroNanopub(np);</span>
-<span class="nc" id="L234">            metaStatements.add(vf.createStatement(np.getUri(), IS_INTRO_OF, introNp.getUser(), ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:isIntroductionOf, AGENT, npa:graph, meta, linking intro nanopub to the agent it is introducing
-<span class="nc bnc" id="L236" title="All 2 branches missed.">            for (KeyDeclaration kc : introNp.getKeyDeclarations()) {</span>
-<span class="nc" id="L237">                metaStatements.add(vf.createStatement(np.getUri(), DECLARES_KEY, vf.createLiteral(kc.getPublicKeyString()), ADMIN_GRAPH));</span>
-                // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:declaresPubkey, FULL_PUBKEY, npa:graph, meta, full pubkey declared by the given intro NANOPUB
-            }
-        }
-
-<span class="nc" id="L242">        Calendar timestamp = null;</span>
-        try {
-<span class="nc" id="L244">            timestamp = SimpleTimestampPattern.getCreationTime(np);</span>
-<span class="nc" id="L245">        } catch (IllegalArgumentException ex) {</span>
-<span class="nc" id="L246">            loadNoteToRepo(np.getUri(), &quot;Illegal date/time&quot;);</span>
-        }
-<span class="nc bnc" id="L248" title="All 2 branches missed.">        if (timestamp != null) {</span>
-<span class="nc" id="L249">            metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATED, vf.createLiteral(timestamp.getTime()), ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:created, CREATION_DATE, npa:graph, meta, normalized creation timestamp
-        }
-
-<span class="nc" id="L253">        String literalFilter = &quot;_pubkey_&quot; + Utils.createHash(el.getPublicKeyString());</span>
-<span class="nc bnc" id="L254" title="All 2 branches missed.">        for (IRI typeIri : NanopubUtils.getTypes(np)) {</span>
-<span class="nc" id="L255">            metaStatements.add(vf.createStatement(np.getUri(), HAS_NANOPUB_TYPE, typeIri, ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
-<span class="nc" id="L257">            literalFilter += &quot; _type_&quot; + Utils.createHash(typeIri);</span>
-        }
-<span class="nc" id="L259">        String label = NanopubUtils.getLabel(np);</span>
-<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (label != null) {</span>
-<span class="nc" id="L261">            metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, rdfs:label, LABEL, npa:graph, meta, label of NANOPUB
-        }
-<span class="nc" id="L264">        String description = NanopubUtils.getDescription(np);</span>
-<span class="nc bnc" id="L265" title="All 2 branches missed.">        if (description != null) {</span>
-<span class="nc" id="L266">            metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.DESCRIPTION, vf.createLiteral(description), ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:description, LABEL, npa:graph, meta, description of NANOPUB
-        }
-<span class="nc bnc" id="L269" title="All 2 branches missed.">        for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {</span>
-<span class="nc" id="L270">            metaStatements.add(vf.createStatement(np.getUri(), DCTERMS.CREATOR, creatorIri, ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, dct:creator, CREATOR, npa:graph, meta, creator of NANOPUB (can be several)
-        }
-<span class="nc bnc" id="L273" title="All 2 branches missed.">        for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {</span>
-<span class="nc" id="L274">            metaStatements.add(vf.createStatement(np.getUri(), SimpleCreatorPattern.PAV_AUTHOREDBY, authorIri, ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, pav:authoredBy, AUTHOR, npa:graph, meta, author of NANOPUB (can be several)
-        }
-
-<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (!combinedLiterals.isEmpty()) {</span>
-<span class="nc" id="L279">            literalStatements.add(vf.createStatement(np.getUri(), HAS_FILTER_LITERAL, vf.createLiteral(literalFilter + &quot;\n&quot; + combinedLiterals), ADMIN_GRAPH));</span>
-            // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasFilterLiteral, FILTER_LITERAL, npa:graph, literal, auxiliary literal for filtering by type and pubkey in text repo
-        }
-
-        // Any statements that express that the currently processed nanopub is already invalidated:
-<span class="nc" id="L284">        List&lt;Statement&gt; invalidatingStatements = getInvalidatingStatements(np.getUri());</span>
-
-<span class="nc" id="L286">        metaStatements.addAll(invalidateStatements);</span>
-
-<span class="nc" id="L288">        List&lt;Statement&gt; allStatements = new ArrayList&lt;&gt;(nanopubStatements);</span>
-<span class="nc" id="L289">        allStatements.addAll(metaStatements);</span>
-<span class="nc" id="L290">        allStatements.addAll(invalidatingStatements);</span>
-
-<span class="nc" id="L292">        List&lt;Statement&gt; textStatements = new ArrayList&lt;&gt;(literalStatements);</span>
-<span class="nc" id="L293">        textStatements.addAll(metaStatements);</span>
-<span class="nc" id="L294">        textStatements.addAll(invalidatingStatements);</span>
-
-<span class="nc" id="L296">        var runningTasks = new ArrayList&lt;Future&lt;?&gt;&gt;();</span>
-<span class="nc" id="L297">        Consumer&lt;Runnable&gt; runTask = t -&gt; runningTasks.add(loadingPool.submit(t));</span>
-
-<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (timestamp != null) {</span>
-<span class="nc bnc" id="L300" title="All 2 branches missed.">            if (new Date().getTime() - timestamp.getTimeInMillis() &lt; THIRTY_DAYS) {</span>
-<span class="nc" id="L301">                runTask.accept(() -&gt; loadNanopubToLatest(allStatements));</span>
-            }
-        }
-
-<span class="nc" id="L305">        runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), textStatements, &quot;text&quot;));</span>
-<span class="nc" id="L306">        runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), allStatements, &quot;full&quot;));</span>
-<span class="nc" id="L307">        runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), metaStatements, &quot;meta&quot;));</span>
-
-<span class="nc" id="L309">        NanopubSignatureElement finalEl = el;</span>
-<span class="nc" id="L310">        runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), allStatements, &quot;pubkey_&quot; + Utils.createHash(finalEl.getPublicKeyString())));</span>
-//		loadNanopubToRepo(np.getUri(), textStatements, &quot;text-pubkey_&quot; + Utils.createHash(el.getPublicKeyString()));
-<span class="nc bnc" id="L312" title="All 2 branches missed.">        for (IRI typeIri : NanopubUtils.getTypes(np)) {</span>
-            // Exclude locally minted IRIs:
-<span class="nc bnc" id="L314" title="All 2 branches missed.">            if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;</span>
-<span class="nc bnc" id="L315" title="All 2 branches missed.">            if (!typeIri.stringValue().matches(&quot;https?://.*&quot;)) continue;</span>
-<span class="nc" id="L316">            runTask.accept(() -&gt; loadNanopubToRepo(np.getUri(), allStatements, &quot;type_&quot; + Utils.createHash(typeIri)));</span>
-//			loadNanopubToRepo(np.getUri(), textStatements, &quot;text-type_&quot; + Utils.createHash(typeIri));
-        }
-//		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
-//			// Exclude locally minted IRIs:
-//			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-//			if (!creatorIri.stringValue().matches(&quot;https?://.*&quot;)) continue;
-//			loadNanopubToRepo(np.getUri(), allStatements, &quot;user_&quot; + Utils.createHash(creatorIri));
-//			loadNanopubToRepo(np.getUri(), textStatements, &quot;text-user_&quot; + Utils.createHash(creatorIri));
-//		}
-//		for (IRI authorIri : SimpleCreatorPattern.getAuthors(np)) {
-//			// Exclude locally minted IRIs:
-//			if (authorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-//			if (!authorIri.stringValue().matches(&quot;https?://.*&quot;)) continue;
-//			loadNanopubToRepo(np.getUri(), allStatements, &quot;user_&quot; + Utils.createHash(authorIri));
-//			loadNanopubToRepo(np.getUri(), textStatements, &quot;text-user_&quot; + Utils.createHash(authorIri));
-//		}
-
-<span class="nc bnc" id="L334" title="All 2 branches missed.">        for (Statement st : invalidateStatements) {</span>
-<span class="nc" id="L335">            runTask.accept(() -&gt; loadInvalidateStatements(np, finalEl.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">            for (Statement st : invalidateStatements) {</span>
+<span class="nc" id="L350">                runTask.accept(() -&gt; loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));</span>
+<span class="nc" id="L351">            }</span>
         }
 
         // Wait for all loading tasks to complete before returning
-<span class="nc bnc" id="L339" title="All 2 branches missed.">        for (var task : runningTasks) {</span>
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">        for (var task : runningTasks) {</span>
             try {
-<span class="nc" id="L341">                task.get();</span>
-<span class="nc" id="L342">            } catch (ExecutionException | InterruptedException ex) {</span>
-<span class="nc" id="L343">                throw new RuntimeException(&quot;Error in nanopub loading thread&quot;, ex.getCause());</span>
-            }
-        }
-<span class="nc" id="L346">    }</span>
+<span class="nc" id="L357">                task.get();</span>
+<span class="nc" id="L358">            } catch (ExecutionException | InterruptedException ex) {</span>
+<span class="nc" id="L359">                throw new RuntimeException(&quot;Error in nanopub loading thread&quot;, ex.getCause());</span>
+<span class="nc" id="L360">            }</span>
+<span class="nc" id="L361">        }</span>
+<span class="fc" id="L362">    }</span>
 
-<span class="fc" id="L348">    private static Long lastUpdateOfLatestRepo = null;</span>
-<span class="fc" id="L349">    private static long THIRTY_DAYS = 1000L * 60 * 60 * 24 * 30;</span>
-<span class="fc" id="L350">    private static long ONE_HOUR = 1000L * 60 * 60;</span>
+<span class="fc" id="L364">    private static Long lastUpdateOfLatestRepo = null;</span>
+<span class="fc" id="L365">    private static long THIRTY_DAYS = 1000L * 60 * 60 * 24 * 30;</span>
+<span class="fc" id="L366">    private static long ONE_HOUR = 1000L * 60 * 60;</span>
 
     private static void loadNanopubToLatest(List&lt;Statement&gt; statements) {
-<span class="nc" id="L353">        boolean success = false;</span>
-<span class="nc bnc" id="L354" title="All 2 branches missed.">        while (!success) {</span>
-<span class="nc" id="L355">            RepositoryConnection conn = TripleStore.get().getRepoConnection(&quot;last30d&quot;);</span>
-<span class="nc" id="L356">            try (conn) {</span>
+<span class="nc" id="L369">        boolean success = false;</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">        while (!success) {</span>
+<span class="nc" id="L371">            RepositoryConnection conn = TripleStore.get().getRepoConnection(&quot;last30d&quot;);</span>
+<span class="nc" id="L372">            try (conn) {</span>
                 // Read committed, because deleting old nanopubs is idempotent. Inserts do not collide
                 // with deletes, because we are not inserting old nanopubs.
-<span class="nc" id="L359">                conn.begin(IsolationLevels.READ_COMMITTED);</span>
-<span class="nc" id="L360">                conn.add(statements);</span>
-<span class="nc bnc" id="L361" title="All 4 branches missed.">                if (lastUpdateOfLatestRepo == null || new Date().getTime() - lastUpdateOfLatestRepo &gt; ONE_HOUR) {</span>
+<span class="nc" id="L375">                conn.begin(IsolationLevels.READ_COMMITTED);</span>
+<span class="nc" id="L376">                conn.add(statements);</span>
+<span class="nc bnc" id="L377" title="All 4 branches missed.">                if (lastUpdateOfLatestRepo == null || new Date().getTime() - lastUpdateOfLatestRepo &gt; ONE_HOUR) {</span>
                     //System.err.println(&quot;Remove old nanopubs...&quot;);
-<span class="nc" id="L363">                    Literal thirtyDaysAgo = vf.createLiteral(new Date(new Date().getTime() - THIRTY_DAYS));</span>
-<span class="nc" id="L364">                    TupleQuery q = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + ADMIN_GRAPH + &quot;&gt; { &quot; + &quot;?np &lt;&quot; + DCTERMS.CREATED + &quot;&gt; ?date . &quot; + &quot;filter ( ?date &lt; ?thirtydaysago ) &quot; + &quot;} }&quot;);</span>
-<span class="nc" id="L365">                    q.setBinding(&quot;thirtydaysago&quot;, thirtyDaysAgo);</span>
-<span class="nc" id="L366">                    try (TupleQueryResult r = q.evaluate()) {</span>
-<span class="nc bnc" id="L367" title="All 2 branches missed.">                        while (r.hasNext()) {</span>
-<span class="nc" id="L368">                            BindingSet b = r.next();</span>
-<span class="nc" id="L369">                            IRI oldNpId = (IRI) b.getBinding(&quot;np&quot;).getValue();</span>
+<span class="nc" id="L379">                    Literal thirtyDaysAgo = vf.createLiteral(new Date(new Date().getTime() - THIRTY_DAYS));</span>
+<span class="nc" id="L380">                    TupleQuery q = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + ADMIN_GRAPH + &quot;&gt; { &quot; + &quot;?np &lt;&quot; + DCTERMS.CREATED + &quot;&gt; ?date . &quot; + &quot;filter ( ?date &lt; ?thirtydaysago ) &quot; + &quot;} }&quot;);</span>
+<span class="nc" id="L381">                    q.setBinding(&quot;thirtydaysago&quot;, thirtyDaysAgo);</span>
+<span class="nc" id="L382">                    try (TupleQueryResult r = q.evaluate()) {</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">                        while (r.hasNext()) {</span>
+<span class="nc" id="L384">                            BindingSet b = r.next();</span>
+<span class="nc" id="L385">                            IRI oldNpId = (IRI) b.getBinding(&quot;np&quot;).getValue();</span>
                             //System.err.println(&quot;Remove old nanopub: &quot; + oldNpId);
-<span class="nc bnc" id="L371" title="All 2 branches missed.">                            for (Value v : Utils.getObjectsForPattern(conn, ADMIN_GRAPH, oldNpId, HAS_GRAPH)) {</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                            for (Value v : Utils.getObjectsForPattern(conn, ADMIN_GRAPH, oldNpId, HAS_GRAPH)) {</span>
                                 // Remove all four nanopub graphs:
-<span class="nc" id="L373">                                conn.remove((Resource) null, (IRI) null, (Value) null, (IRI) v);</span>
-                            }
+<span class="nc" id="L389">                                conn.remove((Resource) null, (IRI) null, (Value) null, (IRI) v);</span>
+<span class="nc" id="L390">                            }</span>
                             // Remove nanopubs in admin graphs:
-<span class="nc" id="L376">                            conn.remove(oldNpId, null, null, ADMIN_GRAPH);</span>
-<span class="nc" id="L377">                            conn.remove(oldNpId, null, null, ADMIN_NETWORK_GRAPH);</span>
-                        }
+<span class="nc" id="L392">                            conn.remove(oldNpId, null, null, ADMIN_GRAPH);</span>
+<span class="nc" id="L393">                            conn.remove(oldNpId, null, null, ADMIN_NETWORK_GRAPH);</span>
+<span class="nc" id="L394">                        }</span>
                     }
-<span class="nc" id="L380">                    lastUpdateOfLatestRepo = new Date().getTime();</span>
+<span class="nc" id="L396">                    lastUpdateOfLatestRepo = new Date().getTime();</span>
                 }
-<span class="nc" id="L382">                conn.commit();</span>
-<span class="nc" id="L383">                success = true;</span>
-<span class="nc" id="L384">            } catch (Exception ex) {</span>
-<span class="nc" id="L385">                ex.printStackTrace();</span>
-<span class="nc bnc" id="L386" title="All 2 branches missed.">                if (conn.isActive()) conn.rollback();</span>
-            }
-<span class="nc bnc" id="L388" title="All 2 branches missed.">            if (!success) {</span>
-<span class="nc" id="L389">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
+<span class="nc" id="L398">                conn.commit();</span>
+<span class="nc" id="L399">                success = true;</span>
+<span class="nc" id="L400">            } catch (Exception ex) {</span>
+<span class="nc" id="L401">                ex.printStackTrace();</span>
+<span class="nc bnc" id="L402" title="All 2 branches missed.">                if (conn.isActive()) conn.rollback();</span>
+<span class="nc" id="L403">            }</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L405">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
                 try {
-<span class="nc" id="L391">                    Thread.sleep(10000);</span>
-<span class="nc" id="L392">                } catch (InterruptedException x) {</span>
-                }
+<span class="nc" id="L407">                    Thread.sleep(10000);</span>
+<span class="nc" id="L408">                } catch (InterruptedException x) {</span>
+<span class="nc" id="L409">                }</span>
             }
-        }
-<span class="nc" id="L396">    }</span>
+<span class="nc" id="L411">        }</span>
+<span class="nc" id="L412">    }</span>
 
     private static void loadNanopubToRepo(IRI npId, List&lt;Statement&gt; statements, String repoName) {
-<span class="nc" id="L399">        boolean success = false;</span>
-<span class="nc bnc" id="L400" title="All 2 branches missed.">        while (!success) {</span>
-<span class="nc" id="L401">            RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);</span>
-<span class="nc" id="L402">            try (conn) {</span>
+<span class="nc" id="L415">        boolean success = false;</span>
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        while (!success) {</span>
+<span class="nc" id="L417">            RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);</span>
+<span class="nc" id="L418">            try (conn) {</span>
                 // Serializable, because write skew would cause the chain of hashes to be broken.
                 // The inserts must be done serially.
-<span class="nc" id="L405">                conn.begin(IsolationLevels.SERIALIZABLE);</span>
-<span class="nc" id="L406">                var repoStatus = fetchRepoStatus(conn, npId);</span>
-<span class="nc bnc" id="L407" title="All 2 branches missed.">                if (repoStatus.isLoaded) {</span>
-<span class="nc" id="L408">                    System.err.println(&quot;Already loaded: &quot; + npId);</span>
-<span class="nc" id="L409">                } else {</span>
-<span class="nc" id="L410">                    String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);</span>
-<span class="nc" id="L411">                    conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);</span>
-<span class="nc" id="L412">                    conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);</span>
-<span class="nc" id="L413">                    conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, vf.createLiteral(repoStatus.count + 1), ADMIN_GRAPH);</span>
+<span class="nc" id="L421">                conn.begin(IsolationLevels.SERIALIZABLE);</span>
+<span class="nc" id="L422">                var repoStatus = fetchRepoStatus(conn, npId);</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">                if (repoStatus.isLoaded) {</span>
+<span class="nc" id="L424">                    System.err.println(&quot;Already loaded: &quot; + npId);</span>
+                } else {
+<span class="nc" id="L426">                    String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);</span>
+<span class="nc" id="L427">                    conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, null, ADMIN_GRAPH);</span>
+<span class="nc" id="L428">                    conn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, null, ADMIN_GRAPH);</span>
+<span class="nc" id="L429">                    conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, vf.createLiteral(repoStatus.count + 1), ADMIN_GRAPH);</span>
                     // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded
-<span class="nc" id="L415">                    conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);</span>
+<span class="nc" id="L431">                    conn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);</span>
                     // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
-<span class="nc" id="L417">                    conn.add(npId, TripleStore.HAS_LOAD_NUMBER, vf.createLiteral(repoStatus.count), ADMIN_GRAPH);</span>
+<span class="nc" id="L433">                    conn.add(npId, TripleStore.HAS_LOAD_NUMBER, vf.createLiteral(repoStatus.count), ADMIN_GRAPH);</span>
                     // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadNumber, LOAD_NUMBER, npa:graph, admin, the sequential number at which this NANOPUB was loaded
-<span class="nc" id="L419">                    conn.add(npId, TripleStore.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);</span>
+<span class="nc" id="L435">                    conn.add(npId, TripleStore.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), ADMIN_GRAPH);</span>
                     // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
-<span class="nc" id="L421">                    conn.add(npId, TripleStore.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), ADMIN_GRAPH);</span>
+<span class="nc" id="L437">                    conn.add(npId, TripleStore.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), ADMIN_GRAPH);</span>
                     // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
-<span class="nc" id="L423">                    conn.add(statements);</span>
+<span class="nc" id="L439">                    conn.add(statements);</span>
                 }
-<span class="nc" id="L425">                conn.commit();</span>
-<span class="nc" id="L426">                success = true;</span>
-<span class="nc" id="L427">            } catch (Exception ex) {</span>
-<span class="nc" id="L428">                ex.printStackTrace();</span>
-<span class="nc bnc" id="L429" title="All 2 branches missed.">                if (conn.isActive()) conn.rollback();</span>
-            }
-<span class="nc bnc" id="L431" title="All 2 branches missed.">            if (!success) {</span>
-<span class="nc" id="L432">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
+<span class="nc" id="L441">                conn.commit();</span>
+<span class="nc" id="L442">                success = true;</span>
+<span class="nc" id="L443">            } catch (Exception ex) {</span>
+<span class="nc" id="L444">                ex.printStackTrace();</span>
+<span class="nc bnc" id="L445" title="All 2 branches missed.">                if (conn.isActive()) conn.rollback();</span>
+<span class="nc" id="L446">            }</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L448">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
                 try {
-<span class="nc" id="L434">                    Thread.sleep(10000);</span>
-<span class="nc" id="L435">                } catch (InterruptedException x) {</span>
-                }
+<span class="nc" id="L450">                    Thread.sleep(10000);</span>
+<span class="nc" id="L451">                } catch (InterruptedException x) {</span>
+<span class="nc" id="L452">                }</span>
             }
-        }
-<span class="nc" id="L439">    }</span>
+<span class="nc" id="L454">        }</span>
+<span class="nc" id="L455">    }</span>
 
-    private record RepoStatus(boolean isLoaded, long count, String checksum) {
+<span class="nc" id="L457">    private record RepoStatus(boolean isLoaded, long count, String checksum) {</span>
     }
 
     /**
@@ -451,46 +467,46 @@ public class NanopubLoader {
      * @return the current status
      */
     private static RepoStatus fetchRepoStatus(RepositoryConnection conn, IRI npId) {
-<span class="nc" id="L454">        var result = conn.prepareTupleQuery(QueryLanguage.SPARQL, REPO_STATUS_QUERY_TEMPLATE.formatted(npId)).evaluate();</span>
-<span class="nc" id="L455">        try (result) {</span>
-<span class="nc bnc" id="L456" title="All 2 branches missed.">            if (!result.hasNext()) {</span>
+<span class="nc" id="L470">        var result = conn.prepareTupleQuery(QueryLanguage.SPARQL, REPO_STATUS_QUERY_TEMPLATE.formatted(npId)).evaluate();</span>
+<span class="nc" id="L471">        try (result) {</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">            if (!result.hasNext()) {</span>
                 // This may happen if the repo was created, but is completely empty.
-<span class="nc" id="L458">                return new RepoStatus(false, 0, NanopubUtils.INIT_CHECKSUM);</span>
+<span class="nc" id="L474">                return new RepoStatus(false, 0, NanopubUtils.INIT_CHECKSUM);</span>
             }
-<span class="nc" id="L460">            var row = result.next();</span>
-<span class="nc" id="L461">            return new RepoStatus(row.hasBinding(&quot;loadNumber&quot;), Long.parseLong(row.getBinding(&quot;count&quot;).getValue().stringValue()), row.getBinding(&quot;checksum&quot;).getValue().stringValue());</span>
-        }
+<span class="nc" id="L476">            var row = result.next();</span>
+<span class="nc" id="L477">            return new RepoStatus(row.hasBinding(&quot;loadNumber&quot;), Long.parseLong(row.getBinding(&quot;count&quot;).getValue().stringValue()), row.getBinding(&quot;checksum&quot;).getValue().stringValue());</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">        }</span>
     }
 
     private static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
-<span class="nc" id="L466">        boolean success = false;</span>
-<span class="nc bnc" id="L467" title="All 2 branches missed.">        while (!success) {</span>
-<span class="nc" id="L468">            List&lt;RepositoryConnection&gt; connections = new ArrayList&lt;&gt;();</span>
-<span class="nc" id="L469">            RepositoryConnection metaConn = TripleStore.get().getRepoConnection(&quot;meta&quot;);</span>
+<span class="nc" id="L482">        boolean success = false;</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">        while (!success) {</span>
+<span class="nc" id="L484">            List&lt;RepositoryConnection&gt; connections = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L485">            RepositoryConnection metaConn = TripleStore.get().getRepoConnection(&quot;meta&quot;);</span>
             try {
-<span class="nc" id="L471">                IRI invalidatedNpId = (IRI) invalidateStatement.getObject();</span>
+<span class="nc" id="L487">                IRI invalidatedNpId = (IRI) invalidateStatement.getObject();</span>
                 // Basic isolation because here we only read append-only data.
-<span class="nc" id="L473">                metaConn.begin(IsolationLevels.READ_COMMITTED);</span>
+<span class="nc" id="L489">                metaConn.begin(IsolationLevels.READ_COMMITTED);</span>
 
-<span class="nc" id="L475">                Value pubkeyValue = Utils.getObjectForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY);</span>
-<span class="nc bnc" id="L476" title="All 2 branches missed.">                if (pubkeyValue != null) {</span>
-<span class="nc" id="L477">                    String pubkey = pubkeyValue.stringValue();</span>
+<span class="nc" id="L491">                Value pubkeyValue = Utils.getObjectForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY);</span>
+<span class="nc bnc" id="L492" title="All 2 branches missed.">                if (pubkeyValue != null) {</span>
+<span class="nc" id="L493">                    String pubkey = pubkeyValue.stringValue();</span>
 
-<span class="nc bnc" id="L479" title="All 2 branches missed.">                    if (!pubkey.equals(thisPubkey)) {</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">                    if (!pubkey.equals(thisPubkey)) {</span>
                         //System.err.println(&quot;Adding invalidation expressed in &quot; + thisNp.getUri() + &quot; also to repo for pubkey &quot; + pubkey);
-<span class="nc" id="L481">                        connections.add(loadStatements(&quot;pubkey_&quot; + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement, pubkeyStatementX));</span>
+<span class="nc" id="L497">                        connections.add(loadStatements(&quot;pubkey_&quot; + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement, pubkeyStatementX));</span>
 //						connections.add(loadStatements(&quot;text-pubkey_&quot; + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement));
                     }
 
-<span class="nc bnc" id="L485" title="All 2 branches missed.">                    for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_NANOPUB_TYPE)) {</span>
-<span class="nc" id="L486">                        IRI typeIri = (IRI) v;</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">                    for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, HAS_NANOPUB_TYPE)) {</span>
+<span class="nc" id="L502">                        IRI typeIri = (IRI) v;</span>
                         // TODO Avoid calling getTypes and getCreators multiple times:
-<span class="nc bnc" id="L488" title="All 2 branches missed.">                        if (!NanopubUtils.getTypes(thisNp).contains(typeIri)) {</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">                        if (!NanopubUtils.getTypes(thisNp).contains(typeIri)) {</span>
                             //System.err.println(&quot;Adding invalidation expressed in &quot; + thisNp.getUri() + &quot; also to repo for type &quot; + typeIri);
-<span class="nc" id="L490">                            connections.add(loadStatements(&quot;type_&quot; + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement, pubkeyStatementX));</span>
+<span class="nc" id="L506">                            connections.add(loadStatements(&quot;type_&quot; + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement, pubkeyStatementX));</span>
 //							connections.add(loadStatements(&quot;text-type_&quot; + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
                         }
-                    }
+<span class="nc" id="L509">                    }</span>
 
 //					for (Value v : Utils.getObjectsForPattern(metaConn, ADMIN_GRAPH, invalidatedNpId, DCTERMS.CREATOR)) {
 //						IRI creatorIri = (IRI) v;
@@ -502,123 +518,123 @@ public class NanopubLoader {
 //					}
                 }
 
-<span class="nc" id="L505">                metaConn.commit();</span>
+<span class="nc" id="L521">                metaConn.commit();</span>
                 // TODO handle case that some commits succeed and some fail
-<span class="nc bnc" id="L507" title="All 2 branches missed.">                for (RepositoryConnection c : connections) c.commit();</span>
-<span class="nc" id="L508">                success = true;</span>
-<span class="nc" id="L509">            } catch (Exception ex) {</span>
-<span class="nc" id="L510">                ex.printStackTrace();</span>
-<span class="nc bnc" id="L511" title="All 2 branches missed.">                if (metaConn.isActive()) metaConn.rollback();</span>
-<span class="nc bnc" id="L512" title="All 2 branches missed.">                for (RepositoryConnection c : connections) {</span>
-<span class="nc bnc" id="L513" title="All 2 branches missed.">                    if (c.isActive()) c.rollback();</span>
-                }
+<span class="nc bnc" id="L523" title="All 2 branches missed.">                for (RepositoryConnection c : connections) c.commit();</span>
+<span class="nc" id="L524">                success = true;</span>
+<span class="nc" id="L525">            } catch (Exception ex) {</span>
+<span class="nc" id="L526">                ex.printStackTrace();</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">                if (metaConn.isActive()) metaConn.rollback();</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">                for (RepositoryConnection c : connections) {</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">                    if (c.isActive()) c.rollback();</span>
+<span class="nc" id="L530">                }</span>
             } finally {
-<span class="nc" id="L516">                metaConn.close();</span>
-<span class="nc bnc" id="L517" title="All 2 branches missed.">                for (RepositoryConnection c : connections) c.close();</span>
+<span class="nc" id="L532">                metaConn.close();</span>
+<span class="nc bnc" id="L533" title="All 2 branches missed.">                for (RepositoryConnection c : connections) c.close();</span>
             }
-<span class="nc bnc" id="L519" title="All 2 branches missed.">            if (!success) {</span>
-<span class="nc" id="L520">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L536">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
                 try {
-<span class="nc" id="L522">                    Thread.sleep(10000);</span>
-<span class="nc" id="L523">                } catch (InterruptedException x) {</span>
-                }
+<span class="nc" id="L538">                    Thread.sleep(10000);</span>
+<span class="nc" id="L539">                } catch (InterruptedException x) {</span>
+<span class="nc" id="L540">                }</span>
             }
-        }
-<span class="nc" id="L527">    }</span>
+<span class="nc" id="L542">        }</span>
+<span class="nc" id="L543">    }</span>
 
     private static RepositoryConnection loadStatements(String repoName, Statement... statements) {
-<span class="nc" id="L530">        RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);</span>
+<span class="nc" id="L546">        RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);</span>
         // Basic isolation: we only append new statements
-<span class="nc" id="L532">        conn.begin(IsolationLevels.READ_COMMITTED);</span>
-<span class="nc bnc" id="L533" title="All 2 branches missed.">        for (Statement st : statements) {</span>
-<span class="nc" id="L534">            conn.add(st);</span>
+<span class="nc" id="L548">        conn.begin(IsolationLevels.READ_COMMITTED);</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">        for (Statement st : statements) {</span>
+<span class="nc" id="L550">            conn.add(st);</span>
         }
-<span class="nc" id="L536">        return conn;</span>
+<span class="nc" id="L552">        return conn;</span>
     }
 
-    private static List&lt;Statement&gt; getInvalidatingStatements(IRI npId) {
-<span class="nc" id="L540">        List&lt;Statement&gt; invalidatingStatements = new ArrayList&lt;&gt;();</span>
-<span class="nc" id="L541">        boolean success = false;</span>
-<span class="nc bnc" id="L542" title="All 2 branches missed.">        while (!success) {</span>
-<span class="nc" id="L543">            RepositoryConnection conn = TripleStore.get().getRepoConnection(&quot;meta&quot;);</span>
-<span class="nc" id="L544">            try (conn) {</span>
+    static List&lt;Statement&gt; getInvalidatingStatements(IRI npId) {
+<span class="fc" id="L556">        List&lt;Statement&gt; invalidatingStatements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L557">        boolean success = false;</span>
+<span class="pc bpc" id="L558" title="1 of 2 branches missed.">        while (!success) {</span>
+<span class="nc" id="L559">            RepositoryConnection conn = TripleStore.get().getRepoConnection(&quot;meta&quot;);</span>
+<span class="nc" id="L560">            try (conn) {</span>
                 // Basic isolation because here we only read append-only data.
-<span class="nc" id="L546">                conn.begin(IsolationLevels.READ_COMMITTED);</span>
+<span class="nc" id="L562">                conn.begin(IsolationLevels.READ_COMMITTED);</span>
 
-<span class="nc" id="L548">                TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + ADMIN_GRAPH + &quot;&gt; { &quot; + &quot;?np &lt;&quot; + INVALIDATES + &quot;&gt; &lt;&quot; + npId + &quot;&gt; ; &lt;&quot; + HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + &quot;&gt; ?pubkey . &quot; + &quot;} }&quot;).evaluate();</span>
-<span class="nc" id="L549">                try (r) {</span>
-<span class="nc bnc" id="L550" title="All 2 branches missed.">                    while (r.hasNext()) {</span>
-<span class="nc" id="L551">                        BindingSet b = r.next();</span>
-<span class="nc" id="L552">                        invalidatingStatements.add(vf.createStatement((IRI) b.getBinding(&quot;np&quot;).getValue(), INVALIDATES, npId, ADMIN_GRAPH));</span>
-<span class="nc" id="L553">                        invalidatingStatements.add(vf.createStatement((IRI) b.getBinding(&quot;np&quot;).getValue(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, b.getBinding(&quot;pubkey&quot;).getValue(), ADMIN_GRAPH));</span>
-                    }
+<span class="nc" id="L564">                TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + ADMIN_GRAPH + &quot;&gt; { &quot; + &quot;?np &lt;&quot; + INVALIDATES + &quot;&gt; &lt;&quot; + npId + &quot;&gt; ; &lt;&quot; + HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + &quot;&gt; ?pubkey . &quot; + &quot;} }&quot;).evaluate();</span>
+<span class="nc" id="L565">                try (r) {</span>
+<span class="nc bnc" id="L566" title="All 2 branches missed.">                    while (r.hasNext()) {</span>
+<span class="nc" id="L567">                        BindingSet b = r.next();</span>
+<span class="nc" id="L568">                        invalidatingStatements.add(vf.createStatement((IRI) b.getBinding(&quot;np&quot;).getValue(), INVALIDATES, npId, ADMIN_GRAPH));</span>
+<span class="nc" id="L569">                        invalidatingStatements.add(vf.createStatement((IRI) b.getBinding(&quot;np&quot;).getValue(), HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, b.getBinding(&quot;pubkey&quot;).getValue(), ADMIN_GRAPH));</span>
+<span class="nc" id="L570">                    }</span>
                 }
-<span class="nc" id="L556">                conn.commit();</span>
-<span class="nc" id="L557">                success = true;</span>
-<span class="nc" id="L558">            } catch (Exception ex) {</span>
-<span class="nc" id="L559">                ex.printStackTrace();</span>
-<span class="nc bnc" id="L560" title="All 2 branches missed.">                if (conn.isActive()) conn.rollback();</span>
-            }
-<span class="nc bnc" id="L562" title="All 2 branches missed.">            if (!success) {</span>
-<span class="nc" id="L563">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
+<span class="nc" id="L572">                conn.commit();</span>
+<span class="nc" id="L573">                success = true;</span>
+<span class="nc" id="L574">            } catch (Exception ex) {</span>
+<span class="nc" id="L575">                ex.printStackTrace();</span>
+<span class="nc bnc" id="L576" title="All 2 branches missed.">                if (conn.isActive()) conn.rollback();</span>
+<span class="nc" id="L577">            }</span>
+<span class="nc bnc" id="L578" title="All 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L579">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
                 try {
-<span class="nc" id="L565">                    Thread.sleep(10000);</span>
-<span class="nc" id="L566">                } catch (InterruptedException x) {</span>
-                }
+<span class="nc" id="L581">                    Thread.sleep(10000);</span>
+<span class="nc" id="L582">                } catch (InterruptedException x) {</span>
+<span class="nc" id="L583">                }</span>
             }
-        }
-<span class="nc" id="L570">        return invalidatingStatements;</span>
+<span class="nc" id="L585">        }</span>
+<span class="nc" id="L586">        return invalidatingStatements;</span>
     }
 
     private static void loadNoteToRepo(Resource subj, String note) {
-<span class="nc" id="L574">        boolean success = false;</span>
-<span class="nc bnc" id="L575" title="All 2 branches missed.">        while (!success) {</span>
-<span class="nc" id="L576">            RepositoryConnection conn = TripleStore.get().getAdminRepoConnection();</span>
-<span class="nc" id="L577">            try (conn) {</span>
-<span class="nc" id="L578">                List&lt;Statement&gt; statements = new ArrayList&lt;&gt;();</span>
-<span class="nc" id="L579">                statements.add(vf.createStatement(subj, NOTE, vf.createLiteral(note), ADMIN_GRAPH));</span>
-<span class="nc" id="L580">                conn.add(statements);</span>
-<span class="nc" id="L581">                success = true;</span>
-<span class="nc" id="L582">            } catch (Exception ex) {</span>
-<span class="nc" id="L583">                ex.printStackTrace();</span>
-            }
-<span class="nc bnc" id="L585" title="All 2 branches missed.">            if (!success) {</span>
-<span class="nc" id="L586">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
+<span class="nc" id="L590">        boolean success = false;</span>
+<span class="nc bnc" id="L591" title="All 2 branches missed.">        while (!success) {</span>
+<span class="nc" id="L592">            RepositoryConnection conn = TripleStore.get().getAdminRepoConnection();</span>
+<span class="nc" id="L593">            try (conn) {</span>
+<span class="nc" id="L594">                List&lt;Statement&gt; statements = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L595">                statements.add(vf.createStatement(subj, NOTE, vf.createLiteral(note), ADMIN_GRAPH));</span>
+<span class="nc" id="L596">                conn.add(statements);</span>
+<span class="nc" id="L597">                success = true;</span>
+<span class="nc" id="L598">            } catch (Exception ex) {</span>
+<span class="nc" id="L599">                ex.printStackTrace();</span>
+<span class="nc" id="L600">            }</span>
+<span class="nc bnc" id="L601" title="All 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L602">                System.err.println(&quot;Retrying in 10 second...&quot;);</span>
                 try {
-<span class="nc" id="L588">                    Thread.sleep(10000);</span>
-<span class="nc" id="L589">                } catch (InterruptedException x) {</span>
-                }
+<span class="nc" id="L604">                    Thread.sleep(10000);</span>
+<span class="nc" id="L605">                } catch (InterruptedException x) {</span>
+<span class="nc" id="L606">                }</span>
             }
-        }
-<span class="nc" id="L593">    }</span>
+<span class="nc" id="L608">        }</span>
+<span class="nc" id="L609">    }</span>
 
-    private static boolean hasValidSignature(NanopubSignatureElement el) {
+    static boolean hasValidSignature(NanopubSignatureElement el) {
         try {
-<span class="pc bpc" id="L597" title="4 of 6 branches missed.">            if (el != null &amp;&amp; SignatureUtils.hasValidSignature(el) &amp;&amp; el.getPublicKeyString() != null) {</span>
-<span class="nc" id="L598">                return true;</span>
+<span class="pc bpc" id="L613" title="2 of 6 branches missed.">            if (el != null &amp;&amp; SignatureUtils.hasValidSignature(el) &amp;&amp; el.getPublicKeyString() != null) {</span>
+<span class="fc" id="L614">                return true;</span>
             }
-<span class="nc" id="L600">        } catch (GeneralSecurityException ex) {</span>
-<span class="nc" id="L601">            System.err.println(&quot;Error for signature element &quot; + el.getUri());</span>
-<span class="nc" id="L602">            ex.printStackTrace();</span>
-        }
-<span class="fc" id="L604">        return false;</span>
+<span class="fc" id="L616">        } catch (GeneralSecurityException ex) {</span>
+<span class="fc" id="L617">            System.err.println(&quot;Error for signature element &quot; + el.getUri());</span>
+<span class="fc" id="L618">            ex.printStackTrace();</span>
+<span class="fc" id="L619">        }</span>
+<span class="fc" id="L620">        return false;</span>
     }
 
     private static IRI getBaseTrustyUri(Value v) {
-<span class="nc bnc" id="L608" title="All 2 branches missed.">        if (!(v instanceof IRI)) return null;</span>
-<span class="nc" id="L609">        String s = v.stringValue();</span>
-<span class="nc bnc" id="L610" title="All 2 branches missed.">        if (!s.matches(&quot;.*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}([^A-Za-z0-9\\\\-_].{0,43})?&quot;)) {</span>
-<span class="nc" id="L611">            return null;</span>
+<span class="pc bpc" id="L624" title="1 of 2 branches missed.">        if (!(v instanceof IRI)) return null;</span>
+<span class="fc" id="L625">        String s = v.stringValue();</span>
+<span class="fc bfc" id="L626" title="All 2 branches covered.">        if (!s.matches(&quot;.*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}([^A-Za-z0-9\\\\-_].{0,43})?&quot;)) {</span>
+<span class="fc" id="L627">            return null;</span>
         }
-<span class="nc" id="L613">        return vf.createIRI(s.replaceFirst(&quot;^(.*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43})([^A-Za-z0-9\\\\-_].{0,43})?$&quot;, &quot;$1&quot;));</span>
+<span class="fc" id="L629">        return vf.createIRI(s.replaceFirst(&quot;^(.*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43})([^A-Za-z0-9\\\\-_].{0,43})?$&quot;, &quot;$1&quot;));</span>
     }
 
     // TODO: Move this to nanopub library:
     private static boolean isIntroNanopub(Nanopub np) {
-<span class="nc bnc" id="L618" title="All 2 branches missed.">        for (Statement st : np.getAssertion()) {</span>
-<span class="nc bnc" id="L619" title="All 2 branches missed.">            if (st.getPredicate().equals(KeyDeclaration.DECLARED_BY)) return true;</span>
-        }
-<span class="nc" id="L621">        return false;</span>
+<span class="fc bfc" id="L634" title="All 2 branches covered.">        for (Statement st : np.getAssertion()) {</span>
+<span class="fc bfc" id="L635" title="All 2 branches covered.">            if (st.getPredicate().equals(KeyDeclaration.DECLARED_BY)) return true;</span>
+<span class="fc" id="L636">        }</span>
+<span class="fc" id="L637">        return false;</span>
     }
 
     /**
@@ -628,132 +644,132 @@ public class NanopubLoader {
      * @return true if the nanopub is loaded, false otherwise
      */
     static boolean isNanopubLoaded(String npId) {
-<span class="fc" id="L631">        boolean loaded = false;</span>
-<span class="fc" id="L632">        RepositoryConnection conn = TripleStore.get().getRepoConnection(&quot;meta&quot;);</span>
-<span class="fc" id="L633">        try (conn) {</span>
-<span class="fc bfc" id="L634" title="All 2 branches covered.">            if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, vf.createIRI(npId), TripleStore.HAS_LOAD_NUMBER) != null) {</span>
-<span class="fc" id="L635">                loaded = true;</span>
+<span class="fc" id="L647">        boolean loaded = false;</span>
+<span class="fc" id="L648">        RepositoryConnection conn = TripleStore.get().getRepoConnection(&quot;meta&quot;);</span>
+<span class="fc" id="L649">        try (conn) {</span>
+<span class="fc bfc" id="L650" title="All 2 branches covered.">            if (Utils.getObjectForPattern(conn, ADMIN_GRAPH, vf.createIRI(npId), TripleStore.HAS_LOAD_NUMBER) != null) {</span>
+<span class="fc" id="L651">                loaded = true;</span>
             }
-<span class="nc" id="L637">        } catch (Exception ex) {</span>
-<span class="nc" id="L638">            ex.printStackTrace();</span>
-        }
-<span class="fc" id="L640">        return loaded;</span>
+<span class="nc" id="L653">        } catch (Exception ex) {</span>
+<span class="nc" id="L654">            ex.printStackTrace();</span>
+<span class="fc" id="L655">        }</span>
+<span class="fc" id="L656">        return loaded;</span>
     }
 
-<span class="fc" id="L643">    private static ValueFactory vf = SimpleValueFactory.getInstance();</span>
+<span class="fc" id="L659">    private static ValueFactory vf = SimpleValueFactory.getInstance();</span>
 
     // TODO remove the constants and use the ones from the nanopub library instead
 
     /**
      * Admin graph IRI.
      */
-<span class="fc" id="L650">    public static final IRI ADMIN_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/graph&quot;);</span>
+<span class="fc" id="L666">    public static final IRI ADMIN_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/graph&quot;);</span>
 
     /**
      * Admin network graph IRI.
      */
-<span class="fc" id="L655">    public static final IRI ADMIN_NETWORK_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/networkGraph&quot;);</span>
+<span class="fc" id="L671">    public static final IRI ADMIN_NETWORK_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/networkGraph&quot;);</span>
 
     /**
      * IRI for the head graph of a nanopub.
      */
-<span class="fc" id="L660">    public static final IRI HAS_HEAD_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasHeadGraph&quot;);</span>
+<span class="fc" id="L676">    public static final IRI HAS_HEAD_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasHeadGraph&quot;);</span>
 
     /**
      * IRI for the graph of a nanopub.
      */
-<span class="fc" id="L665">    public static final IRI HAS_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasGraph&quot;);</span>
+<span class="fc" id="L681">    public static final IRI HAS_GRAPH = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasGraph&quot;);</span>
 
     /**
      * IRI for the note about a nanopub.
      */
-<span class="fc" id="L670">    public static final IRI NOTE = vf.createIRI(&quot;http://purl.org/nanopub/admin/note&quot;);</span>
+<span class="fc" id="L686">    public static final IRI NOTE = vf.createIRI(&quot;http://purl.org/nanopub/admin/note&quot;);</span>
 
     /**
      * IRI for the subIRI of a nanopub.
      */
-<span class="fc" id="L675">    public static final IRI HAS_SUB_IRI = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasSubIri&quot;);</span>
+<span class="fc" id="L691">    public static final IRI HAS_SUB_IRI = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasSubIri&quot;);</span>
 
     /**
      * IRI for the refers to nanopub relation.
      */
-<span class="fc" id="L680">    public static final IRI REFERS_TO_NANOPUB = vf.createIRI(&quot;http://purl.org/nanopub/admin/refersToNanopub&quot;);</span>
+<span class="fc" id="L696">    public static final IRI REFERS_TO_NANOPUB = vf.createIRI(&quot;http://purl.org/nanopub/admin/refersToNanopub&quot;);</span>
 
     /**
      * IRI for the has valid signature for public key relation.
      */
-<span class="fc" id="L685">    public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasValidSignatureForPublicKey&quot;);</span>
+<span class="fc" id="L701">    public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasValidSignatureForPublicKey&quot;);</span>
 
     /**
      * IRI for the has valid signature for public key hash relation.
      */
-<span class="fc" id="L690">    public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasValidSignatureForPublicKeyHash&quot;);</span>
+<span class="fc" id="L706">    public static final IRI HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasValidSignatureForPublicKeyHash&quot;);</span>
 
     /**
      * IRI for the has artifact code relation.
      */
-<span class="fc" id="L695">    public static final IRI HAS_ARTIFACT_CODE = vf.createIRI(&quot;http://purl.org/nanopub/admin/artifactCode&quot;);</span>
+<span class="fc" id="L711">    public static final IRI HAS_ARTIFACT_CODE = vf.createIRI(&quot;http://purl.org/nanopub/admin/artifactCode&quot;);</span>
 
     /**
      * IRI for the is introduction of relation.
      */
-<span class="fc" id="L700">    public static final IRI IS_INTRO_OF = vf.createIRI(&quot;http://purl.org/nanopub/admin/isIntroductionOf&quot;);</span>
+<span class="fc" id="L716">    public static final IRI IS_INTRO_OF = vf.createIRI(&quot;http://purl.org/nanopub/admin/isIntroductionOf&quot;);</span>
 
     /**
      * IRI for the declares pubkey relation.
      */
-<span class="fc" id="L705">    public static final IRI DECLARES_KEY = vf.createIRI(&quot;http://purl.org/nanopub/admin/declaresPubkey&quot;);</span>
+<span class="fc" id="L721">    public static final IRI DECLARES_KEY = vf.createIRI(&quot;http://purl.org/nanopub/admin/declaresPubkey&quot;);</span>
 
     /**
      * IRI for the supersedes relation.
      */
-<span class="fc" id="L710">    public static final IRI SUPERSEDES = vf.createIRI(&quot;http://purl.org/nanopub/x/supersedes&quot;);</span>
+<span class="fc" id="L726">    public static final IRI SUPERSEDES = vf.createIRI(&quot;http://purl.org/nanopub/x/supersedes&quot;);</span>
 
     /**
      * IRI for the retracts relation.
      */
-<span class="fc" id="L715">    public static final IRI RETRACTS = vf.createIRI(&quot;http://purl.org/nanopub/x/retracts&quot;);</span>
+<span class="fc" id="L731">    public static final IRI RETRACTS = vf.createIRI(&quot;http://purl.org/nanopub/x/retracts&quot;);</span>
 
     /**
      * IRI for the invalidates relation.
      */
-<span class="fc" id="L720">    public static final IRI INVALIDATES = vf.createIRI(&quot;http://purl.org/nanopub/x/invalidates&quot;);</span>
+<span class="fc" id="L736">    public static final IRI INVALIDATES = vf.createIRI(&quot;http://purl.org/nanopub/x/invalidates&quot;);</span>
 
     /**
      * IRI for the has nanopub type relation.
      */
-<span class="fc" id="L725">    public static final IRI HAS_NANOPUB_TYPE = vf.createIRI(&quot;http://purl.org/nanopub/x/hasNanopubType&quot;);</span>
+<span class="fc" id="L741">    public static final IRI HAS_NANOPUB_TYPE = vf.createIRI(&quot;http://purl.org/nanopub/x/hasNanopubType&quot;);</span>
 
     /**
      * IRI for the has filter literal relation.
      */
-<span class="fc" id="L730">    public static final IRI HAS_FILTER_LITERAL = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasFilterLiteral&quot;);</span>
+<span class="fc" id="L746">    public static final IRI HAS_FILTER_LITERAL = vf.createIRI(&quot;http://purl.org/nanopub/admin/hasFilterLiteral&quot;);</span>
 
     /**
      * IRI for the introduces relation.
      */
-<span class="fc" id="L735">    public static final IRI INTRODUCES = vf.createIRI(&quot;http://purl.org/nanopub/x/introduces&quot;);</span>
+<span class="fc" id="L751">    public static final IRI INTRODUCES = vf.createIRI(&quot;http://purl.org/nanopub/x/introduces&quot;);</span>
 
     /**
      * IRI for the describes relation.
      */
-<span class="fc" id="L740">    public static final IRI DESCRIBES = vf.createIRI(&quot;http://purl.org/nanopub/x/describes&quot;);</span>
+<span class="fc" id="L756">    public static final IRI DESCRIBES = vf.createIRI(&quot;http://purl.org/nanopub/x/describes&quot;);</span>
 
     /**
      * IRI for the embeds relation.
      */
-<span class="fc" id="L745">    public static final IRI EMBEDS = vf.createIRI(&quot;http://purl.org/nanopub/x/embeds&quot;);</span>
+<span class="fc" id="L761">    public static final IRI EMBEDS = vf.createIRI(&quot;http://purl.org/nanopub/x/embeds&quot;);</span>
 
     /**
      * Template for the query that fetches the status of a repository.
      */
     // Template for .fetchRepoStatus
-<span class="fc" id="L751">    private static final String REPO_STATUS_QUERY_TEMPLATE = &quot;&quot;&quot;</span>
+<span class="fc" id="L767">    private static final String REPO_STATUS_QUERY_TEMPLATE = &quot;&quot;&quot;</span>
             SELECT * { graph &lt;%s&gt; {
               OPTIONAL { &lt;%s&gt; &lt;%s&gt; ?loadNumber . }
               &lt;%s&gt; &lt;%s&gt; ?count ;
                    &lt;%s&gt; ?checksum .
             } }
-<span class="fc" id="L757">            &quot;&quot;&quot;.formatted(ADMIN_GRAPH, &quot;%s&quot;, TripleStore.HAS_LOAD_NUMBER, TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, TripleStore.HAS_NANOPUB_CHECKSUM);</span>
+<span class="fc" id="L773">            &quot;&quot;&quot;.formatted(ADMIN_GRAPH, &quot;%s&quot;, TripleStore.HAS_LOAD_NUMBER, TripleStore.THIS_REPO_ID, TripleStore.HAS_NANOPUB_COUNT, TripleStore.HAS_NANOPUB_CHECKSUM);</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

@@ -52,7 +52,7 @@ import java.util.concurrent.TimeUnit;
     @Override
     public void start(Promise&lt;Void&gt; startPromise) throws Exception {
 <span class="nc" id="L54">        HttpClient httpClient = vertx.createHttpClient(</span>
-<span class="nc" id="L55">                new HttpClientOptions()</span>
+                new HttpClientOptions()
 <span class="nc" id="L56">                        .setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS)</span>
 <span class="nc" id="L57">                        .setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),</span>
 <span class="nc" id="L58">                new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)</span>
@@ -126,14 +126,14 @@ import java.util.concurrent.TimeUnit;
                                 + &quot;&lt;meta charset=\&quot;utf-8\&quot;&gt;\n&quot;
                                 + &quot;&lt;meta http-equiv=\&quot;X-UA-Compatible\&quot; content=\&quot;IE=edge\&quot;&gt;\n&quot;
                                 + &quot;&lt;meta name=\&quot;viewport\&quot; content=\&quot;width=device-width, initial-scale=1\&quot;&gt;\n&quot;
-<span class="nc" id="L129">                                + &quot;&lt;title&gt;Nanopub Query SPARQL Editor for repository: &quot; + repo + &quot;&lt;/title&gt;\n&quot;</span>
+                                + &quot;&lt;title&gt;Nanopub Query SPARQL Editor for repository: &quot; + repo + &quot;&lt;/title&gt;\n&quot;
                                 + &quot;&lt;link rel=\&quot;stylesheet\&quot; href=\&quot;/style.css\&quot;&gt;\n&quot;
                                 + &quot;&lt;link href='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.css' rel='stylesheet' type='text/css'/&gt;\n&quot;
                                 + &quot;&lt;style&gt;.yasgui .endpointText {display:none !important;}&lt;/style&gt;\n&quot;
                                 + &quot;&lt;script type=\&quot;text/javascript\&quot;&gt;localStorage.clear();&lt;/script&gt;\n&quot;
                                 + &quot;&lt;/head&gt;\n&quot;
                                 + &quot;&lt;body&gt;\n&quot;
-<span class="nc" id="L136">                                + &quot;&lt;h3&gt;Nanopub Query SPARQL Editor for repository: &quot; + repo + &quot;&lt;/h3&gt;\n&quot;</span>
+                                + &quot;&lt;h3&gt;Nanopub Query SPARQL Editor for repository: &quot; + repo + &quot;&lt;/h3&gt;\n&quot;
                                 + &quot;&lt;div id='yasgui'&gt;&lt;/div&gt;\n&quot;
                                 + &quot;&lt;script src='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.js'&gt;&lt;/script&gt;\n&quot;
                                 + &quot;&lt;script type=\&quot;text/javascript\&quot;&gt;\n&quot;
@@ -163,13 +163,13 @@ import java.util.concurrent.TimeUnit;
                                 + &quot;&lt;meta charset=\&quot;utf-8\&quot;&gt;\n&quot;
                                 + &quot;&lt;meta http-equiv=\&quot;X-UA-Compatible\&quot; content=\&quot;IE=edge\&quot;&gt;\n&quot;
                                 + &quot;&lt;meta name=\&quot;viewport\&quot; content=\&quot;width=device-width, initial-scale=1\&quot;&gt;\n&quot;
-<span class="nc" id="L166">                                + &quot;&lt;title&gt;Nanopub Query repo: &quot; + repo + &quot;&lt;/title&gt;\n&quot;</span>
+                                + &quot;&lt;title&gt;Nanopub Query repo: &quot; + repo + &quot;&lt;/title&gt;\n&quot;
                                 + &quot;&lt;link rel=\&quot;stylesheet\&quot; href=\&quot;/style.css\&quot;&gt;\n&quot;
                                 + &quot;&lt;/head&gt;\n&quot;
                                 + &quot;&lt;body&gt;\n&quot;
-<span class="nc" id="L170">                                + &quot;&lt;h3&gt;Nanopub Query repo: &quot; + repo + &quot;&lt;/h3&gt;\n&quot;</span>
-<span class="nc" id="L171">                                + &quot;&lt;p&gt;Endpoint: &lt;a href=\&quot;/repo/&quot; + repo + &quot;\&quot;&gt;/repo/&quot; + repo + &quot;&lt;/a&gt;&lt;/p&gt;&quot;</span>
-<span class="nc" id="L172">                                + &quot;&lt;p&gt;YASGUI: &lt;a href=\&quot;/tools/&quot; + repo + &quot;/yasgui.html\&quot;&gt;/tools/&quot; + repo + &quot;/yasgui.hml&lt;/a&gt;&lt;/p&gt;&quot;</span>
+                                + &quot;&lt;h3&gt;Nanopub Query repo: &quot; + repo + &quot;&lt;/h3&gt;\n&quot;
+                                + &quot;&lt;p&gt;Endpoint: &lt;a href=\&quot;/repo/&quot; + repo + &quot;\&quot;&gt;/repo/&quot; + repo + &quot;&lt;/a&gt;&lt;/p&gt;&quot;
+                                + &quot;&lt;p&gt;YASGUI: &lt;a href=\&quot;/tools/&quot; + repo + &quot;/yasgui.html\&quot;&gt;/tools/&quot; + repo + &quot;/yasgui.hml&lt;/a&gt;&lt;/p&gt;&quot;
                                 + &quot;&lt;/body&gt;\n&quot;
                                 + &quot;&lt;/html&gt;&quot;);
 <span class="nc" id="L175">            } else {</span>
@@ -186,7 +186,7 @@ import java.util.concurrent.TimeUnit;
 <span class="nc bnc" id="L186" title="All 2 branches missed.">            for (String s : repoList) {</span>
 <span class="nc bnc" id="L187" title="All 4 branches missed.">                if (s.startsWith(&quot;pubkey_&quot;) || s.startsWith(&quot;type_&quot;)) continue;</span>
 <span class="nc" id="L188">                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&lt;/code&gt;&lt;/li&gt;&quot;;</span>
-            }
+<span class="nc" id="L189">            }</span>
 <span class="nc" id="L190">            String pinnedApisValue = Utils.getEnvString(&quot;NANOPUB_QUERY_PINNED_APIS&quot;, &quot;&quot;);</span>
 <span class="nc" id="L191">            String[] pinnedApis = pinnedApisValue.split(&quot; &quot;);</span>
 <span class="nc" id="L192">            String pinnedApiLinks = &quot;&quot;;</span>
@@ -196,7 +196,7 @@ import java.util.concurrent.TimeUnit;
                 }
 <span class="nc" id="L197">                pinnedApiLinks = &quot;&lt;p&gt;Pinned APIs:&lt;/p&gt;\n&quot; +</span>
                         &quot;&lt;ul&gt;\n&quot; +
-<span class="nc" id="L199">                        pinnedApiLinks +</span>
+                        pinnedApiLinks +
                         &quot;&lt;/ul&gt;\n&quot;;
             }
 <span class="nc" id="L202">            req.response()</span>
@@ -211,13 +211,13 @@ import java.util.concurrent.TimeUnit;
                             + &quot;&lt;body&gt;\n&quot;
                             + &quot;&lt;h1&gt;Nanopub Query&lt;/h1&gt;&quot;
                             + &quot;&lt;p&gt;General repos:&lt;/p&gt;&quot;
-<span class="nc" id="L214">                            + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;</span>
+                            + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;
                             + &quot;&lt;p&gt;Specific repos:&lt;/p&gt;&quot;
                             + &quot;&lt;ul&gt;&quot;
                             + &quot;&lt;li&gt;&lt;a href=\&quot;/pubkeys\&quot;&gt;Pubkey Repos&lt;/a&gt;&lt;/li&gt;&quot;
                             + &quot;&lt;li&gt;&lt;a href=\&quot;/types\&quot;&gt;Type Repos&lt;/a&gt;&lt;/li&gt;&quot;
                             + &quot;&lt;/ul&gt;&quot;
-<span class="nc" id="L220">                            + pinnedApiLinks</span>
+                            + pinnedApiLinks
                             + &quot;&lt;/body&gt;\n&quot;
                             + &quot;&lt;/html&gt;&quot;);
 <span class="nc" id="L223">        });</span>
@@ -232,12 +232,12 @@ import java.util.concurrent.TimeUnit;
                 String label;
 <span class="nc bnc" id="L233" title="All 2 branches missed.">                if (hashObj == null) {</span>
 <span class="nc" id="L234">                    label = &quot;&quot;;</span>
-<span class="nc" id="L235">                } else {</span>
+                } else {
 <span class="nc" id="L236">                    label = &quot; (&quot; + Utils.getShortPubkeyName(hashObj.stringValue()) + &quot;)&quot;;</span>
                 }
 <span class="nc" id="L238">                s = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$1/$2&quot;);</span>
 <span class="nc" id="L239">                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&quot; + label + &quot;&lt;/code&gt;&lt;/li&gt;&quot;;</span>
-            }
+<span class="nc" id="L240">            }</span>
 <span class="nc" id="L241">            req.response()</span>
 <span class="nc" id="L242">                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)</span>
 <span class="nc" id="L243">                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;</span>
@@ -250,7 +250,7 @@ import java.util.concurrent.TimeUnit;
                             + &quot;&lt;body&gt;\n&quot;
                             + &quot;&lt;h3&gt;Pubkey Repos&lt;/h3&gt;&quot;
                             + &quot;&lt;p&gt;Repos:&lt;/p&gt;&quot;
-<span class="nc" id="L253">                            + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;</span>
+                            + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;
                             + &quot;&lt;/body&gt;\n&quot;
                             + &quot;&lt;/html&gt;&quot;);
 <span class="nc" id="L256">        });</span>
@@ -265,12 +265,12 @@ import java.util.concurrent.TimeUnit;
                 String label;
 <span class="nc bnc" id="L266" title="All 2 branches missed.">                if (hashObj == null) {</span>
 <span class="nc" id="L267">                    label = &quot;&quot;;</span>
-<span class="nc" id="L268">                } else {</span>
+                } else {
 <span class="nc" id="L269">                    label = &quot; (&quot; + hashObj.stringValue() + &quot;)&quot;;</span>
                 }
 <span class="nc" id="L271">                s = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$1/$2&quot;);</span>
 <span class="nc" id="L272">                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&quot; + label + &quot;&lt;/code&gt;&lt;/li&gt;&quot;;</span>
-            }
+<span class="nc" id="L273">            }</span>
 <span class="nc" id="L274">            req.response()</span>
 <span class="nc" id="L275">                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)</span>
 <span class="nc" id="L276">                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;</span>
@@ -283,7 +283,7 @@ import java.util.concurrent.TimeUnit;
                             + &quot;&lt;body&gt;\n&quot;
                             + &quot;&lt;h3&gt;Type Repos&lt;/h3&gt;&quot;
                             + &quot;&lt;p&gt;Repos:&lt;/p&gt;&quot;
-<span class="nc" id="L286">                            + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;</span>
+                            + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;
                             + &quot;&lt;/body&gt;\n&quot;
                             + &quot;&lt;/html&gt;&quot;);
 <span class="nc" id="L289">        });</span>
@@ -299,7 +299,7 @@ import java.util.concurrent.TimeUnit;
 <span class="nc" id="L299">            String spec = gsp.getSpec();</span>
 <span class="nc bnc" id="L300" title="All 2 branches missed.">            if (spec == null) {</span>
 <span class="nc" id="L301">                req.response().setStatusCode(404).end(&quot;query definition not found / not valid&quot;);</span>
-<span class="nc" id="L302">            } else {</span>
+            } else {
 <span class="nc" id="L303">                req.response().putHeader(&quot;content-type&quot;, &quot;text/yaml&quot;).end(spec);</span>
             }
 <span class="nc" id="L305">        });</span>
@@ -309,7 +309,7 @@ import java.util.concurrent.TimeUnit;
 <span class="nc" id="L309">            String spec = osp.getSpec();</span>
 <span class="nc bnc" id="L310" title="All 2 branches missed.">            if (spec == null) {</span>
 <span class="nc" id="L311">                req.response().setStatusCode(404).end(&quot;query definition not found / not valid&quot;);</span>
-<span class="nc" id="L312">            } else {</span>
+            } else {
 <span class="nc" id="L313">                req.response().putHeader(&quot;content-type&quot;, &quot;text/yaml&quot;).end(spec);</span>
             }
 <span class="nc" id="L315">        });</span>
@@ -332,13 +332,13 @@ import java.util.concurrent.TimeUnit;
 <span class="nc bnc" id="L332" title="All 2 branches missed.">                    for (Entry&lt;String, String&gt; e : pm) {</span>
 <span class="nc bnc" id="L333" title="All 2 branches missed.">                        if (e.getKey().equals(&quot;api-version&quot;)) {</span>
 <span class="nc" id="L334">                            grlcSpecUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
-<span class="nc" id="L335">                        } else {</span>
+                        } else {
 <span class="nc" id="L336">                            grlcUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
                         }
-                    }
+<span class="nc" id="L338">                    }</span>
 <span class="nc" id="L339">                    String url = &quot;/api-url/&quot; + queryName +</span>
 <span class="nc" id="L340">                            &quot;?specUrl=&quot; + URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + &quot;grlc-spec/&quot; + artifactCode + &quot;/?&quot; +</span>
-<span class="nc" id="L341">                            grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;</span>
+                            grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
 <span class="nc" id="L342">                    context.request().setURI(url);</span>
                 }
 <span class="nc" id="L344">                return context.sendRequest();</span>
@@ -377,7 +377,7 @@ import java.util.concurrent.TimeUnit;
 <span class="nc" id="L377">                                .end();</span>
 <span class="nc" id="L378">                        ex.printStackTrace();</span>
 <span class="nc" id="L379">                        return;</span>
-                    }
+<span class="nc" id="L380">                    }</span>
 <span class="nc" id="L381">                    req.response()</span>
 <span class="nc" id="L382">                            .setStatusCode(HttpStatus.SC_OK)</span>
 <span class="nc" id="L383">                            .end();</span>
@@ -386,13 +386,13 @@ import java.util.concurrent.TimeUnit;
 <span class="nc" id="L386">                req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)</span>
 <span class="nc" id="L387">                        .setStatusMessage(Arrays.toString(ex.getStackTrace()))</span>
 <span class="nc" id="L388">                        .end();</span>
-            }
+<span class="nc" id="L389">            }</span>
 <span class="nc" id="L390">        }).listen(9300).onComplete(http -&gt; {</span>
 <span class="nc bnc" id="L391" title="All 2 branches missed.">            if (http.succeeded()) {</span>
 <span class="nc" id="L392">                server2Started = true;</span>
 <span class="nc bnc" id="L393" title="All 2 branches missed.">                if (allServersStarted()) startPromise.complete();</span>
 <span class="nc" id="L394">                System.out.println(&quot;HTTP server started on port 9300&quot;);</span>
-<span class="nc" id="L395">            } else {</span>
+            } else {
 <span class="nc" id="L396">                startPromise.fail(http.cause());</span>
             }
 <span class="nc" id="L398">        });</span>
@@ -411,11 +411,11 @@ import java.util.concurrent.TimeUnit;
                     // Fall back to local nanopub loading if the local files are present
 <span class="nc bnc" id="L412" title="All 2 branches missed.">                    if (!LocalNanopubLoader.init()) {</span>
 <span class="nc" id="L413">                        JellyNanopubLoader.loadInitial(status.loadCounter);</span>
-<span class="nc" id="L414">                    } else {</span>
+                    } else {
 <span class="nc" id="L415">                        System.err.println(&quot;Local nanopublication loading finished&quot;);</span>
                     }
 <span class="nc" id="L417">                    StatusController.get().setReady();</span>
-<span class="nc" id="L418">                } else {</span>
+                } else {
 <span class="nc" id="L419">                    System.err.println(&quot;Initial load is already done&quot;);</span>
 <span class="nc" id="L420">                    StatusController.get().setReady();</span>
                 }
@@ -423,16 +423,16 @@ import java.util.concurrent.TimeUnit;
 <span class="nc" id="L423">                ex.printStackTrace();</span>
 <span class="nc" id="L424">                System.err.println(&quot;Initial load failed, terminating...&quot;);</span>
 <span class="nc" id="L425">                Runtime.getRuntime().exit(1);</span>
-            }
+<span class="nc" id="L426">            }</span>
 
             // Start periodic nanopub loading
 <span class="nc" id="L429">            System.err.println(&quot;Starting periodic nanopub loading...&quot;);</span>
 <span class="nc" id="L430">            var executor = Executors.newSingleThreadScheduledExecutor();</span>
 <span class="nc" id="L431">            executor.scheduleWithFixedDelay(</span>
-<span class="nc" id="L432">                    JellyNanopubLoader::loadUpdates,</span>
-<span class="nc" id="L433">                    JellyNanopubLoader.UPDATES_POLL_INTERVAL,</span>
-<span class="nc" id="L434">                    JellyNanopubLoader.UPDATES_POLL_INTERVAL,</span>
-<span class="nc" id="L435">                    TimeUnit.MILLISECONDS</span>
+                    JellyNanopubLoader::loadUpdates,
+                    JellyNanopubLoader.UPDATES_POLL_INTERVAL,
+                    JellyNanopubLoader.UPDATES_POLL_INTERVAL,
+                    TimeUnit.MILLISECONDS
             );
 <span class="nc" id="L437">        }).start();</span>
 
@@ -445,7 +445,7 @@ import java.util.concurrent.TimeUnit;
 <span class="nc" id="L445">            } catch (Exception ex) {</span>
 <span class="nc" id="L446">                System.err.println(&quot;Graceful shutdown failed&quot;);</span>
 <span class="nc" id="L447">                ex.printStackTrace();</span>
-            }
+<span class="nc" id="L448">            }</span>
 <span class="nc" id="L449">        }));</span>
 <span class="nc" id="L450">    }</span>
 

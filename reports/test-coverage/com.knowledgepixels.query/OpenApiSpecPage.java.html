@@ -41,7 +41,7 @@ public class OpenApiSpecPage {
 
         // TODO Get the nanopub from the local store:
 <span class="fc" id="L43">        np = GetNanopub.get(artifactCode);</span>
-<span class="pc bpc" id="L44" title="1 of 4 branches missed.">        if (parameters.get(&quot;api-version&quot;) != null &amp;&amp; parameters.get(&quot;api-version&quot;).equals(&quot;latest&quot;)) {</span>
+<span class="fc bfc" id="L44" title="All 4 branches covered.">        if (parameters.get(&quot;api-version&quot;) != null &amp;&amp; parameters.get(&quot;api-version&quot;).equals(&quot;latest&quot;)) {</span>
             // TODO Get the latest version from the local store:
 <span class="fc" id="L46">            np = GetNanopub.get(QueryAccess.getLatestVersionId(np.getUri().stringValue()));</span>
 <span class="fc" id="L47">            artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());</span>
@@ -73,7 +73,7 @@ public class OpenApiSpecPage {
 <span class="fc" id="L73">                    endpoint = endpoint.replace(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;, GrlcSpecPage.nanopubQueryUrl);</span>
                 }
             }
-        }
+<span class="fc" id="L76">        }</span>
 
         // TODO Code duplicated from com.knowledgepixels.nanodash.GrlcQuery:
 <span class="fc" id="L79">        final Set&lt;String&gt; placeholders = new HashSet&lt;&gt;();</span>
@@ -131,7 +131,7 @@ public class OpenApiSpecPage {
 <span class="nc" id="L131">            stringType.put(&quot;type&quot;, &quot;string&quot;);</span>
 <span class="nc" id="L132">            paramMap.put(&quot;schema&quot;, stringType);</span>
 <span class="nc" id="L133">            parametersList.add(paramMap);</span>
-        }
+<span class="nc" id="L134">        }</span>
 <span class="fc" id="L135">        getOpMap.put(&quot;parameters&quot;, parametersList);</span>
 <span class="fc" id="L136">        getOpMap.put(&quot;responses&quot;, responsesMap);</span>
 <span class="fc" id="L137">        rootPathMap.put(&quot;get&quot;, getOpMap);</span>

@@ -63,7 +63,7 @@ public class GrlcSpecPage {
 
         // TODO Get the nanopub from the local store:
 <span class="fc" id="L65">        np = GetNanopub.get(artifactCode);</span>
-<span class="pc bpc" id="L66" title="1 of 4 branches missed.">        if (parameters.get(&quot;api-version&quot;) != null &amp;&amp; parameters.get(&quot;api-version&quot;).equals(&quot;latest&quot;)) {</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">        if (parameters.get(&quot;api-version&quot;) != null &amp;&amp; parameters.get(&quot;api-version&quot;).equals(&quot;latest&quot;)) {</span>
             // TODO Get the latest version from the local store:
 <span class="fc" id="L68">            np = GetNanopub.get(QueryAccess.getLatestVersionId(np.getUri().stringValue()));</span>
 <span class="fc" id="L69">            artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());</span>
@@ -90,7 +90,7 @@ public class GrlcSpecPage {
 <span class="fc" id="L90">                    endpoint = endpoint.replace(&quot;https://w3id.org/np/l/nanopub-query-1.1/&quot;, nanopubQueryUrl);</span>
                 }
             }
-        }
+<span class="fc" id="L93">        }</span>
 <span class="fc" id="L94">    }</span>
 
     /**
@@ -104,7 +104,7 @@ public class GrlcSpecPage {
 <span class="fc bfc" id="L104" title="All 2 branches covered.">        if (queryPart.isEmpty()) {</span>
 <span class="pc bpc" id="L105" title="1 of 2 branches missed.">            if (label == null) {</span>
 <span class="nc" id="L106">                s += &quot;title: \&quot;untitled query\&quot;\n&quot;;</span>
-<span class="nc" id="L107">            } else {</span>
+            } else {
 <span class="fc" id="L108">                s += &quot;title: \&quot;&quot; + escape(label) + &quot;\&quot;\n&quot;;</span>
             }
 <span class="fc" id="L110">            s += &quot;description: \&quot;&quot; + escape(desc) + &quot;\&quot;\n&quot;;</span>
@@ -112,7 +112,7 @@ public class GrlcSpecPage {
 <span class="fc" id="L112">            Set&lt;IRI&gt; creators = SimpleCreatorPattern.getCreators(np);</span>
 <span class="fc bfc" id="L113" title="All 2 branches covered.">            for (IRI userIri : creators) {</span>
 <span class="fc" id="L114">                userName.append(&quot;, &quot;).append(userIri);</span>
-            }
+<span class="fc" id="L115">            }</span>
 <span class="pc bpc" id="L116" title="1 of 2 branches missed.">            if (!userName.isEmpty()) userName = new StringBuilder(userName.substring(2));</span>
 <span class="fc" id="L117">            String url = &quot;&quot;;</span>
 <span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if (!creators.isEmpty()) url = creators.iterator().next().stringValue();</span>
@@ -139,7 +139,7 @@ public class GrlcSpecPage {
             }
 <span class="fc" id="L140">            s += &quot;\n&quot;;</span>
 <span class="fc" id="L141">            s += queryContent;</span>
-<span class="fc" id="L142">        } else {</span>
+        } else {
 <span class="fc" id="L143">            return null;</span>
         }
 <span class="fc" id="L145">        return s;</span>

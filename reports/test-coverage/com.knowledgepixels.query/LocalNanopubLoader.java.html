@@ -47,9 +47,9 @@ public class LocalNanopubLoader {
 <span class="fc" id="L47">                System.err.println(&quot;Waited &quot; + w + &quot; seconds...&quot;);</span>
 <span class="fc" id="L48">                Thread.sleep(1000);</span>
             }
-<span class="pc" id="L50">        } catch (InterruptedException ex) {</span>
+<span class="nc" id="L50">        } catch (InterruptedException ex) {</span>
 <span class="nc" id="L51">            ex.printStackTrace();</span>
-        }
+<span class="fc" id="L52">        }</span>
 
 <span class="fc" id="L54">        System.err.println(&quot;Loading the local list of nanopubs...&quot;);</span>
 <span class="fc" id="L55">        load();</span>
@@ -59,7 +59,7 @@ public class LocalNanopubLoader {
     static void load() {
 <span class="fc bfc" id="L60" title="All 2 branches covered.">        if (!loadUrisFile.exists()) {</span>
 <span class="fc" id="L61">            System.err.println(&quot;No local nanopub URI file found.&quot;);</span>
-<span class="fc" id="L62">        } else {</span>
+        } else {
 <span class="fc" id="L63">            try (BufferedReader reader = new BufferedReader(new FileReader(loadUrisFile))) {</span>
 <span class="fc" id="L64">                String line = reader.readLine();</span>
 <span class="fc bfc" id="L65" title="All 2 branches covered.">                while (line != null) {</span>
@@ -68,16 +68,16 @@ public class LocalNanopubLoader {
                 }
 <span class="nc" id="L69">            } catch (IOException ex) {</span>
 <span class="nc" id="L70">                ex.printStackTrace();</span>
-            }
+<span class="fc" id="L71">            }</span>
         }
 <span class="fc bfc" id="L73" title="All 2 branches covered.">        if (!loadNanopubsFile.exists()) {</span>
 <span class="fc" id="L74">            System.err.println(&quot;No local nanopub file found.&quot;);</span>
-<span class="fc" id="L75">        } else {</span>
+        } else {
             try {
 <span class="nc" id="L77">                MultiNanopubRdfHandler.process(RDFFormat.TRIG, loadNanopubsFile, np -&gt; NanopubLoader.load(np, -1));</span>
-<span class="pc" id="L78">            } catch (IOException | MalformedNanopubException ex) {</span>
+<span class="fc" id="L78">            } catch (IOException | MalformedNanopubException ex) {</span>
 <span class="fc" id="L79">                ex.printStackTrace();</span>
-            }
+<span class="nc" id="L80">            }</span>
         }
 <span class="fc" id="L82">    }</span>
 

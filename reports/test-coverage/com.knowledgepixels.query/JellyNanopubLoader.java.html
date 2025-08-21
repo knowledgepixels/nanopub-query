@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
     static {
         // Initialize registryUrl
 <span class="fc" id="L42">        var url = Utils.getEnvString(</span>
-<span class="fc" id="L43">                &quot;REGISTRY_FIXED_URL&quot;, &quot;https://registry.knowledgepixels.com/&quot;</span>
+                &quot;REGISTRY_FIXED_URL&quot;, &quot;https://registry.knowledgepixels.com/&quot;
         );
 <span class="pc bpc" id="L45" title="1 of 2 branches missed.">        if (!url.endsWith(&quot;/&quot;)) url += &quot;/&quot;;</span>
 <span class="fc" id="L46">        registryUrl = url;</span>
@@ -77,8 +77,8 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="nc" id="L77">                    Thread.sleep(RETRY_DELAY_JELLY);</span>
 <span class="nc" id="L78">                } catch (InterruptedException e2) {</span>
 <span class="nc" id="L79">                    throw new RuntimeException(&quot;Interrupted while waiting to retry loading batch.&quot;);</span>
-                }
-            }
+<span class="nc" id="L80">                }</span>
+<span class="nc" id="L81">            }</span>
         }
 <span class="fc" id="L83">        System.err.println(&quot;Initial load complete.&quot;);</span>
 <span class="fc" id="L84">    }</span>
@@ -102,11 +102,11 @@ import java.util.concurrent.atomic.AtomicLong;
             }
 <span class="nc" id="L103">            loadBatch(lastCommittedCounter, LoadingType.UPDATE);</span>
 <span class="nc" id="L104">            System.err.println(&quot;Loaded &quot; + (lastCommittedCounter - status.loadCounter) +</span>
-<span class="nc" id="L105">                    &quot; update(s). Counter: &quot; + lastCommittedCounter + &quot;, target was: &quot; + targetCounter);</span>
+                    &quot; update(s). Counter: &quot; + lastCommittedCounter + &quot;, target was: &quot; + targetCounter);
 <span class="nc bnc" id="L106" title="All 2 branches missed.">            if (lastCommittedCounter &lt; targetCounter) {</span>
 <span class="nc" id="L107">                System.err.println(&quot;Warning: expected to load nanopubs up to (inclusive) counter &quot; +</span>
-<span class="nc" id="L108">                        targetCounter + &quot; based on the counter reported in Registry's headers, &quot; +</span>
-<span class="nc" id="L109">                        &quot;but loaded only up to &quot; + lastCommittedCounter + &quot;.&quot;);</span>
+                        targetCounter + &quot; based on the counter reported in Registry's headers, &quot; +
+                        &quot;but loaded only up to &quot; + lastCommittedCounter + &quot;.&quot;);
             }
 <span class="nc" id="L111">        } catch (Exception e) {</span>
 <span class="nc" id="L112">            System.err.println(&quot;Failed to load updates. Current counter: &quot; + lastCommittedCounter);</span>
@@ -117,7 +117,7 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="nc" id="L117">            } catch (Exception e) {</span>
 <span class="nc" id="L118">                System.err.println(&quot;Update loader: failed to set status to READY.&quot;);</span>
 <span class="nc" id="L119">                System.err.println(e.getMessage());</span>
-            }
+<span class="nc" id="L120">            }</span>
         }
 <span class="nc" id="L122">    }</span>
 
@@ -138,7 +138,7 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="nc" id="L138">            response = jellyStreamClient.execute(request);</span>
 <span class="nc" id="L139">        } catch (IOException e) {</span>
 <span class="nc" id="L140">            throw new RuntimeException(&quot;Failed to fetch Jelly stream from the Registry (I/O error).&quot;, e);</span>
-        }
+<span class="nc" id="L141">        }</span>
 
 <span class="nc" id="L143">        int httpStatus = response.getStatusLine().getStatusCode();</span>
 <span class="nc bnc" id="L144" title="All 4 branches missed.">        if (httpStatus &lt; 200 || httpStatus &gt;= 300) {</span>
@@ -146,7 +146,7 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="nc" id="L146">            throw new RuntimeException(&quot;Jelly stream HTTP status is not 2xx: &quot; + httpStatus + &quot;.&quot;);</span>
         }
 
-<span class="nc" id="L149">        try (</span>
+        try (
 <span class="nc" id="L150">                var is = response.getEntity().getContent();</span>
 <span class="nc" id="L151">                var npStream = NanopubStream.fromByteStream(is).getAsNanopubs()</span>
         ) {
@@ -157,12 +157,12 @@ import java.util.concurrent.atomic.AtomicLong;
 
 <span class="nc" id="L158">            npStream.forEach(m -&gt; {</span>
 <span class="nc bnc" id="L159" title="All 2 branches missed.">                if (!m.isSuccess()) throw new RuntimeException(&quot;Failed to load &quot; +</span>
-<span class="nc" id="L160">                        &quot;nanopub from Jelly stream. Last known counter: &quot; + lastCommittedCounter,</span>
+                        &quot;nanopub from Jelly stream. Last known counter: &quot; + lastCommittedCounter,
 <span class="nc" id="L161">                        m.getException()</span>
                 );
 <span class="nc bnc" id="L163" title="All 2 branches missed.">                if (m.getCounter() &lt; lastCommittedCounter) {</span>
 <span class="nc" id="L164">                    throw new RuntimeException(&quot;Received a nanopub with a counter lower than &quot; +</span>
-<span class="nc" id="L165">                            &quot;the last known counter. Last known counter: &quot; + lastCommittedCounter +</span>
+                            &quot;the last known counter. Last known counter: &quot; + lastCommittedCounter +
 <span class="nc" id="L166">                            &quot;, received counter: &quot; + m.getCounter());</span>
                 }
 <span class="nc" id="L168">                NanopubLoader.load(m.getNanopub(), m.getCounter());</span>
@@ -178,7 +178,7 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="nc" id="L178">                    long currTime = System.currentTimeMillis();</span>
 <span class="nc" id="L179">                    double speed = 50 / ((currTime - checkpointTime.get()) / 1000.0);</span>
 <span class="nc" id="L180">                    System.err.println(&quot;Loading speed: &quot; + String.format(&quot;%.2f&quot;, speed) +</span>
-<span class="nc" id="L181">                            &quot; np/s. Counter: &quot; + lastCommittedCounter);</span>
+                            &quot; np/s. Counter: &quot; + lastCommittedCounter);
 <span class="nc" id="L182">                    checkpointTime.set(currTime);</span>
 <span class="nc" id="L183">                    checkpointCounter.set(lastCommittedCounter);</span>
                 }
@@ -194,7 +194,7 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="nc" id="L194">                response.close();</span>
 <span class="nc" id="L195">            } catch (IOException e) {</span>
 <span class="nc" id="L196">                System.err.println(&quot;Failed to close the Jelly stream response.&quot;);</span>
-            }
+<span class="nc" id="L197">            }</span>
         }
 <span class="nc" id="L199">    }</span>
 
@@ -208,12 +208,12 @@ import java.util.concurrent.atomic.AtomicLong;
         try {
 <span class="nc bnc" id="L209" title="All 2 branches missed.">            if (type == LoadingType.INITIAL) {</span>
 <span class="nc" id="L210">                StatusController.get().setLoadingInitial(lastCommittedCounter);</span>
-<span class="nc" id="L211">            } else {</span>
+            } else {
 <span class="nc" id="L212">                StatusController.get().setLoadingUpdates(lastCommittedCounter);</span>
             }
 <span class="nc" id="L214">        } catch (Exception e) {</span>
 <span class="nc" id="L215">            throw new RuntimeException(&quot;Could not update the nanopub counter in DB&quot;, e);</span>
-        }
+<span class="nc" id="L216">        }</span>
 <span class="nc" id="L217">    }</span>
 
     /**
@@ -227,7 +227,7 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="pc bpc" id="L227" title="1 of 4 branches missed.">        while (counter == -1 &amp;&amp; tries &lt; MAX_RETRIES_METADATA) {</span>
             try {
 <span class="fc" id="L229">                counter = fetchRegistryLoadCounterInner();</span>
-<span class="pc" id="L230">            } catch (Exception e) {</span>
+<span class="nc" id="L230">            } catch (Exception e) {</span>
 <span class="nc" id="L231">                tries++;</span>
 <span class="nc" id="L232">                System.err.println(&quot;Failed to fetch registry load counter, try &quot; + tries +</span>
                         &quot;. Retrying in &quot; + RETRY_DELAY_METADATA + &quot;ms...&quot;);
@@ -236,9 +236,9 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="nc" id="L236">                    Thread.sleep(RETRY_DELAY_METADATA);</span>
 <span class="nc" id="L237">                } catch (InterruptedException e2) {</span>
 <span class="nc" id="L238">                    throw new RuntimeException(</span>
-<span class="nc" id="L239">                            &quot;Interrupted while waiting to retry fetching registry load counter.&quot;);</span>
-                }
-            }
+                            &quot;Interrupted while waiting to retry fetching registry load counter.&quot;);
+<span class="nc" id="L240">                }</span>
+<span class="pc" id="L241">            }</span>
         }
 <span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (counter == -1) {</span>
 <span class="nc" id="L244">            throw new RuntimeException(&quot;Failed to fetch registry load counter after &quot; +</span>
@@ -260,7 +260,7 @@ import java.util.concurrent.atomic.AtomicLong;
 <span class="fc" id="L260">            EntityUtils.consumeQuietly(response.getEntity());</span>
 <span class="pc bpc" id="L261" title="2 of 4 branches missed.">            if (status &lt; 200 || status &gt;= 300) {</span>
 <span class="nc" id="L262">                throw new RuntimeException(&quot;Registry load counter HTTP status is not 2xx: &quot; +</span>
-<span class="nc" id="L263">                        status + &quot;.&quot;);</span>
+                        status + &quot;.&quot;);
             }
 
             // Check if the registry is ready

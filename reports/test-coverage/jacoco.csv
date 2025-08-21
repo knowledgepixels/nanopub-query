@@ -1,19 +1,19 @@
 GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
-Nanopub Query,com.knowledgepixels.query,OpenApiSpecPage.new AbstractSimpleQueryModelVisitor() {...},6,24,2,4,1,4,2,3,0,2
-Nanopub Query,com.knowledgepixels.query,JellyNanopubLoader.LoadingType,24,0,0,0,3,0,1,0,1,0
-Nanopub Query,com.knowledgepixels.query,MainVerticle,997,0,56,0,241,0,53,0,25,0
-Nanopub Query,com.knowledgepixels.query,JellyNanopubLoader,355,122,31,11,97,38,26,5,6,4
+Nanopub Query,com.knowledgepixels.query,OpenApiSpecPage.new AbstractSimpleQueryModelVisitor() {...},6,21,2,4,1,4,2,3,0,2
+Nanopub Query,com.knowledgepixels.query,JellyNanopubLoader.LoadingType,15,0,0,0,3,0,1,0,1,0
+Nanopub Query,com.knowledgepixels.query,MainVerticle,996,0,56,0,225,0,53,0,25,0
+Nanopub Query,com.knowledgepixels.query,JellyNanopubLoader,352,118,31,11,95,37,26,5,6,4
 Nanopub Query,com.knowledgepixels.query,MetricsCollector,0,191,0,6,0,39,0,7,0,4
-Nanopub Query,com.knowledgepixels.query,TripleStore,444,108,42,4,95,29,29,4,6,4
-Nanopub Query,com.knowledgepixels.query,LocalNanopubLoader,15,91,1,11,4,28,2,8,1,3
-Nanopub Query,com.knowledgepixels.query,StatusController.State,0,44,0,0,0,9,0,1,0,1
-Nanopub Query,com.knowledgepixels.query,Utils,51,181,2,16,9,42,1,18,0,10
-Nanopub Query,com.knowledgepixels.query,NanopubLoader,1720,236,162,14,284,54,102,9,17,6
-Nanopub Query,com.knowledgepixels.query,ApplicationLauncher,0,26,0,0,0,9,0,3,0,3
-Nanopub Query,com.knowledgepixels.query,MainVerticle.new ProxyInterceptor() {...},41,0,0,0,8,0,3,0,3,0
-Nanopub Query,com.knowledgepixels.query,OpenApiSpecPage,61,372,8,24,11,71,7,11,0,2
+Nanopub Query,com.knowledgepixels.query,TripleStore,362,191,36,12,76,51,26,8,5,5
+Nanopub Query,com.knowledgepixels.query,LocalNanopubLoader,15,88,1,11,6,27,2,8,1,3
+Nanopub Query,com.knowledgepixels.query,StatusController.State,0,27,0,0,0,5,0,1,0,1
+Nanopub Query,com.knowledgepixels.query,Utils,0,228,1,19,0,54,1,19,0,10
+Nanopub Query,com.knowledgepixels.query,NanopubLoader,990,1090,100,82,192,192,76,40,14,11
+Nanopub Query,com.knowledgepixels.query,ApplicationLauncher,0,26,0,0,0,8,0,3,0,3
+Nanopub Query,com.knowledgepixels.query,MainVerticle.new ProxyInterceptor() {...},38,0,0,0,8,0,3,0,3,0
+Nanopub Query,com.knowledgepixels.query,OpenApiSpecPage,62,371,7,25,12,72,6,12,0,2
 Nanopub Query,com.knowledgepixels.query,StatusController.LoadingStatus,0,57,0,8,0,10,0,8,0,4
-Nanopub Query,com.knowledgepixels.query,StatusController,98,274,15,11,18,47,10,13,1,9
-Nanopub Query,com.knowledgepixels.query,GrlcSpecPage,9,365,14,40,4,67,14,17,0,4
-Nanopub Query,com.knowledgepixels.query,MainVerticle.new ProxyInterceptor() {...},104,0,6,0,20,0,6,0,3,0
+Nanopub Query,com.knowledgepixels.query,StatusController,48,337,6,20,11,65,4,20,0,11
+Nanopub Query,com.knowledgepixels.query,GrlcSpecPage,9,365,13,41,3,68,13,18,0,4
+Nanopub Query,com.knowledgepixels.query,MainVerticle.new ProxyInterceptor() {...},101,0,6,0,19,0,6,0,3,0
 Nanopub Query,com.knowledgepixels.query,NanopubLoader.RepoStatus,12,0,0,0,1,0,1,0,1,0

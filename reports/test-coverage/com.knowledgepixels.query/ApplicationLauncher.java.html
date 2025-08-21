@@ -25,7 +25,7 @@ import io.vertx.micrometer.VertxPrometheusOptions;
     @Override
     public void beforeStartingVertx(VertxOptions options) {
 <span class="fc" id="L27">        options.setMetricsOptions(</span>
-<span class="fc" id="L28">                new MicrometerMetricsOptions()</span>
+                new MicrometerMetricsOptions()
 <span class="fc" id="L29">                        .setPrometheusOptions(new VertxPrometheusOptions().setEnabled(true))</span>
 <span class="fc" id="L30">                        .setJvmMetricsEnabled(true)</span>
 <span class="fc" id="L31">                        .setEnabled(true)</span>
