@@ -16,14 +16,9 @@ services:
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/
       - REGISTRY_FIXED_URL=https://registry.knowledgepixels.com/
       - RDF4J_PROXY_HOST=rdf4j
-<<<<<<< HEAD
 #     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
 #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
       - NANOPUB_QUERY_PINNED_APIS=RAkYh4UPJryajbtIDbLG-Bfd6A4JD2SbU9bmZdvaEdFRY/fdo-text-search RAQiQjx3OiO9ra9ImWl9kpuDpT8d3EiBSrftckOAAwGKc/find-fdos-by-ref RAP1G35VvTs3gfMaucv_xZUMZuvjB9lxM8tWUGttr5mmo/get-fdo-feed RAsyc6zFFnE8mblnDfdCCNRsrcN1CSCBDW9I4Ppidgk9g/get-favorite-things
-=======
-    #     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
-    #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
->>>>>>> main
     logging:
       options:
         max-size: "10m"
