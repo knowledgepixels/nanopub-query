@@ -3,8 +3,8 @@ SessionsNanopub Query
 ****** Nanopub Query ******
 Element                   Missed       Cov. Missed   Cov. Missed Cxty Missed Lines Missed Methods Missed Classes
                           Instructions      Branches
-Total                     1,205 of     71%  127 of   64%  121    270  260    873   28     90      4      17
-                          4,257             360
-com.knowledgepixels.query [1,205]      71%  [127]    64%  121    270  260    873   28     90      4      17
-                          [3,052]           [233]
+Total                     373 of 3,299 88%  57 of    79%  65     208  71     648   13     70      4      16
+                                            276
+com.knowledgepixels.query [373][2,926] 88%  [57]     79%  65     208  71     648   13     70      4      16
+                                            [219]
 Created with JaCoCo 0.8.13.202504020838

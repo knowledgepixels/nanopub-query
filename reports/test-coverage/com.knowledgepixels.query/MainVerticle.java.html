@@ -87,29 +87,31 @@ public class MainVerticle extends AbstractVerticle {
 <span class="nc" id="L87">        rdf4jProxy.addInterceptor(new ProxyInterceptor() {</span>
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future&lt;ProxyResponse&gt; handleProxyRequest(ProxyContext context) {
-<span class="nc" id="L91">                ProxyRequest request = context.request();</span>
-<span class="nc" id="L92">                request.setURI(request.getURI().replaceAll(&quot;/&quot;, &quot;_&quot;).replaceFirst(&quot;^_repo_&quot;, &quot;/rdf4j-server/repositories/&quot;));</span>
+                ProxyRequest request = context.request();
+                request.setURI(request.getURI().replaceAll(&quot;/&quot;, &quot;_&quot;).replaceFirst(&quot;^_repo_&quot;, &quot;/rdf4j-server/repositories/&quot;));
                 // For later to try to get HTML tables out:
 //				if (request.headers().get(&quot;Accept&quot;) == null) {
 //					request.putHeader(&quot;Accept&quot;, &quot;text/html&quot;);
 //				}
 //				request.putHeader(&quot;Accept&quot;, &quot;application/json&quot;);
-<span class="nc" id="L98">                return ProxyInterceptor.super.handleProxyRequest(context);</span>
+                return ProxyInterceptor.super.handleProxyRequest(context);
             }
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future&lt;Void&gt; handleProxyResponse(ProxyContext context) {
-<span class="nc" id="L103">                ProxyResponse resp = context.response();</span>
-<span class="nc" id="L104">                resp.putHeader(&quot;Access-Control-Allow-Origin&quot;, &quot;*&quot;);</span>
-<span class="nc" id="L105">                resp.putHeader(&quot;Access-Control-Allow-Methods&quot;, &quot;POST, GET, OPTIONS&quot;);</span>
+                ProxyResponse resp = context.response();
+                resp.putHeader(&quot;Access-Control-Allow-Origin&quot;, &quot;*&quot;);
+                resp.putHeader(&quot;Access-Control-Allow-Methods&quot;, &quot;POST, GET, OPTIONS&quot;);
                 // For later to try to get HTML tables out:
 //				String acceptHeader = context.request().headers().get(&quot;Accept&quot;);
 //				if (acceptHeader != null &amp;&amp; acceptHeader.contains(&quot;text/html&quot;)) {
 //					resp.putHeader(&quot;Content-Type&quot;, &quot;text/html&quot;);
 //					resp.setBody(Body.body(Buffer.buffer(&quot;&lt;html&gt;&lt;body&gt;&lt;strong&gt;test&lt;/strong&gt;&lt;/body&gt;&lt;/html&gt;&quot;)));
 //				}
-<span class="nc" id="L112">                return ProxyInterceptor.super.handleProxyResponse(context);</span>
+                return ProxyInterceptor.super.handleProxyResponse(context);
             }
 
         });
@@ -324,37 +326,39 @@ public class MainVerticle extends AbstractVerticle {
 
         HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
         grlcProxy.origin(80, &quot;grlc&quot;);
-<span class="nc" id="L327">        grlcProxy.addInterceptor(new ProxyInterceptor() {</span>
+<span class="nc" id="L329">        grlcProxy.addInterceptor(new ProxyInterceptor() {</span>
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future&lt;ProxyResponse&gt; handleProxyRequest(ProxyContext context) {
-<span class="nc" id="L331">                final String apiPattern = &quot;^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$&quot;;</span>
-<span class="nc bnc" id="L332" title="All 2 branches missed.">                if (context.request().getURI().matches(apiPattern)) {</span>
-<span class="nc" id="L333">                    String artifactCode = context.request().getURI().replaceFirst(apiPattern, &quot;$1&quot;);</span>
-<span class="nc" id="L334">                    String queryName = context.request().getURI().replaceFirst(apiPattern, &quot;$2&quot;);</span>
-<span class="nc" id="L335">                    String grlcUrlParams = &quot;&quot;;</span>
-<span class="nc" id="L336">                    String grlcSpecUrlParams = &quot;&quot;;</span>
-<span class="nc" id="L337">                    MultiMap pm = context.request().proxiedRequest().params();</span>
-<span class="nc bnc" id="L338" title="All 2 branches missed.">                    for (Entry&lt;String, String&gt; e : pm) {</span>
-<span class="nc bnc" id="L339" title="All 2 branches missed.">                        if (e.getKey().equals(&quot;api-version&quot;)) {</span>
-<span class="nc" id="L340">                            grlcSpecUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
+                final String apiPattern = &quot;^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$&quot;;
+                if (context.request().getURI().matches(apiPattern)) {
+                    String artifactCode = context.request().getURI().replaceFirst(apiPattern, &quot;$1&quot;);
+                    String queryName = context.request().getURI().replaceFirst(apiPattern, &quot;$2&quot;);
+                    String grlcUrlParams = &quot;&quot;;
+                    String grlcSpecUrlParams = &quot;&quot;;
+                    MultiMap pm = context.request().proxiedRequest().params();
+                    for (Entry&lt;String, String&gt; e : pm) {
+                        if (e.getKey().equals(&quot;api-version&quot;)) {
+                            grlcSpecUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
                         } else {
-<span class="nc" id="L342">                            grlcUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
+                            grlcUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
                         }
-<span class="nc" id="L344">                    }</span>
-<span class="nc" id="L345">                    String url = &quot;/api-url/&quot; + queryName +</span>
-<span class="nc" id="L346">                            &quot;?specUrl=&quot; + URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + &quot;grlc-spec/&quot; + artifactCode + &quot;/?&quot; +</span>
+                    }
+                    String url = &quot;/api-url/&quot; + queryName +
+                            &quot;?specUrl=&quot; + URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + &quot;grlc-spec/&quot; + artifactCode + &quot;/?&quot; +
                             grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
-<span class="nc" id="L348">                    context.request().setURI(url);</span>
+                    context.request().setURI(url);
                 }
-<span class="nc" id="L350">                return context.sendRequest();</span>
+                return context.sendRequest();
             }
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future&lt;Void&gt; handleProxyResponse(ProxyContext context) {
                 // To avoid double entries:
-<span class="nc" id="L356">                context.response().headers().remove(&quot;Access-Control-Allow-Origin&quot;);</span>
-<span class="nc" id="L357">                return context.sendResponse();</span>
+                context.response().headers().remove(&quot;Access-Control-Allow-Origin&quot;);
+                return context.sendResponse();
             }
 
         });

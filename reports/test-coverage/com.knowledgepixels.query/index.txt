@@ -3,17 +3,12 @@ Source_FilesSessionsNanopub_Query > com.knowledgepixels.query
 ****** com.knowledgepixels.query ******
 Element                         Missed       Cov. Missed   Cov. Missed Cxty Missed Lines Missed Methods Missed Classes
                                 Instructions      Branches
-Total                           1,205 of     71%  127 of   64%  121    270  260    873   28     90      4      17
-                                4,257             360
-TripleStore                     [362][191]   34%  [36][12] 25%  26     34   76     127   5      10      0      1
-JellyNanopubLoader              [352][107]   23%  [31][11] 26%  26     31   95     126   6      10      0      1
+Total                           373 of 3,299 88%  57 of    79%  65     208  71     648   13     70      4      16
+                                                  276
 NanopubLoader                   [185][1,026] 84%  [24][76] 76%  30     66   25     200   8      16      0      1
-MainVerticle.new                [101]        0%   [6]      0%   6      6    19     19    3      3       1      1
-ProxyInterceptor()_{...}
 OpenApiSpecPage                 [62][371]    85%  [7][25]  78%  6      18   12     84    0      2       0      1
 StatusController                [48][337]    87%  [6][20]  76%  4      24   11     76    0      11      0      1
-MainVerticle.new                [38]         0%            n/a  3      3    8      8     3      3       1      1
-ProxyInterceptor()_{...}
+TripleStore                     [15][172]    91%  [3][9]   75%  3      10   7      53    0      4       0      1
 LocalNanopubLoader              [15][88]     85%  [1][11]  91%  2      10   6      33    1      4       0      1
 JellyNanopubLoader.LoadingType  [15]         0%            n/a  1      1    3      3     1      1       1      1
 NanopubLoader.RepoStatus        [12]         0%            n/a  1      1    1      1     1      1       1      1
@@ -21,6 +16,10 @@ GrlcSpecPage                    [365]        97%  [13][41] 75%  13     31   3   
 OpenApiSpecPage.new
 AbstractSimpleQueryModelVisitor [21]         77%  [2][4]   66%  2      5    1      5     0      2       0      1
 ()_{...}
+MainVerticle.new                             0%            n/a  1      1    1      1     1      1       1      1
+ProxyInterceptor()_{...}
+MainVerticle.new                             0%            n/a  1      1    1      1     1      1       1      1
+ProxyInterceptor()_{...}
 Utils                           [245]        100% [1][19]  95%  1      21   0      59    0      11      0      1
 MetricsCollector                [191]        100% [6]      100% 0      7    0      39    0      4       0      1
 StatusController.LoadingStatus  [57]         100% [8]      100% 0      8    0      10    0      4       0      1

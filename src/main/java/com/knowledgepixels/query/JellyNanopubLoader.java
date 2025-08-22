@@ -15,6 +15,7 @@ import org.nanopub.jelly.NanopubStream;
 /**
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
  */
+@GeneratedFlagForDependentElements
 public class JellyNanopubLoader {
     private static final String registryUrl;
     private static long lastCommittedCounter = -1;

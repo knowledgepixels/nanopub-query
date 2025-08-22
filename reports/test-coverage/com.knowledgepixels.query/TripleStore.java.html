@@ -129,35 +129,36 @@ public class TripleStore {
 
 <span class="fc" id="L130">    private final CloseableHttpClient httpclient = HttpClients.createDefault();</span>
 
+    @GeneratedFlagForDependentElements
     Repository getRepository(String name) {
-<span class="fc" id="L133">        synchronized (this) {</span>
-<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            while (repositories.size() &gt; 100) {</span>
-<span class="nc" id="L135">                Entry&lt;String, Repository&gt; e = repositories.entrySet().iterator().next();</span>
-<span class="nc" id="L136">                repositories.remove(e.getKey());</span>
-<span class="nc" id="L137">                System.err.println(&quot;Shutting down repo: &quot; + e.getKey());</span>
-<span class="nc" id="L138">                e.getValue().shutDown();</span>
-<span class="nc" id="L139">                System.err.println(&quot;Shutdown complete&quot;);</span>
-<span class="nc" id="L140">            }</span>
-<span class="pc bpc" id="L141" title="1 of 2 branches missed.">            if (repositories.containsKey(name)) {</span>
+        synchronized (this) {
+            while (repositories.size() &gt; 100) {
+                Entry&lt;String, Repository&gt; e = repositories.entrySet().iterator().next();
+                repositories.remove(e.getKey());
+                System.err.println(&quot;Shutting down repo: &quot; + e.getKey());
+                e.getValue().shutDown();
+                System.err.println(&quot;Shutdown complete&quot;);
+            }
+            if (repositories.containsKey(name)) {
                 // Move to the end of the list:
-<span class="nc" id="L143">                Repository repo = repositories.remove(name);</span>
-<span class="nc" id="L144">                repositories.put(name, repo);</span>
-<span class="nc" id="L145">            } else {</span>
-<span class="fc" id="L146">                Repository repository = null;</span>
-<span class="pc bpc" id="L147" title="3 of 4 branches missed.">                if (endpointType == null || endpointType.equals(&quot;rdf4j&quot;)) {</span>
-<span class="nc" id="L148">                    HTTPRepository hr = new HTTPRepository(endpointBase + &quot;repositories/&quot; + name);</span>
-<span class="nc" id="L149">                    hr.setHttpClient(httpclient);</span>
-<span class="nc" id="L150">                    repository = hr;</span>
+                Repository repo = repositories.remove(name);
+                repositories.put(name, repo);
+            } else {
+                Repository repository = null;
+                if (endpointType == null || endpointType.equals(&quot;rdf4j&quot;)) {
+                    HTTPRepository hr = new HTTPRepository(endpointBase + &quot;repositories/&quot; + name);
+                    hr.setHttpClient(httpclient);
+                    repository = hr;
 //			} else if (endpointType.equals(&quot;virtuoso&quot;)) {
 //				repository = new VirtuosoRepository(endpointBase + name, username, password);
-<span class="nc" id="L153">                } else {</span>
-<span class="nc" id="L154">                    throw new RuntimeException(&quot;Unknown repository type: &quot; + endpointType);</span>
+                } else {
+                    throw new RuntimeException(&quot;Unknown repository type: &quot; + endpointType);
                 }
-<span class="nc" id="L156">                repositories.put(name, repository);</span>
-<span class="nc" id="L157">                createRepo(name);</span>
-<span class="nc" id="L158">                getRepoConnection(name).close();</span>
+                repositories.put(name, repository);
+                createRepo(name);
+                getRepoConnection(name).close();
             }
-<span class="nc" id="L160">            return repositories.get(name);</span>
+            return repositories.get(name);
         }
     }
 
@@ -167,19 +168,21 @@ public class TripleStore {
      * @param name repository name
      * @return repository connection
      */
+    @GeneratedFlagForDependentElements
     public RepositoryConnection getRepoConnection(String name) {
-<span class="nc" id="L171">        Repository repo = getRepository(name);</span>
-<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (repo == null) {</span>
-<span class="nc" id="L173">            return null;</span>
+        Repository repo = getRepository(name);
+        if (repo == null) {
+            return null;
         }
-<span class="nc" id="L175">        return repo.getConnection();</span>
+        return repo.getConnection();
     }
 
+    @GeneratedFlagForDependentElements
     private void createRepo(String repoName) {
-<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (!repoName.equals(ADMIN_REPO)) {</span>
-<span class="nc" id="L180">            getRepository(ADMIN_REPO);  // make sure admin repo is loaded first</span>
+        if (!repoName.equals(ADMIN_REPO)) {
+            getRepository(ADMIN_REPO);  // make sure admin repo is loaded first
         }
-<span class="nc" id="L182">        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {</span>
+        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
             //System.err.println(&quot;Trying to creating repo &quot; + name);
 
             // TODO new syntax somehow doesn't work for the Lucene case:
@@ -220,59 +223,61 @@ public class TripleStore {
 //					+ &quot;        ]\n&quot;
 //					+ &quot;    ].&quot;;
 
-<span class="nc" id="L223">            String indexTypes = &quot;spoc,posc,ospc,cspo,cpos,cosp&quot;;</span>
-<span class="nc bnc" id="L224" title="All 4 branches missed.">            if (repoName.startsWith(&quot;meta&quot;) || repoName.startsWith(&quot;text&quot;)) {</span>
-<span class="nc" id="L225">                indexTypes = &quot;spoc,posc,ospc&quot;;</span>
+            String indexTypes = &quot;spoc,posc,ospc,cspo,cpos,cosp&quot;;
+            if (repoName.startsWith(&quot;meta&quot;) || repoName.startsWith(&quot;text&quot;)) {
+                indexTypes = &quot;spoc,posc,ospc&quot;;
             }
 
-<span class="nc" id="L228">            String createRegularRepoQueryString = &quot;@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;.\n&quot; + &quot;@prefix rep: &lt;http://www.openrdf.org/config/repository#&gt;.\n&quot; + &quot;@prefix sr: &lt;http://www.openrdf.org/config/repository/sail#&gt;.\n&quot; + &quot;@prefix sail: &lt;http://www.openrdf.org/config/sail#&gt;.\n&quot; + &quot;@prefix sail-luc: &lt;http://www.openrdf.org/config/sail/lucene#&gt;.\n&quot; + &quot;@prefix lmdb: &lt;http://rdf4j.org/config/sail/lmdb#&gt;.\n&quot; + &quot;@prefix sb: &lt;http://www.openrdf.org/config/sail/base#&gt;.\n&quot; + &quot;\n&quot; + &quot;[] a rep:Repository ;\n&quot; + &quot;    rep:repositoryID \&quot;&quot; + repoName + &quot;\&quot; ;\n&quot; + &quot;    rdfs:label \&quot;&quot; + repoName + &quot; LMDB store\&quot; ;\n&quot; + &quot;    rep:repositoryImpl [\n&quot; + &quot;        rep:repositoryType \&quot;openrdf:SailRepository\&quot; ;\n&quot; + &quot;        sr:sailImpl [\n&quot; + &quot;            sail:sailType \&quot;rdf4j:LmdbStore\&quot; ;\n&quot; + &quot;            sail:iterationCacheSyncThreshold \&quot;10000\&quot;;\n&quot; + &quot;            lmdb:tripleIndexes \&quot;&quot; + indexTypes + &quot;\&quot; ;\n&quot; + &quot;            sb:defaultQueryEvaluationMode \&quot;STANDARD\&quot;\n&quot; + &quot;        ]\n&quot; + &quot;    ].\n&quot;;</span>
+            String createRegularRepoQueryString = &quot;@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;.\n&quot; + &quot;@prefix rep: &lt;http://www.openrdf.org/config/repository#&gt;.\n&quot; + &quot;@prefix sr: &lt;http://www.openrdf.org/config/repository/sail#&gt;.\n&quot; + &quot;@prefix sail: &lt;http://www.openrdf.org/config/sail#&gt;.\n&quot; + &quot;@prefix sail-luc: &lt;http://www.openrdf.org/config/sail/lucene#&gt;.\n&quot; + &quot;@prefix lmdb: &lt;http://rdf4j.org/config/sail/lmdb#&gt;.\n&quot; + &quot;@prefix sb: &lt;http://www.openrdf.org/config/sail/base#&gt;.\n&quot; + &quot;\n&quot; + &quot;[] a rep:Repository ;\n&quot; + &quot;    rep:repositoryID \&quot;&quot; + repoName + &quot;\&quot; ;\n&quot; + &quot;    rdfs:label \&quot;&quot; + repoName + &quot; LMDB store\&quot; ;\n&quot; + &quot;    rep:repositoryImpl [\n&quot; + &quot;        rep:repositoryType \&quot;openrdf:SailRepository\&quot; ;\n&quot; + &quot;        sr:sailImpl [\n&quot; + &quot;            sail:sailType \&quot;rdf4j:LmdbStore\&quot; ;\n&quot; + &quot;            sail:iterationCacheSyncThreshold \&quot;10000\&quot;;\n&quot; + &quot;            lmdb:tripleIndexes \&quot;&quot; + indexTypes + &quot;\&quot; ;\n&quot; + &quot;            sb:defaultQueryEvaluationMode \&quot;STANDARD\&quot;\n&quot; + &quot;        ]\n&quot; + &quot;    ].\n&quot;;
 
             // TODO Index npa:hasFilterLiteral predicate too (see https://groups.google.com/g/rdf4j-users/c/epF4Af1jXGU):
-<span class="nc" id="L231">            String createTextRepoQueryString = &quot;@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;.\n&quot; + &quot;@prefix rep: &lt;http://www.openrdf.org/config/repository#&gt;.\n&quot; + &quot;@prefix sr: &lt;http://www.openrdf.org/config/repository/sail#&gt;.\n&quot; + &quot;@prefix sail: &lt;http://www.openrdf.org/config/sail#&gt;.\n&quot; + &quot;@prefix sail-luc: &lt;http://www.openrdf.org/config/sail/lucene#&gt;.\n&quot; + &quot;@prefix lmdb: &lt;http://rdf4j.org/config/sail/lmdb#&gt;.\n&quot; + &quot;@prefix sb: &lt;http://www.openrdf.org/config/sail/base#&gt;.\n&quot; + &quot;\n&quot; + &quot;[] a rep:Repository ;\n&quot; + &quot;    rep:repositoryID \&quot;&quot; + repoName + &quot;\&quot; ;\n&quot; + &quot;    rdfs:label \&quot;&quot; + repoName + &quot; store\&quot; ;\n&quot; + &quot;    rep:repositoryImpl [\n&quot; + &quot;        rep:repositoryType \&quot;openrdf:SailRepository\&quot; ;\n&quot; + &quot;        sr:sailImpl [\n&quot; + &quot;            sail:sailType \&quot;openrdf:LuceneSail\&quot; ;\n&quot; + &quot;            sail-luc:indexDir \&quot;index/\&quot; ;\n&quot; + &quot;            sail:delegate [&quot; + &quot;              sail:sailType \&quot;rdf4j:LmdbStore\&quot; ;\n&quot; + &quot;              sail:iterationCacheSyncThreshold \&quot;10000\&quot;;\n&quot; + &quot;              lmdb:tripleIndexes \&quot;&quot; + indexTypes + &quot;\&quot; ;\n&quot; + &quot;              sb:defaultQueryEvaluationMode \&quot;STANDARD\&quot;\n&quot; + &quot;            ]\n&quot; + &quot;        ]\n&quot; + &quot;    ].&quot;;</span>
+            String createTextRepoQueryString = &quot;@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;.\n&quot; + &quot;@prefix rep: &lt;http://www.openrdf.org/config/repository#&gt;.\n&quot; + &quot;@prefix sr: &lt;http://www.openrdf.org/config/repository/sail#&gt;.\n&quot; + &quot;@prefix sail: &lt;http://www.openrdf.org/config/sail#&gt;.\n&quot; + &quot;@prefix sail-luc: &lt;http://www.openrdf.org/config/sail/lucene#&gt;.\n&quot; + &quot;@prefix lmdb: &lt;http://rdf4j.org/config/sail/lmdb#&gt;.\n&quot; + &quot;@prefix sb: &lt;http://www.openrdf.org/config/sail/base#&gt;.\n&quot; + &quot;\n&quot; + &quot;[] a rep:Repository ;\n&quot; + &quot;    rep:repositoryID \&quot;&quot; + repoName + &quot;\&quot; ;\n&quot; + &quot;    rdfs:label \&quot;&quot; + repoName + &quot; store\&quot; ;\n&quot; + &quot;    rep:repositoryImpl [\n&quot; + &quot;        rep:repositoryType \&quot;openrdf:SailRepository\&quot; ;\n&quot; + &quot;        sr:sailImpl [\n&quot; + &quot;            sail:sailType \&quot;openrdf:LuceneSail\&quot; ;\n&quot; + &quot;            sail-luc:indexDir \&quot;index/\&quot; ;\n&quot; + &quot;            sail:delegate [&quot; + &quot;              sail:sailType \&quot;rdf4j:LmdbStore\&quot; ;\n&quot; + &quot;              sail:iterationCacheSyncThreshold \&quot;10000\&quot;;\n&quot; + &quot;              lmdb:tripleIndexes \&quot;&quot; + indexTypes + &quot;\&quot; ;\n&quot; + &quot;              sb:defaultQueryEvaluationMode \&quot;STANDARD\&quot;\n&quot; + &quot;            ]\n&quot; + &quot;        ]\n&quot; + &quot;    ].&quot;;
 
-<span class="nc" id="L233">            String createRepoQueryString = createRegularRepoQueryString;</span>
-<span class="nc bnc" id="L234" title="All 2 branches missed.">            if (repoName.startsWith(&quot;text&quot;)) {</span>
-<span class="nc" id="L235">                createRepoQueryString = createTextRepoQueryString;</span>
+            String createRepoQueryString = createRegularRepoQueryString;
+            if (repoName.startsWith(&quot;text&quot;)) {
+                createRepoQueryString = createTextRepoQueryString;
             }
 
-<span class="nc" id="L238">            HttpUriRequest createRepoRequest = RequestBuilder.put().setUri(endpointBase + &quot;repositories/&quot; + repoName).addHeader(&quot;Content-Type&quot;, &quot;text/turtle&quot;).setEntity(new StringEntity(createRepoQueryString)).build();</span>
+            HttpUriRequest createRepoRequest = RequestBuilder.put().setUri(endpointBase + &quot;repositories/&quot; + repoName).addHeader(&quot;Content-Type&quot;, &quot;text/turtle&quot;).setEntity(new StringEntity(createRepoQueryString)).build();
 
-<span class="nc" id="L240">            HttpResponse response = httpclient.execute(createRepoRequest);</span>
-<span class="nc" id="L241">            int statusCode = response.getStatusLine().getStatusCode();</span>
-<span class="nc bnc" id="L242" title="All 2 branches missed.">            if (statusCode == 409) {</span>
+            HttpResponse response = httpclient.execute(createRepoRequest);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode == 409) {
                 //System.err.println(&quot;Already exists.&quot;);
-<span class="nc" id="L244">                getRepository(repoName).init();</span>
-<span class="nc bnc" id="L245" title="All 4 branches missed.">            } else if (statusCode &gt;= 200 &amp;&amp; statusCode &lt; 300) {</span>
+                getRepository(repoName).init();
+            } else if (statusCode &gt;= 200 &amp;&amp; statusCode &lt; 300) {
                 //System.err.println(&quot;Successfully created.&quot;);
-<span class="nc" id="L247">                initNewRepo(repoName);</span>
+                initNewRepo(repoName);
             } else {
-<span class="nc" id="L249">                System.err.println(&quot;Status code: &quot; + response.getStatusLine().getStatusCode());</span>
-<span class="nc" id="L250">                System.err.println(response.getStatusLine().getReasonPhrase());</span>
-<span class="nc" id="L251">                System.err.println(&quot;Response: &quot; + new BasicResponseHandler().handleResponse(response));</span>
+                System.err.println(&quot;Status code: &quot; + response.getStatusLine().getStatusCode());
+                System.err.println(response.getStatusLine().getReasonPhrase());
+                System.err.println(&quot;Response: &quot; + new BasicResponseHandler().handleResponse(response));
             }
-<span class="nc" id="L253">        } catch (IOException ex) {</span>
-<span class="nc" id="L254">            ex.printStackTrace();</span>
-<span class="nc" id="L255">        }</span>
-<span class="nc" id="L256">    }</span>
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }
 
     /**
      * Sends shutdown signal to all repositories.
      */
+    @GeneratedFlagForDependentElements
     public void shutdownRepositories() {
-<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (Repository repo : repositories.values()) {</span>
-<span class="nc bnc" id="L263" title="All 4 branches missed.">            if (repo != null &amp;&amp; repo.isInitialized()) {</span>
-<span class="nc" id="L264">                repo.shutDown();</span>
+        for (Repository repo : repositories.values()) {
+            if (repo != null &amp;&amp; repo.isInitialized()) {
+                repo.shutDown();
             }
-<span class="nc" id="L266">        }</span>
-<span class="nc" id="L267">    }</span>
+        }
+    }
 
     /**
      * Returns admin repo connection.
      *
      * @return repository connection to admin repository
      */
+    @GeneratedFlagForDependentElements
     public RepositoryConnection getAdminRepoConnection() {
-<span class="nc" id="L275">        return get().getRepoConnection(ADMIN_REPO);</span>
+        return get().getRepoConnection(ADMIN_REPO);
     }
 
     /**
@@ -281,54 +286,55 @@ public class TripleStore {
      * @return Repository name set
      */
     public Set&lt;String&gt; getRepositoryNames() {
-<span class="fc" id="L284">        Map&lt;String, Boolean&gt; repositoryNames = null;</span>
-<span class="fc" id="L285">        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {</span>
-<span class="fc" id="L286">            HttpResponse resp = httpclient.execute(RequestBuilder.get()</span>
-<span class="fc" id="L287">                    .setUri(endpointBase + &quot;/repositories&quot;)</span>
-<span class="fc" id="L288">                    .addHeader(&quot;Content-Type&quot;, &quot;text/csv&quot;)</span>
-<span class="fc" id="L289">                    .build());</span>
-<span class="fc" id="L290">            BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));</span>
-<span class="fc" id="L291">            int code = resp.getStatusLine().getStatusCode();</span>
-<span class="pc bpc" id="L292" title="1 of 4 branches missed.">            if (code &lt; 200 || code &gt;= 300) return null;</span>
-<span class="fc" id="L293">            repositoryNames = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L294">            int lineCount = 0;</span>
+<span class="fc" id="L289">        Map&lt;String, Boolean&gt; repositoryNames = null;</span>
+<span class="fc" id="L290">        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {</span>
+<span class="fc" id="L291">            HttpResponse resp = httpclient.execute(RequestBuilder.get()</span>
+<span class="fc" id="L292">                    .setUri(endpointBase + &quot;/repositories&quot;)</span>
+<span class="fc" id="L293">                    .addHeader(&quot;Content-Type&quot;, &quot;text/csv&quot;)</span>
+<span class="fc" id="L294">                    .build());</span>
+<span class="fc" id="L295">            BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));</span>
+<span class="fc" id="L296">            int code = resp.getStatusLine().getStatusCode();</span>
+<span class="pc bpc" id="L297" title="1 of 4 branches missed.">            if (code &lt; 200 || code &gt;= 300) return null;</span>
+<span class="fc" id="L298">            repositoryNames = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L299">            int lineCount = 0;</span>
             while (true) {
-<span class="fc" id="L296">                String line = reader.readLine();</span>
-<span class="fc bfc" id="L297" title="All 2 branches covered.">                if (line == null) break;</span>
-<span class="fc bfc" id="L298" title="All 2 branches covered.">                if (lineCount &gt; 0) {</span>
-<span class="fc" id="L299">                    String repoName = line.split(&quot;,&quot;)[1];</span>
-<span class="fc" id="L300">                    repositoryNames.put(repoName, true);</span>
+<span class="fc" id="L301">                String line = reader.readLine();</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">                if (line == null) break;</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                if (lineCount &gt; 0) {</span>
+<span class="fc" id="L304">                    String repoName = line.split(&quot;,&quot;)[1];</span>
+<span class="fc" id="L305">                    repositoryNames.put(repoName, true);</span>
                 }
-<span class="fc" id="L302">                lineCount = lineCount + 1;</span>
-<span class="fc" id="L303">            }</span>
-<span class="pc bpc" id="L304" title="1 of 2 branches missed.">        } catch (IOException ex) {</span>
-<span class="fc" id="L305">            ex.printStackTrace();</span>
-<span class="fc" id="L306">            return null;</span>
-<span class="fc" id="L307">        }</span>
-<span class="fc" id="L308">        return repositoryNames.keySet();</span>
+<span class="fc" id="L307">                lineCount = lineCount + 1;</span>
+<span class="fc" id="L308">            }</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">        } catch (IOException ex) {</span>
+<span class="fc" id="L310">            ex.printStackTrace();</span>
+<span class="fc" id="L311">            return null;</span>
+<span class="fc" id="L312">        }</span>
+<span class="fc" id="L313">        return repositoryNames.keySet();</span>
     }
 
+    @GeneratedFlagForDependentElements
     private void initNewRepo(String repoName) {
-<span class="nc" id="L312">        String repoInitId = new Random().nextLong() + &quot;&quot;;</span>
-<span class="nc" id="L313">        getRepository(repoName).init();</span>
-<span class="nc bnc" id="L314" title="All 2 branches missed.">        if (!repoName.equals(&quot;empty&quot;)) {</span>
-<span class="nc" id="L315">            RepositoryConnection conn = getRepoConnection(repoName);</span>
-<span class="nc" id="L316">            try (conn) {</span>
+        String repoInitId = new Random().nextLong() + &quot;&quot;;
+        getRepository(repoName).init();
+        if (!repoName.equals(&quot;empty&quot;)) {
+            RepositoryConnection conn = getRepoConnection(repoName);
+            try (conn) {
                 // Full isolation, just in case.
-<span class="nc" id="L318">                conn.begin(IsolationLevels.SERIALIZABLE);</span>
-<span class="nc" id="L319">                conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);</span>
-<span class="nc" id="L320">                conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0L), NanopubLoader.ADMIN_GRAPH);</span>
-<span class="nc" id="L321">                conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);</span>
-<span class="nc bnc" id="L322" title="All 4 branches missed.">                if (repoName.startsWith(&quot;pubkey_&quot;) || repoName.startsWith(&quot;type_&quot;)) {</span>
-<span class="nc" id="L323">                    String h = repoName.replaceFirst(&quot;^[^_]+_&quot;, &quot;&quot;);</span>
-<span class="nc" id="L324">                    conn.add(THIS_REPO_ID, HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NanopubLoader.ADMIN_GRAPH);</span>
-<span class="nc" id="L325">                    conn.add(THIS_REPO_ID, HAS_COVERAGE_HASH, vf.createLiteral(h), NanopubLoader.ADMIN_GRAPH);</span>
-<span class="nc" id="L326">                    conn.add(THIS_REPO_ID, HAS_COVERAGE_FILTER, vf.createLiteral(&quot;_&quot; + repoName), NanopubLoader.ADMIN_GRAPH);</span>
+                conn.begin(IsolationLevels.SERIALIZABLE);
+                conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
+                conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0L), NanopubLoader.ADMIN_GRAPH);
+                conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
+                if (repoName.startsWith(&quot;pubkey_&quot;) || repoName.startsWith(&quot;type_&quot;)) {
+                    String h = repoName.replaceFirst(&quot;^[^_]+_&quot;, &quot;&quot;);
+                    conn.add(THIS_REPO_ID, HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NanopubLoader.ADMIN_GRAPH);
+                    conn.add(THIS_REPO_ID, HAS_COVERAGE_HASH, vf.createLiteral(h), NanopubLoader.ADMIN_GRAPH);
+                    conn.add(THIS_REPO_ID, HAS_COVERAGE_FILTER, vf.createLiteral(&quot;_&quot; + repoName), NanopubLoader.ADMIN_GRAPH);
                 }
-<span class="nc" id="L328">                conn.commit();</span>
+                conn.commit();
             }
         }
-<span class="nc" id="L331">    }</span>
+    }
 
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
