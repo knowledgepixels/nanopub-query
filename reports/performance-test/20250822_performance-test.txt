@@ -1,0 +1,15 @@
+Setup:
+
+- single node (virtual machine)
+- 12 cores (4.2GHz Threadripper Ryzen 4)
+- 32GB RAM
+- 4 NVMe SSDs in RAIDZ
+- Registry and Query on the same VM
+- Dataset: all nanopublications currently in the main network.
+
+Query mix:
+
+- 75% probability: select npa:thisRepo npa:hasNanopubCount ?count
+- 25% probability: count all triples in the repo
+- The repo was chosen randomly: 10% chance for the full repo, 10% for last30d, 40% for a random type repo, 40% for a random pubkey repo
+- Number of concurrent clients: between 1 and 16

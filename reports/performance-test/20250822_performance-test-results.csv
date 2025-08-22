@@ -1,0 +1,15 @@
+client_count,query_count,ok_count,ok_ratio,queries_per_second,median_response_elapsed_millis,mean_response_elapsed_millis,q90_response_elapsed_millis,q99_response_elapsed_millis,total_elapsed_time
+1,43189,43189,100.00%,67.73,1.05 ms ,14.49 ms ,1.56 ms ,457.01 ms ,637.70 s 
+2,32278,32278,100.00%,46.02,1.08 ms ,14.00 ms ,1.58 ms ,584.51 ms ,701.39 s 
+4,31292,31292,100.00%,37.38,1.08 ms ,14.49 ms ,1.64 ms ,567.74 ms ,837.02 s 
+8,26579,26184,98.51%,33.78,1.15 ms ,8.70 ms ,2.22 ms ,260.21 ms ,775.13 s 
+16,38123,37185,97.54%,30.28,6.47 ms ,99.37 ms ,497.13 ms ,931.42 ms ,1228.13 s 
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+Number of clients,Successful query ratio,Queries per second,Median response time,,,,,,
+1,100.00%,67.73,1.05 ms ,,,,,,
+2,100.00%,46.02,1.08 ms ,,,,,,
+4,100.00%,37.38,1.08 ms ,,,,,,
+8,98.51%,33.78,1.15 ms ,,,,,,
+16,97.54%,30.28,6.47 ms ,,,,,,
