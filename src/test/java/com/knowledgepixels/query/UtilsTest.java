@@ -2,6 +2,7 @@ package com.knowledgepixels.query;
 
 import com.github.jsonldjava.shaded.com.google.common.hash.Hashing;
 import org.apache.commons.exec.environment.EnvironmentUtils;
+import org.apache.http.client.config.RequestConfig;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.util.Values;
@@ -294,6 +295,12 @@ class UtilsTest {
             String resultHash = Utils.createHash(obj);
             assertEquals(expectedHash, resultHash);
         }
+    }
+
+    @Test
+    void getRequestConfig() {
+    	RequestConfig rc = Utils.getHttpRequestConfig();
+    	assert(rc != null);
     }
 
 }

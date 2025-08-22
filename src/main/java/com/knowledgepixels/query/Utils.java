@@ -1,8 +1,15 @@
 package com.knowledgepixels.query;
 
-import com.google.common.hash.Hashing;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.client.config.CookieSpecs;
+import org.apache.http.client.config.RequestConfig;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -13,11 +20,7 @@ import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import com.google.common.hash.Hashing;
 
 /**
  * Utils class for Nanopub Registry.
@@ -216,5 +219,18 @@ public class Utils {
             #   optional { ?np rdfs:label ?label }
             # }
             } limit 10""";
+
+    /**
+     * Get the HTTP request config for fetching nanopublications.
+     *
+     * @return the HTTP client
+     */
+    static RequestConfig getHttpRequestConfig() {
+        return RequestConfig.custom()
+        		.setConnectTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECT_TIMEOUT", 1000))
+        		.setConnectionRequestTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECTION_REQUEST_TIMEOUT", 100))
+        		.setSocketTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT", 1000))
+        		.setCookieSpec(CookieSpecs.IGNORE_COOKIES).build();
+    }
 
 }

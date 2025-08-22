@@ -1,47 +1,50 @@
 package com.knowledgepixels.query;
 
+import java.io.InputStream;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.Scanner;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import org.eclipse.rdf4j.model.Value;
+
 import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
+
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
-import io.vertx.core.http.*;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.PoolOptions;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.handler.StaticHandler;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
-import io.vertx.httpproxy.*;
+import io.vertx.httpproxy.HttpProxy;
+import io.vertx.httpproxy.ProxyContext;
+import io.vertx.httpproxy.ProxyInterceptor;
+import io.vertx.httpproxy.ProxyRequest;
+import io.vertx.httpproxy.ProxyResponse;
 import io.vertx.micrometer.PrometheusScrapingHandler;
 import io.vertx.micrometer.backends.BackendRegistries;
-import org.apache.http.HttpStatus;
-import org.eclipse.rdf4j.model.Value;
-import org.eclipse.rdf4j.rio.RDFFormat;
-import org.nanopub.MalformedNanopubException;
-import org.nanopub.Nanopub;
-import org.nanopub.NanopubImpl;
-
-import java.io.InputStream;
-import java.net.URLEncoder;
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Main verticle that coordinates the incoming HTTP requests.
  */
+@GeneratedFlagForDependentElements
 public class MainVerticle extends AbstractVerticle {
 
-    private boolean server1Started = false;
-    private boolean server2Started = false;
-
     private static String css = null;
-
-    private boolean allServersStarted() {
-        return server1Started && server2Started;
-    }
 
     /**
      * Start the main verticle.
@@ -53,8 +56,11 @@ public class MainVerticle extends AbstractVerticle {
     public void start(Promise<Void> startPromise) throws Exception {
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
-                        .setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS)
-                        .setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),
+                        .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))
+                        .setIdleTimeoutUnit(TimeUnit.SECONDS)
+                        .setIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_IDLE_TIMEOUT", 60))
+                        .setReadIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_IDLE_TIMEOUT", 60))
+                        .setWriteIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_IDLE_TIMEOUT", 60)),
                 new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
         );
 
@@ -361,41 +367,6 @@ public class MainVerticle extends AbstractVerticle {
 
         proxyRouter.route("/api/*").handler(ProxyHandler.create(grlcProxy));
         proxyRouter.route("/static/*").handler(ProxyHandler.create(grlcProxy));
-
-        vertx.createHttpServer().requestHandler(req -> {
-            try {
-                final StringBuilder payload = new StringBuilder();
-                req.handler(data -> payload.append(data.toString("UTF-8")));
-                req.endHandler(handler -> {
-                    final String dataString = payload.toString();
-                    try {
-                        Nanopub np = new NanopubImpl(dataString, RDFFormat.TRIG);
-                        NanopubLoader.load(np, -1);
-                    } catch (MalformedNanopubException ex) {
-                        req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)
-                                .setStatusMessage(Arrays.toString(ex.getStackTrace()))
-                                .end();
-                        ex.printStackTrace();
-                        return;
-                    }
-                    req.response()
-                            .setStatusCode(HttpStatus.SC_OK)
-                            .end();
-                });
-            } catch (Exception ex) {
-                req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)
-                        .setStatusMessage(Arrays.toString(ex.getStackTrace()))
-                        .end();
-            }
-        }).listen(9300).onComplete(http -> {
-            if (http.succeeded()) {
-                server2Started = true;
-                if (allServersStarted()) startPromise.complete();
-                System.out.println("HTTP server started on port 9300");
-            } else {
-                startPromise.fail(http.cause());
-            }
-        });
 
         // Periodic metrics update
         vertx.setPeriodic(1000, id -> collector.updateMetrics());

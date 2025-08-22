@@ -1,13 +1,28 @@
 package com.knowledgepixels.query;
 
-import net.trustyuri.TrustyUriUtils;
+import java.security.GeneralSecurityException;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.function.Consumer;
+
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.config.CookieSpecs;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.eclipse.rdf4j.common.exception.RDF4JException;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
-import org.eclipse.rdf4j.model.*;
+import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Literal;
+import org.eclipse.rdf4j.model.Resource;
+import org.eclipse.rdf4j.model.Statement;
+import org.eclipse.rdf4j.model.Value;
+import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
@@ -27,13 +42,7 @@ import org.nanopub.extra.security.SignatureUtils;
 import org.nanopub.extra.server.GetNanopub;
 import org.nanopub.extra.setting.IntroNanopub;
 
-import java.security.GeneralSecurityException;
-import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.function.Consumer;
+import net.trustyuri.TrustyUriUtils;
 
 /**
  * Utility class for loading nanopublications into the database.
@@ -271,8 +280,7 @@ public class NanopubLoader {
      */
     static HttpClient getHttpClient() {
         if (httpClient == null) {
-            RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(1000).setConnectionRequestTimeout(100).setSocketTimeout(1000).setCookieSpec(CookieSpecs.STANDARD).build();
-            httpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
+            httpClient = HttpClientBuilder.create().setDefaultRequestConfig(Utils.getHttpRequestConfig()).build();
         }
         return httpClient;
     }
@@ -303,6 +311,7 @@ public class NanopubLoader {
         loader.executeLoading();
     }
 
+    @GeneratedFlagForDependentElements
     private void executeLoading() {
         var runningTasks = new ArrayList<Future<?>>();
         Consumer<Runnable> runTask = t -> runningTasks.add(loadingPool.submit(t));
@@ -365,6 +374,7 @@ public class NanopubLoader {
     private static long THIRTY_DAYS = 1000L * 60 * 60 * 24 * 30;
     private static long ONE_HOUR = 1000L * 60 * 60;
 
+    @GeneratedFlagForDependentElements
     private static void loadNanopubToLatest(List<Statement> statements) {
         boolean success = false;
         while (!success) {
@@ -411,6 +421,7 @@ public class NanopubLoader {
         }
     }
 
+    @GeneratedFlagForDependentElements
     private static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
         boolean success = false;
         while (!success) {
@@ -466,6 +477,7 @@ public class NanopubLoader {
      * @param npId nanopub ID
      * @return the current status
      */
+    @GeneratedFlagForDependentElements
     private static RepoStatus fetchRepoStatus(RepositoryConnection conn, IRI npId) {
         var result = conn.prepareTupleQuery(QueryLanguage.SPARQL, REPO_STATUS_QUERY_TEMPLATE.formatted(npId)).evaluate();
         try (result) {
@@ -478,6 +490,7 @@ public class NanopubLoader {
         }
     }
 
+    @GeneratedFlagForDependentElements
     private static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
         boolean success = false;
         while (!success) {
@@ -542,6 +555,7 @@ public class NanopubLoader {
         }
     }
 
+    @GeneratedFlagForDependentElements
     private static RepositoryConnection loadStatements(String repoName, Statement... statements) {
         RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
         // Basic isolation: we only append new statements
@@ -552,6 +566,7 @@ public class NanopubLoader {
         return conn;
     }
 
+    @GeneratedFlagForDependentElements
     static List<Statement> getInvalidatingStatements(IRI npId) {
         List<Statement> invalidatingStatements = new ArrayList<>();
         boolean success = false;
@@ -586,6 +601,7 @@ public class NanopubLoader {
         return invalidatingStatements;
     }
 
+    @GeneratedFlagForDependentElements
     private static void loadNoteToRepo(Resource subj, String note) {
         boolean success = false;
         while (!success) {
@@ -643,6 +659,7 @@ public class NanopubLoader {
      * @param npId the nanopub ID
      * @return true if the nanopub is loaded, false otherwise
      */
+    @GeneratedFlagForDependentElements
     static boolean isNanopubLoaded(String npId) {
         boolean loaded = false;
         RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
