@@ -3,27 +3,25 @@ Source_FilesSessionsNanopub_Query > com.knowledgepixels.query
 ****** com.knowledgepixels.query ******
 Element                         Missed       Cov. Missed   Cov. Missed Cxty Missed Lines Missed Methods Missed Classes
                                 Instructions      Branches
-Total                           3,006 of     50%  259 of   47%  220    372  650    1,281 59     123     5      18
-                                6,116             498
-MainVerticle                    [996]        0%   [56]     0%   53     53   225    225   25     25      1      1
-NanopubLoader                   [990][1,090] 52%  [100]    45%  76     116  192    384   14     25      0      1
-                                                  [82]
+Total                           1,205 of     71%  127 of   64%  121    270  260    873   28     90      4      17
+                                4,257             360
 TripleStore                     [362][191]   34%  [36][12] 25%  26     34   76     127   5      10      0      1
-JellyNanopubLoader              [352][118]   25%  [31][11] 26%  26     31   95     132   6      10      0      1
+JellyNanopubLoader              [352][107]   23%  [31][11] 26%  26     31   95     126   6      10      0      1
+NanopubLoader                   [185][1,026] 84%  [24][76] 76%  30     66   25     200   8      16      0      1
 MainVerticle.new                [101]        0%   [6]      0%   6      6    19     19    3      3       1      1
 ProxyInterceptor()_{...}
 OpenApiSpecPage                 [62][371]    85%  [7][25]  78%  6      18   12     84    0      2       0      1
 StatusController                [48][337]    87%  [6][20]  76%  4      24   11     76    0      11      0      1
 MainVerticle.new                [38]         0%            n/a  3      3    8      8     3      3       1      1
 ProxyInterceptor()_{...}
-LocalNanopubLoader              [88]         85%  [11]     91%  2      10   6      33    1      4       0      1
-JellyNanopubLoader.LoadingType               0%            n/a  1      1    3      3     1      1       1      1
-NanopubLoader.RepoStatus                     0%            n/a  1      1    1      1     1      1       1      1
+LocalNanopubLoader              [15][88]     85%  [1][11]  91%  2      10   6      33    1      4       0      1
+JellyNanopubLoader.LoadingType  [15]         0%            n/a  1      1    3      3     1      1       1      1
+NanopubLoader.RepoStatus        [12]         0%            n/a  1      1    1      1     1      1       1      1
 GrlcSpecPage                    [365]        97%  [13][41] 75%  13     31   3      71    0      4       0      1
 OpenApiSpecPage.new
 AbstractSimpleQueryModelVisitor [21]         77%  [2][4]   66%  2      5    1      5     0      2       0      1
 ()_{...}
-Utils                           [228]        100% [19]     95%  1      20   0      54    0      10      0      1
+Utils                           [245]        100% [1][19]  95%  1      21   0      59    0      11      0      1
 MetricsCollector                [191]        100% [6]      100% 0      7    0      39    0      4       0      1
 StatusController.LoadingStatus  [57]         100% [8]      100% 0      8    0      10    0      4       0      1
 StatusController.State          [27]         100%          n/a  0      1    0      5     0      1       0      1

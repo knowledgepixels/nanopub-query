@@ -1,14 +1,13 @@
 GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
 Nanopub Query,com.knowledgepixels.query,OpenApiSpecPage.new AbstractSimpleQueryModelVisitor() {...},6,21,2,4,1,4,2,3,0,2
 Nanopub Query,com.knowledgepixels.query,JellyNanopubLoader.LoadingType,15,0,0,0,3,0,1,0,1,0
-Nanopub Query,com.knowledgepixels.query,MainVerticle,996,0,56,0,225,0,53,0,25,0
-Nanopub Query,com.knowledgepixels.query,JellyNanopubLoader,352,118,31,11,95,37,26,5,6,4
+Nanopub Query,com.knowledgepixels.query,JellyNanopubLoader,352,107,31,11,95,31,26,5,6,4
 Nanopub Query,com.knowledgepixels.query,MetricsCollector,0,191,0,6,0,39,0,7,0,4
 Nanopub Query,com.knowledgepixels.query,TripleStore,362,191,36,12,76,51,26,8,5,5
 Nanopub Query,com.knowledgepixels.query,LocalNanopubLoader,15,88,1,11,6,27,2,8,1,3
 Nanopub Query,com.knowledgepixels.query,StatusController.State,0,27,0,0,0,5,0,1,0,1
-Nanopub Query,com.knowledgepixels.query,Utils,0,228,1,19,0,54,1,19,0,10
-Nanopub Query,com.knowledgepixels.query,NanopubLoader,990,1090,100,82,192,192,76,40,14,11
+Nanopub Query,com.knowledgepixels.query,Utils,0,245,1,19,0,59,1,20,0,11
+Nanopub Query,com.knowledgepixels.query,NanopubLoader,185,1026,24,76,25,175,30,36,8,8
 Nanopub Query,com.knowledgepixels.query,ApplicationLauncher,0,26,0,0,0,8,0,3,0,3
 Nanopub Query,com.knowledgepixels.query,MainVerticle.new ProxyInterceptor() {...},38,0,0,0,8,0,3,0,3,0
 Nanopub Query,com.knowledgepixels.query,OpenApiSpecPage,62,371,7,25,12,72,6,12,0,2

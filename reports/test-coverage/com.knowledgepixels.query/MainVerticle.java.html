@@ -1,47 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MainVerticle.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">MainVerticle.java</span></div><h1>MainVerticle.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
 
+import java.io.InputStream;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.Scanner;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import org.eclipse.rdf4j.model.Value;
+
 import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
+
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
-import io.vertx.core.http.*;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.PoolOptions;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.handler.StaticHandler;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
-import io.vertx.httpproxy.*;
+import io.vertx.httpproxy.HttpProxy;
+import io.vertx.httpproxy.ProxyContext;
+import io.vertx.httpproxy.ProxyInterceptor;
+import io.vertx.httpproxy.ProxyRequest;
+import io.vertx.httpproxy.ProxyResponse;
 import io.vertx.micrometer.PrometheusScrapingHandler;
 import io.vertx.micrometer.backends.BackendRegistries;
-import org.apache.http.HttpStatus;
-import org.eclipse.rdf4j.model.Value;
-import org.eclipse.rdf4j.rio.RDFFormat;
-import org.nanopub.MalformedNanopubException;
-import org.nanopub.Nanopub;
-import org.nanopub.NanopubImpl;
-
-import java.io.InputStream;
-import java.net.URLEncoder;
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Main verticle that coordinates the incoming HTTP requests.
  */
-<span class="nc" id="L35">public class MainVerticle extends AbstractVerticle {</span>
+@GeneratedFlagForDependentElements
+public class MainVerticle extends AbstractVerticle {
 
-<span class="nc" id="L37">    private boolean server1Started = false;</span>
-<span class="nc" id="L38">    private boolean server2Started = false;</span>
-
-<span class="nc" id="L40">    private static String css = null;</span>
-
-    private boolean allServersStarted() {
-<span class="nc bnc" id="L43" title="All 4 branches missed.">        return server1Started &amp;&amp; server2Started;</span>
-    }
+    private static String css = null;
 
     /**
      * Start the main verticle.
@@ -51,76 +54,79 @@ import java.util.concurrent.TimeUnit;
      */
     @Override
     public void start(Promise&lt;Void&gt; startPromise) throws Exception {
-<span class="nc" id="L54">        HttpClient httpClient = vertx.createHttpClient(</span>
+        HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
-<span class="nc" id="L56">                        .setConnectTimeout(1000).setIdleTimeoutUnit(TimeUnit.SECONDS)</span>
-<span class="nc" id="L57">                        .setIdleTimeout(60).setReadIdleTimeout(60).setWriteIdleTimeout(60),</span>
-<span class="nc" id="L58">                new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)</span>
+                        .setConnectTimeout(Utils.getEnvInt(&quot;NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT&quot;, 1000))
+                        .setIdleTimeoutUnit(TimeUnit.SECONDS)
+                        .setIdleTimeout(Utils.getEnvInt(&quot;NANOPUB_QUERY_VERTX_IDLE_TIMEOUT&quot;, 60))
+                        .setReadIdleTimeout(Utils.getEnvInt(&quot;NANOPUB_QUERY_VERTX_IDLE_TIMEOUT&quot;, 60))
+                        .setWriteIdleTimeout(Utils.getEnvInt(&quot;NANOPUB_QUERY_VERTX_IDLE_TIMEOUT&quot;, 60)),
+                new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
         );
 
-<span class="nc" id="L61">        HttpServer proxyServer = vertx.createHttpServer();</span>
-<span class="nc" id="L62">        Router proxyRouter = Router.router(vertx);</span>
-<span class="nc" id="L63">        proxyRouter.route().handler(CorsHandler.create().addRelativeOrigin(&quot;.*&quot;));</span>
+        HttpServer proxyServer = vertx.createHttpServer();
+        Router proxyRouter = Router.router(vertx);
+        proxyRouter.route().handler(CorsHandler.create().addRelativeOrigin(&quot;.*&quot;));
 
         // Metrics
-<span class="nc" id="L66">        final var metricsHttpServer = vertx.createHttpServer();</span>
-<span class="nc" id="L67">        final var metricsRouter = Router.router(vertx);</span>
-<span class="nc" id="L68">        metricsHttpServer.requestHandler(metricsRouter).listen(9394);</span>
+        final var metricsHttpServer = vertx.createHttpServer();
+        final var metricsRouter = Router.router(vertx);
+        metricsHttpServer.requestHandler(metricsRouter).listen(9394);
 
-<span class="nc" id="L70">        final var metricsRegistry = (PrometheusMeterRegistry) BackendRegistries.getDefaultNow();</span>
-<span class="nc" id="L71">        final var collector = new MetricsCollector(metricsRegistry);</span>
-<span class="nc" id="L72">        metricsRouter.route(&quot;/metrics&quot;).handler(PrometheusScrapingHandler.create(metricsRegistry));</span>
+        final var metricsRegistry = (PrometheusMeterRegistry) BackendRegistries.getDefaultNow();
+        final var collector = new MetricsCollector(metricsRegistry);
+        metricsRouter.route(&quot;/metrics&quot;).handler(PrometheusScrapingHandler.create(metricsRegistry));
         // ----------
         // This part is only used if the redirection is not done through Nginx.
         // See nginx.conf and this bug report: https://github.com/eclipse-rdf4j/rdf4j/discussions/5120
-<span class="nc" id="L76">        HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);</span>
-<span class="nc" id="L77">        String proxy = Utils.getEnvString(&quot;RDF4J_PROXY_HOST&quot;, &quot;rdf4j&quot;);</span>
-<span class="nc" id="L78">        int proxyPort = Utils.getEnvInt(&quot;RDF4J_PROXY_PORT&quot;, 8080);</span>
-<span class="nc" id="L79">        rdf4jProxy.origin(proxyPort, proxy);</span>
+        HttpProxy rdf4jProxy = HttpProxy.reverseProxy(httpClient);
+        String proxy = Utils.getEnvString(&quot;RDF4J_PROXY_HOST&quot;, &quot;rdf4j&quot;);
+        int proxyPort = Utils.getEnvInt(&quot;RDF4J_PROXY_PORT&quot;, 8080);
+        rdf4jProxy.origin(proxyPort, proxy);
 
-<span class="nc" id="L81">        rdf4jProxy.addInterceptor(new ProxyInterceptor() {</span>
+<span class="nc" id="L87">        rdf4jProxy.addInterceptor(new ProxyInterceptor() {</span>
 
             @Override
             public Future&lt;ProxyResponse&gt; handleProxyRequest(ProxyContext context) {
-<span class="nc" id="L85">                ProxyRequest request = context.request();</span>
-<span class="nc" id="L86">                request.setURI(request.getURI().replaceAll(&quot;/&quot;, &quot;_&quot;).replaceFirst(&quot;^_repo_&quot;, &quot;/rdf4j-server/repositories/&quot;));</span>
+<span class="nc" id="L91">                ProxyRequest request = context.request();</span>
+<span class="nc" id="L92">                request.setURI(request.getURI().replaceAll(&quot;/&quot;, &quot;_&quot;).replaceFirst(&quot;^_repo_&quot;, &quot;/rdf4j-server/repositories/&quot;));</span>
                 // For later to try to get HTML tables out:
 //				if (request.headers().get(&quot;Accept&quot;) == null) {
 //					request.putHeader(&quot;Accept&quot;, &quot;text/html&quot;);
 //				}
 //				request.putHeader(&quot;Accept&quot;, &quot;application/json&quot;);
-<span class="nc" id="L92">                return ProxyInterceptor.super.handleProxyRequest(context);</span>
+<span class="nc" id="L98">                return ProxyInterceptor.super.handleProxyRequest(context);</span>
             }
 
             @Override
             public Future&lt;Void&gt; handleProxyResponse(ProxyContext context) {
-<span class="nc" id="L97">                ProxyResponse resp = context.response();</span>
-<span class="nc" id="L98">                resp.putHeader(&quot;Access-Control-Allow-Origin&quot;, &quot;*&quot;);</span>
-<span class="nc" id="L99">                resp.putHeader(&quot;Access-Control-Allow-Methods&quot;, &quot;POST, GET, OPTIONS&quot;);</span>
+<span class="nc" id="L103">                ProxyResponse resp = context.response();</span>
+<span class="nc" id="L104">                resp.putHeader(&quot;Access-Control-Allow-Origin&quot;, &quot;*&quot;);</span>
+<span class="nc" id="L105">                resp.putHeader(&quot;Access-Control-Allow-Methods&quot;, &quot;POST, GET, OPTIONS&quot;);</span>
                 // For later to try to get HTML tables out:
 //				String acceptHeader = context.request().headers().get(&quot;Accept&quot;);
 //				if (acceptHeader != null &amp;&amp; acceptHeader.contains(&quot;text/html&quot;)) {
 //					resp.putHeader(&quot;Content-Type&quot;, &quot;text/html&quot;);
 //					resp.setBody(Body.body(Buffer.buffer(&quot;&lt;html&gt;&lt;body&gt;&lt;strong&gt;test&lt;/strong&gt;&lt;/body&gt;&lt;/html&gt;&quot;)));
 //				}
-<span class="nc" id="L106">                return ProxyInterceptor.super.handleProxyResponse(context);</span>
+<span class="nc" id="L112">                return ProxyInterceptor.super.handleProxyResponse(context);</span>
             }
 
         });
         // ----------
 
-<span class="nc" id="L112">        proxyRouter.route(HttpMethod.GET, &quot;/repo&quot;).handler(req -&gt; handleRedirect(req, &quot;/repo&quot;));</span>
-<span class="nc" id="L113">        proxyRouter.route(HttpMethod.GET, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));</span>
-<span class="nc" id="L114">        proxyRouter.route(HttpMethod.POST, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));</span>
-<span class="nc" id="L115">        proxyRouter.route(HttpMethod.HEAD, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));</span>
-<span class="nc" id="L116">        proxyRouter.route(HttpMethod.OPTIONS, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));</span>
-<span class="nc" id="L117">        proxyRouter.route(HttpMethod.GET, &quot;/tools/*&quot;).handler(req -&gt; {</span>
-<span class="nc" id="L118">            final String yasguiPattern = &quot;^/tools/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?/yasgui\\.html$&quot;;</span>
-<span class="nc bnc" id="L119" title="All 2 branches missed.">            if (req.normalizedPath().matches(yasguiPattern)) {</span>
-<span class="nc" id="L120">                String repo = req.normalizedPath().replaceFirst(yasguiPattern, &quot;$1$2&quot;);</span>
-<span class="nc" id="L121">                req.response()</span>
-<span class="nc" id="L122">                        .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)</span>
-<span class="nc" id="L123">                        .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;</span>
+        proxyRouter.route(HttpMethod.GET, &quot;/repo&quot;).handler(req -&gt; handleRedirect(req, &quot;/repo&quot;));
+        proxyRouter.route(HttpMethod.GET, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));
+        proxyRouter.route(HttpMethod.POST, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));
+        proxyRouter.route(HttpMethod.HEAD, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));
+        proxyRouter.route(HttpMethod.OPTIONS, &quot;/repo/*&quot;).handler(ProxyHandler.create(rdf4jProxy));
+        proxyRouter.route(HttpMethod.GET, &quot;/tools/*&quot;).handler(req -&gt; {
+            final String yasguiPattern = &quot;^/tools/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?/yasgui\\.html$&quot;;
+            if (req.normalizedPath().matches(yasguiPattern)) {
+                String repo = req.normalizedPath().replaceFirst(yasguiPattern, &quot;$1$2&quot;);
+                req.response()
+                        .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)
+                        .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;
                                 + &quot;&lt;html lang=\&quot;en\&quot;&gt;\n&quot;
                                 + &quot;&lt;head&gt;\n&quot;
                                 + &quot;&lt;meta charset=\&quot;utf-8\&quot;&gt;\n&quot;
@@ -138,26 +144,26 @@ import java.util.concurrent.TimeUnit;
                                 + &quot;&lt;script src='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.js'&gt;&lt;/script&gt;\n&quot;
                                 + &quot;&lt;script type=\&quot;text/javascript\&quot;&gt;\n&quot;
                                 + &quot;var yasgui = YASGUI(document.getElementById(\&quot;yasgui\&quot;), {\n&quot;
-<span class="nc" id="L141">                                + &quot;  yasqe:{sparql:{endpoint:'/repo/&quot; + repo + &quot;'},value:'&quot; + Utils.defaultQuery.replaceAll(&quot;\n&quot;, &quot;\\\\n&quot;) + &quot;'}\n&quot;</span>
+                                + &quot;  yasqe:{sparql:{endpoint:'/repo/&quot; + repo + &quot;'},value:'&quot; + Utils.defaultQuery.replaceAll(&quot;\n&quot;, &quot;\\\\n&quot;) + &quot;'}\n&quot;
                                 + &quot;});\n&quot;
                                 + &quot;&lt;/script&gt;\n&quot;
                                 + &quot;&lt;/body&gt;\n&quot;
                                 + &quot;&lt;/html&gt;&quot;);
-<span class="nc" id="L146">            } else {</span>
-<span class="nc" id="L147">                req.response()</span>
-<span class="nc" id="L148">                        .putHeader(&quot;content-type&quot;, &quot;text/plain&quot;)</span>
-<span class="nc" id="L149">                        .setStatusCode(404)</span>
-<span class="nc" id="L150">                        .end(&quot;not found&quot;);</span>
+            } else {
+                req.response()
+                        .putHeader(&quot;content-type&quot;, &quot;text/plain&quot;)
+                        .setStatusCode(404)
+                        .end(&quot;not found&quot;);
             }
-<span class="nc" id="L152">        });</span>
-<span class="nc" id="L153">        proxyRouter.route(HttpMethod.GET, &quot;/page&quot;).handler(req -&gt; handleRedirect(req, &quot;/page&quot;));</span>
-<span class="nc" id="L154">        proxyRouter.route(HttpMethod.GET, &quot;/page/*&quot;).handler(req -&gt; {</span>
-<span class="nc" id="L155">            final String pagePattern = &quot;^/page/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?$&quot;;</span>
-<span class="nc bnc" id="L156" title="All 2 branches missed.">            if (req.normalizedPath().matches(pagePattern)) {</span>
-<span class="nc" id="L157">                String repo = req.normalizedPath().replaceFirst(pagePattern, &quot;$1$2&quot;);</span>
-<span class="nc" id="L158">                req.response()</span>
-<span class="nc" id="L159">                        .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)</span>
-<span class="nc" id="L160">                        .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;</span>
+        });
+        proxyRouter.route(HttpMethod.GET, &quot;/page&quot;).handler(req -&gt; handleRedirect(req, &quot;/page&quot;));
+        proxyRouter.route(HttpMethod.GET, &quot;/page/*&quot;).handler(req -&gt; {
+            final String pagePattern = &quot;^/page/([a-zA-Z0-9-_]+)(/([a-zA-Z0-9-_]+))?$&quot;;
+            if (req.normalizedPath().matches(pagePattern)) {
+                String repo = req.normalizedPath().replaceFirst(pagePattern, &quot;$1$2&quot;);
+                req.response()
+                        .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)
+                        .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;
                                 + &quot;&lt;html lang=\&quot;en\&quot;&gt;\n&quot;
                                 + &quot;&lt;head&gt;\n&quot;
                                 + &quot;&lt;meta charset=\&quot;utf-8\&quot;&gt;\n&quot;
@@ -172,36 +178,36 @@ import java.util.concurrent.TimeUnit;
                                 + &quot;&lt;p&gt;YASGUI: &lt;a href=\&quot;/tools/&quot; + repo + &quot;/yasgui.html\&quot;&gt;/tools/&quot; + repo + &quot;/yasgui.hml&lt;/a&gt;&lt;/p&gt;&quot;
                                 + &quot;&lt;/body&gt;\n&quot;
                                 + &quot;&lt;/html&gt;&quot;);
-<span class="nc" id="L175">            } else {</span>
-<span class="nc" id="L176">                req.response()</span>
-<span class="nc" id="L177">                        .putHeader(&quot;content-type&quot;, &quot;text/plain&quot;)</span>
-<span class="nc" id="L178">                        .setStatusCode(404)</span>
-<span class="nc" id="L179">                        .end(&quot;not found&quot;);</span>
+            } else {
+                req.response()
+                        .putHeader(&quot;content-type&quot;, &quot;text/plain&quot;)
+                        .setStatusCode(404)
+                        .end(&quot;not found&quot;);
             }
-<span class="nc" id="L181">        });</span>
-<span class="nc" id="L182">        proxyRouter.route(HttpMethod.GET, &quot;/&quot;).handler(req -&gt; {</span>
-<span class="nc" id="L183">            String repos = &quot;&quot;;</span>
-<span class="nc" id="L184">            List&lt;String&gt; repoList = new ArrayList&lt;&gt;(TripleStore.get().getRepositoryNames());</span>
-<span class="nc" id="L185">            Collections.sort(repoList);</span>
-<span class="nc bnc" id="L186" title="All 2 branches missed.">            for (String s : repoList) {</span>
-<span class="nc bnc" id="L187" title="All 4 branches missed.">                if (s.startsWith(&quot;pubkey_&quot;) || s.startsWith(&quot;type_&quot;)) continue;</span>
-<span class="nc" id="L188">                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&lt;/code&gt;&lt;/li&gt;&quot;;</span>
-<span class="nc" id="L189">            }</span>
-<span class="nc" id="L190">            String pinnedApisValue = Utils.getEnvString(&quot;NANOPUB_QUERY_PINNED_APIS&quot;, &quot;&quot;);</span>
-<span class="nc" id="L191">            String[] pinnedApis = pinnedApisValue.split(&quot; &quot;);</span>
-<span class="nc" id="L192">            String pinnedApiLinks = &quot;&quot;;</span>
-<span class="nc bnc" id="L193" title="All 2 branches missed.">            if (!pinnedApisValue.isEmpty()) {</span>
-<span class="nc bnc" id="L194" title="All 2 branches missed.">                for (String s : pinnedApis) {</span>
-<span class="nc" id="L195">                    pinnedApiLinks = pinnedApiLinks + &quot;&lt;li&gt;&lt;a href=\&quot;openapi/?url=spec/&quot; + s + &quot;%3Fapi-version=latest\&quot;&gt;&quot; + s.replaceFirst(&quot;^.*/&quot;, &quot;&quot;) + &quot;&lt;/a&gt;&lt;/li&gt;&quot;;</span>
+        });
+        proxyRouter.route(HttpMethod.GET, &quot;/&quot;).handler(req -&gt; {
+            String repos = &quot;&quot;;
+            List&lt;String&gt; repoList = new ArrayList&lt;&gt;(TripleStore.get().getRepositoryNames());
+            Collections.sort(repoList);
+            for (String s : repoList) {
+                if (s.startsWith(&quot;pubkey_&quot;) || s.startsWith(&quot;type_&quot;)) continue;
+                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&lt;/code&gt;&lt;/li&gt;&quot;;
+            }
+            String pinnedApisValue = Utils.getEnvString(&quot;NANOPUB_QUERY_PINNED_APIS&quot;, &quot;&quot;);
+            String[] pinnedApis = pinnedApisValue.split(&quot; &quot;);
+            String pinnedApiLinks = &quot;&quot;;
+            if (!pinnedApisValue.isEmpty()) {
+                for (String s : pinnedApis) {
+                    pinnedApiLinks = pinnedApiLinks + &quot;&lt;li&gt;&lt;a href=\&quot;openapi/?url=spec/&quot; + s + &quot;%3Fapi-version=latest\&quot;&gt;&quot; + s.replaceFirst(&quot;^.*/&quot;, &quot;&quot;) + &quot;&lt;/a&gt;&lt;/li&gt;&quot;;
                 }
-<span class="nc" id="L197">                pinnedApiLinks = &quot;&lt;p&gt;Pinned APIs:&lt;/p&gt;\n&quot; +</span>
+                pinnedApiLinks = &quot;&lt;p&gt;Pinned APIs:&lt;/p&gt;\n&quot; +
                         &quot;&lt;ul&gt;\n&quot; +
                         pinnedApiLinks +
                         &quot;&lt;/ul&gt;\n&quot;;
             }
-<span class="nc" id="L202">            req.response()</span>
-<span class="nc" id="L203">                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)</span>
-<span class="nc" id="L204">                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;</span>
+            req.response()
+                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)
+                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;
                             + &quot;&lt;html lang='en'&gt;\n&quot;
                             + &quot;&lt;head&gt;\n&quot;
                             + &quot;&lt;title&gt;Nanopub Query&lt;/title&gt;\n&quot;
@@ -220,27 +226,27 @@ import java.util.concurrent.TimeUnit;
                             + pinnedApiLinks
                             + &quot;&lt;/body&gt;\n&quot;
                             + &quot;&lt;/html&gt;&quot;);
-<span class="nc" id="L223">        });</span>
-<span class="nc" id="L224">        proxyRouter.route(HttpMethod.GET, &quot;/pubkeys&quot;).handler(req -&gt; {</span>
-<span class="nc" id="L225">            String repos = &quot;&quot;;</span>
-<span class="nc" id="L226">            List&lt;String&gt; repoList = new ArrayList&lt;&gt;(TripleStore.get().getRepositoryNames());</span>
-<span class="nc" id="L227">            Collections.sort(repoList);</span>
-<span class="nc bnc" id="L228" title="All 2 branches missed.">            for (String s : repoList) {</span>
-<span class="nc bnc" id="L229" title="All 2 branches missed.">                if (!s.startsWith(&quot;pubkey_&quot;)) continue;</span>
-<span class="nc" id="L230">                String hash = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$2&quot;);</span>
-<span class="nc" id="L231">                Value hashObj = Utils.getObjectForHash(hash);</span>
+        });
+        proxyRouter.route(HttpMethod.GET, &quot;/pubkeys&quot;).handler(req -&gt; {
+            String repos = &quot;&quot;;
+            List&lt;String&gt; repoList = new ArrayList&lt;&gt;(TripleStore.get().getRepositoryNames());
+            Collections.sort(repoList);
+            for (String s : repoList) {
+                if (!s.startsWith(&quot;pubkey_&quot;)) continue;
+                String hash = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$2&quot;);
+                Value hashObj = Utils.getObjectForHash(hash);
                 String label;
-<span class="nc bnc" id="L233" title="All 2 branches missed.">                if (hashObj == null) {</span>
-<span class="nc" id="L234">                    label = &quot;&quot;;</span>
+                if (hashObj == null) {
+                    label = &quot;&quot;;
                 } else {
-<span class="nc" id="L236">                    label = &quot; (&quot; + Utils.getShortPubkeyName(hashObj.stringValue()) + &quot;)&quot;;</span>
+                    label = &quot; (&quot; + Utils.getShortPubkeyName(hashObj.stringValue()) + &quot;)&quot;;
                 }
-<span class="nc" id="L238">                s = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$1/$2&quot;);</span>
-<span class="nc" id="L239">                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&quot; + label + &quot;&lt;/code&gt;&lt;/li&gt;&quot;;</span>
-<span class="nc" id="L240">            }</span>
-<span class="nc" id="L241">            req.response()</span>
-<span class="nc" id="L242">                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)</span>
-<span class="nc" id="L243">                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;</span>
+                s = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$1/$2&quot;);
+                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&quot; + label + &quot;&lt;/code&gt;&lt;/li&gt;&quot;;
+            }
+            req.response()
+                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)
+                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;
                             + &quot;&lt;html lang='en'&gt;\n&quot;
                             + &quot;&lt;head&gt;\n&quot;
                             + &quot;&lt;title&gt;Nanopub Query: Pubkey Repos&lt;/title&gt;\n&quot;
@@ -253,27 +259,27 @@ import java.util.concurrent.TimeUnit;
                             + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;
                             + &quot;&lt;/body&gt;\n&quot;
                             + &quot;&lt;/html&gt;&quot;);
-<span class="nc" id="L256">        });</span>
-<span class="nc" id="L257">        proxyRouter.route(HttpMethod.GET, &quot;/types&quot;).handler(req -&gt; {</span>
-<span class="nc" id="L258">            String repos = &quot;&quot;;</span>
-<span class="nc" id="L259">            List&lt;String&gt; repoList = new ArrayList&lt;&gt;(TripleStore.get().getRepositoryNames());</span>
-<span class="nc" id="L260">            Collections.sort(repoList);</span>
-<span class="nc bnc" id="L261" title="All 2 branches missed.">            for (String s : repoList) {</span>
-<span class="nc bnc" id="L262" title="All 2 branches missed.">                if (!s.startsWith(&quot;type_&quot;)) continue;</span>
-<span class="nc" id="L263">                String hash = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$2&quot;);</span>
-<span class="nc" id="L264">                Value hashObj = Utils.getObjectForHash(hash);</span>
+        });
+        proxyRouter.route(HttpMethod.GET, &quot;/types&quot;).handler(req -&gt; {
+            String repos = &quot;&quot;;
+            List&lt;String&gt; repoList = new ArrayList&lt;&gt;(TripleStore.get().getRepositoryNames());
+            Collections.sort(repoList);
+            for (String s : repoList) {
+                if (!s.startsWith(&quot;type_&quot;)) continue;
+                String hash = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$2&quot;);
+                Value hashObj = Utils.getObjectForHash(hash);
                 String label;
-<span class="nc bnc" id="L266" title="All 2 branches missed.">                if (hashObj == null) {</span>
-<span class="nc" id="L267">                    label = &quot;&quot;;</span>
+                if (hashObj == null) {
+                    label = &quot;&quot;;
                 } else {
-<span class="nc" id="L269">                    label = &quot; (&quot; + hashObj.stringValue() + &quot;)&quot;;</span>
+                    label = &quot; (&quot; + hashObj.stringValue() + &quot;)&quot;;
                 }
-<span class="nc" id="L271">                s = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$1/$2&quot;);</span>
-<span class="nc" id="L272">                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&quot; + label + &quot;&lt;/code&gt;&lt;/li&gt;&quot;;</span>
-<span class="nc" id="L273">            }</span>
-<span class="nc" id="L274">            req.response()</span>
-<span class="nc" id="L275">                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)</span>
-<span class="nc" id="L276">                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;</span>
+                s = s.replaceFirst(&quot;^([a-zA-Z0-9-]+)_([a-zA-Z0-9-_]+)$&quot;, &quot;$1/$2&quot;);
+                repos += &quot;&lt;li&gt;&lt;code&gt;&lt;a href=\&quot;/page/&quot; + s + &quot;\&quot;&gt;&quot; + s + &quot;&lt;/a&gt;&quot; + label + &quot;&lt;/code&gt;&lt;/li&gt;&quot;;
+            }
+            req.response()
+                    .putHeader(&quot;content-type&quot;, &quot;text/html&quot;)
+                    .end(&quot;&lt;!DOCTYPE html&gt;\n&quot;
                             + &quot;&lt;html lang='en'&gt;\n&quot;
                             + &quot;&lt;head&gt;\n&quot;
                             + &quot;&lt;title&gt;Nanopub Query: Type Repos&lt;/title&gt;\n&quot;
@@ -286,195 +292,160 @@ import java.util.concurrent.TimeUnit;
                             + &quot;&lt;ul&gt;&quot; + repos + &quot;&lt;/ul&gt;&quot;
                             + &quot;&lt;/body&gt;\n&quot;
                             + &quot;&lt;/html&gt;&quot;);
-<span class="nc" id="L289">        });</span>
-<span class="nc" id="L290">        proxyRouter.route(HttpMethod.GET, &quot;/style.css&quot;).handler(req -&gt; {</span>
-<span class="nc bnc" id="L291" title="All 2 branches missed.">            if (css == null) {</span>
-<span class="nc" id="L292">                css = getResourceAsString(&quot;style.css&quot;);</span>
+        });
+        proxyRouter.route(HttpMethod.GET, &quot;/style.css&quot;).handler(req -&gt; {
+            if (css == null) {
+                css = getResourceAsString(&quot;style.css&quot;);
             }
-<span class="nc" id="L294">            req.response().end(css);</span>
-<span class="nc" id="L295">        });</span>
+            req.response().end(css);
+        });
 
-<span class="nc" id="L297">        proxyRouter.route(HttpMethod.GET, &quot;/grlc-spec/*&quot;).handler(req -&gt; {</span>
-<span class="nc" id="L298">            GrlcSpecPage gsp = new GrlcSpecPage(req.normalizedPath(), req.queryParams());</span>
-<span class="nc" id="L299">            String spec = gsp.getSpec();</span>
-<span class="nc bnc" id="L300" title="All 2 branches missed.">            if (spec == null) {</span>
-<span class="nc" id="L301">                req.response().setStatusCode(404).end(&quot;query definition not found / not valid&quot;);</span>
+        proxyRouter.route(HttpMethod.GET, &quot;/grlc-spec/*&quot;).handler(req -&gt; {
+            GrlcSpecPage gsp = new GrlcSpecPage(req.normalizedPath(), req.queryParams());
+            String spec = gsp.getSpec();
+            if (spec == null) {
+                req.response().setStatusCode(404).end(&quot;query definition not found / not valid&quot;);
             } else {
-<span class="nc" id="L303">                req.response().putHeader(&quot;content-type&quot;, &quot;text/yaml&quot;).end(spec);</span>
+                req.response().putHeader(&quot;content-type&quot;, &quot;text/yaml&quot;).end(spec);
             }
-<span class="nc" id="L305">        });</span>
+        });
 
-<span class="nc" id="L307">        proxyRouter.route(HttpMethod.GET, &quot;/openapi/spec/*&quot;).handler(req -&gt; {</span>
-<span class="nc" id="L308">            OpenApiSpecPage osp = new OpenApiSpecPage(req.normalizedPath(), req.queryParams());</span>
-<span class="nc" id="L309">            String spec = osp.getSpec();</span>
-<span class="nc bnc" id="L310" title="All 2 branches missed.">            if (spec == null) {</span>
-<span class="nc" id="L311">                req.response().setStatusCode(404).end(&quot;query definition not found / not valid&quot;);</span>
+        proxyRouter.route(HttpMethod.GET, &quot;/openapi/spec/*&quot;).handler(req -&gt; {
+            OpenApiSpecPage osp = new OpenApiSpecPage(req.normalizedPath(), req.queryParams());
+            String spec = osp.getSpec();
+            if (spec == null) {
+                req.response().setStatusCode(404).end(&quot;query definition not found / not valid&quot;);
             } else {
-<span class="nc" id="L313">                req.response().putHeader(&quot;content-type&quot;, &quot;text/yaml&quot;).end(spec);</span>
+                req.response().putHeader(&quot;content-type&quot;, &quot;text/yaml&quot;).end(spec);
             }
-<span class="nc" id="L315">        });</span>
+        });
 
-<span class="nc" id="L317">        proxyRouter.route(&quot;/openapi/*&quot;).handler(StaticHandler.create(&quot;com/knowledgepixels/query/swagger&quot;));</span>
+        proxyRouter.route(&quot;/openapi/*&quot;).handler(StaticHandler.create(&quot;com/knowledgepixels/query/swagger&quot;));
 
-<span class="nc" id="L319">        HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);</span>
-<span class="nc" id="L320">        grlcProxy.origin(80, &quot;grlc&quot;);</span>
-<span class="nc" id="L321">        grlcProxy.addInterceptor(new ProxyInterceptor() {</span>
+        HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
+        grlcProxy.origin(80, &quot;grlc&quot;);
+<span class="nc" id="L327">        grlcProxy.addInterceptor(new ProxyInterceptor() {</span>
 
             @Override
             public Future&lt;ProxyResponse&gt; handleProxyRequest(ProxyContext context) {
-<span class="nc" id="L325">                final String apiPattern = &quot;^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$&quot;;</span>
-<span class="nc bnc" id="L326" title="All 2 branches missed.">                if (context.request().getURI().matches(apiPattern)) {</span>
-<span class="nc" id="L327">                    String artifactCode = context.request().getURI().replaceFirst(apiPattern, &quot;$1&quot;);</span>
-<span class="nc" id="L328">                    String queryName = context.request().getURI().replaceFirst(apiPattern, &quot;$2&quot;);</span>
-<span class="nc" id="L329">                    String grlcUrlParams = &quot;&quot;;</span>
-<span class="nc" id="L330">                    String grlcSpecUrlParams = &quot;&quot;;</span>
-<span class="nc" id="L331">                    MultiMap pm = context.request().proxiedRequest().params();</span>
-<span class="nc bnc" id="L332" title="All 2 branches missed.">                    for (Entry&lt;String, String&gt; e : pm) {</span>
-<span class="nc bnc" id="L333" title="All 2 branches missed.">                        if (e.getKey().equals(&quot;api-version&quot;)) {</span>
-<span class="nc" id="L334">                            grlcSpecUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
+<span class="nc" id="L331">                final String apiPattern = &quot;^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$&quot;;</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">                if (context.request().getURI().matches(apiPattern)) {</span>
+<span class="nc" id="L333">                    String artifactCode = context.request().getURI().replaceFirst(apiPattern, &quot;$1&quot;);</span>
+<span class="nc" id="L334">                    String queryName = context.request().getURI().replaceFirst(apiPattern, &quot;$2&quot;);</span>
+<span class="nc" id="L335">                    String grlcUrlParams = &quot;&quot;;</span>
+<span class="nc" id="L336">                    String grlcSpecUrlParams = &quot;&quot;;</span>
+<span class="nc" id="L337">                    MultiMap pm = context.request().proxiedRequest().params();</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">                    for (Entry&lt;String, String&gt; e : pm) {</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">                        if (e.getKey().equals(&quot;api-version&quot;)) {</span>
+<span class="nc" id="L340">                            grlcSpecUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
                         } else {
-<span class="nc" id="L336">                            grlcUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
+<span class="nc" id="L342">                            grlcUrlParams += &quot;&amp;&quot; + e.getKey() + &quot;=&quot; + URLEncoder.encode(e.getValue(), Charsets.UTF_8);</span>
                         }
-<span class="nc" id="L338">                    }</span>
-<span class="nc" id="L339">                    String url = &quot;/api-url/&quot; + queryName +</span>
-<span class="nc" id="L340">                            &quot;?specUrl=&quot; + URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + &quot;grlc-spec/&quot; + artifactCode + &quot;/?&quot; +</span>
+<span class="nc" id="L344">                    }</span>
+<span class="nc" id="L345">                    String url = &quot;/api-url/&quot; + queryName +</span>
+<span class="nc" id="L346">                            &quot;?specUrl=&quot; + URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + &quot;grlc-spec/&quot; + artifactCode + &quot;/?&quot; +</span>
                             grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
-<span class="nc" id="L342">                    context.request().setURI(url);</span>
+<span class="nc" id="L348">                    context.request().setURI(url);</span>
                 }
-<span class="nc" id="L344">                return context.sendRequest();</span>
+<span class="nc" id="L350">                return context.sendRequest();</span>
             }
 
             @Override
             public Future&lt;Void&gt; handleProxyResponse(ProxyContext context) {
                 // To avoid double entries:
-<span class="nc" id="L350">                context.response().headers().remove(&quot;Access-Control-Allow-Origin&quot;);</span>
-<span class="nc" id="L351">                return context.sendResponse();</span>
+<span class="nc" id="L356">                context.response().headers().remove(&quot;Access-Control-Allow-Origin&quot;);</span>
+<span class="nc" id="L357">                return context.sendResponse();</span>
             }
 
         });
 
-<span class="nc" id="L356">        proxyServer.requestHandler(req -&gt; {</span>
-<span class="nc" id="L357">            applyGlobalHeaders(req.response());</span>
-<span class="nc" id="L358">            proxyRouter.handle(req);</span>
-<span class="nc" id="L359">        });</span>
-<span class="nc" id="L360">        proxyServer.listen(9393);</span>
+        proxyServer.requestHandler(req -&gt; {
+            applyGlobalHeaders(req.response());
+            proxyRouter.handle(req);
+        });
+        proxyServer.listen(9393);
 
-<span class="nc" id="L362">        proxyRouter.route(&quot;/api/*&quot;).handler(ProxyHandler.create(grlcProxy));</span>
-<span class="nc" id="L363">        proxyRouter.route(&quot;/static/*&quot;).handler(ProxyHandler.create(grlcProxy));</span>
-
-<span class="nc" id="L365">        vertx.createHttpServer().requestHandler(req -&gt; {</span>
-            try {
-<span class="nc" id="L367">                final StringBuilder payload = new StringBuilder();</span>
-<span class="nc" id="L368">                req.handler(data -&gt; payload.append(data.toString(&quot;UTF-8&quot;)));</span>
-<span class="nc" id="L369">                req.endHandler(handler -&gt; {</span>
-<span class="nc" id="L370">                    final String dataString = payload.toString();</span>
-                    try {
-<span class="nc" id="L372">                        Nanopub np = new NanopubImpl(dataString, RDFFormat.TRIG);</span>
-<span class="nc" id="L373">                        NanopubLoader.load(np, -1);</span>
-<span class="nc" id="L374">                    } catch (MalformedNanopubException ex) {</span>
-<span class="nc" id="L375">                        req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)</span>
-<span class="nc" id="L376">                                .setStatusMessage(Arrays.toString(ex.getStackTrace()))</span>
-<span class="nc" id="L377">                                .end();</span>
-<span class="nc" id="L378">                        ex.printStackTrace();</span>
-<span class="nc" id="L379">                        return;</span>
-<span class="nc" id="L380">                    }</span>
-<span class="nc" id="L381">                    req.response()</span>
-<span class="nc" id="L382">                            .setStatusCode(HttpStatus.SC_OK)</span>
-<span class="nc" id="L383">                            .end();</span>
-<span class="nc" id="L384">                });</span>
-<span class="nc" id="L385">            } catch (Exception ex) {</span>
-<span class="nc" id="L386">                req.response().setStatusCode(HttpStatus.SC_BAD_REQUEST)</span>
-<span class="nc" id="L387">                        .setStatusMessage(Arrays.toString(ex.getStackTrace()))</span>
-<span class="nc" id="L388">                        .end();</span>
-<span class="nc" id="L389">            }</span>
-<span class="nc" id="L390">        }).listen(9300).onComplete(http -&gt; {</span>
-<span class="nc bnc" id="L391" title="All 2 branches missed.">            if (http.succeeded()) {</span>
-<span class="nc" id="L392">                server2Started = true;</span>
-<span class="nc bnc" id="L393" title="All 2 branches missed.">                if (allServersStarted()) startPromise.complete();</span>
-<span class="nc" id="L394">                System.out.println(&quot;HTTP server started on port 9300&quot;);</span>
-            } else {
-<span class="nc" id="L396">                startPromise.fail(http.cause());</span>
-            }
-<span class="nc" id="L398">        });</span>
+        proxyRouter.route(&quot;/api/*&quot;).handler(ProxyHandler.create(grlcProxy));
+        proxyRouter.route(&quot;/static/*&quot;).handler(ProxyHandler.create(grlcProxy));
 
         // Periodic metrics update
-<span class="nc" id="L401">        vertx.setPeriodic(1000, id -&gt; collector.updateMetrics());</span>
+        vertx.setPeriodic(1000, id -&gt; collector.updateMetrics());
 
 
-<span class="nc" id="L404">        new Thread(() -&gt; {</span>
+        new Thread(() -&gt; {
             try {
-<span class="nc" id="L406">                var status = StatusController.get().initialize();</span>
-<span class="nc" id="L407">                System.err.println(&quot;Current state: &quot; + status.state + &quot;, last committed counter: &quot; + status.loadCounter);</span>
-<span class="nc bnc" id="L408" title="All 4 branches missed.">                if (status.state == StatusController.State.LAUNCHING || status.state == StatusController.State.LOADING_INITIAL) {</span>
+                var status = StatusController.get().initialize();
+                System.err.println(&quot;Current state: &quot; + status.state + &quot;, last committed counter: &quot; + status.loadCounter);
+                if (status.state == StatusController.State.LAUNCHING || status.state == StatusController.State.LOADING_INITIAL) {
                     // Do the initial nanopublication loading
-<span class="nc" id="L410">                    StatusController.get().setLoadingInitial(status.loadCounter);</span>
+                    StatusController.get().setLoadingInitial(status.loadCounter);
                     // Fall back to local nanopub loading if the local files are present
-<span class="nc bnc" id="L412" title="All 2 branches missed.">                    if (!LocalNanopubLoader.init()) {</span>
-<span class="nc" id="L413">                        JellyNanopubLoader.loadInitial(status.loadCounter);</span>
+                    if (!LocalNanopubLoader.init()) {
+                        JellyNanopubLoader.loadInitial(status.loadCounter);
                     } else {
-<span class="nc" id="L415">                        System.err.println(&quot;Local nanopublication loading finished&quot;);</span>
+                        System.err.println(&quot;Local nanopublication loading finished&quot;);
                     }
-<span class="nc" id="L417">                    StatusController.get().setReady();</span>
+                    StatusController.get().setReady();
                 } else {
-<span class="nc" id="L419">                    System.err.println(&quot;Initial load is already done&quot;);</span>
-<span class="nc" id="L420">                    StatusController.get().setReady();</span>
+                    System.err.println(&quot;Initial load is already done&quot;);
+                    StatusController.get().setReady();
                 }
-<span class="nc" id="L422">            } catch (Exception ex) {</span>
-<span class="nc" id="L423">                ex.printStackTrace();</span>
-<span class="nc" id="L424">                System.err.println(&quot;Initial load failed, terminating...&quot;);</span>
-<span class="nc" id="L425">                Runtime.getRuntime().exit(1);</span>
-<span class="nc" id="L426">            }</span>
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                System.err.println(&quot;Initial load failed, terminating...&quot;);
+                Runtime.getRuntime().exit(1);
+            }
 
             // Start periodic nanopub loading
-<span class="nc" id="L429">            System.err.println(&quot;Starting periodic nanopub loading...&quot;);</span>
-<span class="nc" id="L430">            var executor = Executors.newSingleThreadScheduledExecutor();</span>
-<span class="nc" id="L431">            executor.scheduleWithFixedDelay(</span>
+            System.err.println(&quot;Starting periodic nanopub loading...&quot;);
+            var executor = Executors.newSingleThreadScheduledExecutor();
+            executor.scheduleWithFixedDelay(
                     JellyNanopubLoader::loadUpdates,
                     JellyNanopubLoader.UPDATES_POLL_INTERVAL,
                     JellyNanopubLoader.UPDATES_POLL_INTERVAL,
                     TimeUnit.MILLISECONDS
             );
-<span class="nc" id="L437">        }).start();</span>
+        }).start();
 
-<span class="nc" id="L439">        Runtime.getRuntime().addShutdownHook(new Thread(() -&gt; {</span>
+        Runtime.getRuntime().addShutdownHook(new Thread(() -&gt; {
             try {
-<span class="nc" id="L441">                System.err.println(&quot;Gracefully shutting down...&quot;);</span>
-<span class="nc" id="L442">                TripleStore.get().shutdownRepositories();</span>
-<span class="nc" id="L443">                vertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);</span>
-<span class="nc" id="L444">                System.err.println(&quot;Graceful shutdown completed&quot;);</span>
-<span class="nc" id="L445">            } catch (Exception ex) {</span>
-<span class="nc" id="L446">                System.err.println(&quot;Graceful shutdown failed&quot;);</span>
-<span class="nc" id="L447">                ex.printStackTrace();</span>
-<span class="nc" id="L448">            }</span>
-<span class="nc" id="L449">        }));</span>
-<span class="nc" id="L450">    }</span>
+                System.err.println(&quot;Gracefully shutting down...&quot;);
+                TripleStore.get().shutdownRepositories();
+                vertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+                System.err.println(&quot;Graceful shutdown completed&quot;);
+            } catch (Exception ex) {
+                System.err.println(&quot;Graceful shutdown failed&quot;);
+                ex.printStackTrace();
+            }
+        }));
+    }
 
     private String getResourceAsString(String file) {
-<span class="nc" id="L453">        InputStream is = getClass().getClassLoader().getResourceAsStream(&quot;com/knowledgepixels/query/&quot; + file);</span>
-<span class="nc" id="L454">        try (Scanner s = new Scanner(is).useDelimiter(&quot;\\A&quot;)) {</span>
-<span class="nc bnc" id="L455" title="All 2 branches missed.">            String fileContent = s.hasNext() ? s.next() : &quot;&quot;;</span>
-<span class="nc" id="L456">            return fileContent;</span>
+        InputStream is = getClass().getClassLoader().getResourceAsStream(&quot;com/knowledgepixels/query/&quot; + file);
+        try (Scanner s = new Scanner(is).useDelimiter(&quot;\\A&quot;)) {
+            String fileContent = s.hasNext() ? s.next() : &quot;&quot;;
+            return fileContent;
         }
     }
 
     private static void handleRedirect(RoutingContext req, String path) {
-<span class="nc" id="L461">        String queryString = &quot;&quot;;</span>
-<span class="nc bnc" id="L462" title="All 2 branches missed.">        if (!req.queryParam(&quot;query&quot;).isEmpty())</span>
-<span class="nc" id="L463">            queryString = &quot;?query=&quot; + URLEncoder.encode(req.queryParam(&quot;query&quot;).get(0), Charsets.UTF_8);</span>
-<span class="nc bnc" id="L464" title="All 2 branches missed.">        if (req.queryParam(&quot;for-type&quot;).size() == 1) {</span>
-<span class="nc" id="L465">            String type = req.queryParam(&quot;for-type&quot;).get(0);</span>
-<span class="nc" id="L466">            req.response().putHeader(&quot;location&quot;, path + &quot;/type/&quot; + Utils.createHash(type) + queryString);</span>
-<span class="nc" id="L467">            req.response().setStatusCode(301).end();</span>
-<span class="nc bnc" id="L468" title="All 2 branches missed.">        } else if (req.queryParam(&quot;for-pubkey&quot;).size() == 1) {</span>
-<span class="nc" id="L469">            String type = req.queryParam(&quot;for-pubkey&quot;).get(0);</span>
-<span class="nc" id="L470">            req.response().putHeader(&quot;location&quot;, path + &quot;/pubkey/&quot; + Utils.createHash(type) + queryString);</span>
-<span class="nc" id="L471">            req.response().setStatusCode(301).end();</span>
-<span class="nc bnc" id="L472" title="All 2 branches missed.">        } else if (req.queryParam(&quot;for-user&quot;).size() == 1) {</span>
-<span class="nc" id="L473">            String type = req.queryParam(&quot;for-user&quot;).get(0);</span>
-<span class="nc" id="L474">            req.response().putHeader(&quot;location&quot;, path + &quot;/user/&quot; + Utils.createHash(type) + queryString);</span>
-<span class="nc" id="L475">            req.response().setStatusCode(301).end();</span>
+        String queryString = &quot;&quot;;
+        if (!req.queryParam(&quot;query&quot;).isEmpty())
+            queryString = &quot;?query=&quot; + URLEncoder.encode(req.queryParam(&quot;query&quot;).get(0), Charsets.UTF_8);
+        if (req.queryParam(&quot;for-type&quot;).size() == 1) {
+            String type = req.queryParam(&quot;for-type&quot;).get(0);
+            req.response().putHeader(&quot;location&quot;, path + &quot;/type/&quot; + Utils.createHash(type) + queryString);
+            req.response().setStatusCode(301).end();
+        } else if (req.queryParam(&quot;for-pubkey&quot;).size() == 1) {
+            String type = req.queryParam(&quot;for-pubkey&quot;).get(0);
+            req.response().putHeader(&quot;location&quot;, path + &quot;/pubkey/&quot; + Utils.createHash(type) + queryString);
+            req.response().setStatusCode(301).end();
+        } else if (req.queryParam(&quot;for-user&quot;).size() == 1) {
+            String type = req.queryParam(&quot;for-user&quot;).get(0);
+            req.response().putHeader(&quot;location&quot;, path + &quot;/user/&quot; + Utils.createHash(type) + queryString);
+            req.response().setStatusCode(301).end();
         }
-<span class="nc" id="L477">    }</span>
+    }
 
     /**
      * Apply headers to the response that should be present for all requests.
@@ -482,7 +453,7 @@ import java.util.concurrent.TimeUnit;
      * @param response The response to which the headers should be applied.
      */
     private static void applyGlobalHeaders(HttpServerResponse response) {
-<span class="nc" id="L485">        response.putHeader(&quot;Nanopub-Query-Status&quot;, StatusController.get().getState().state.toString());</span>
-<span class="nc" id="L486">    }</span>
+        response.putHeader(&quot;Nanopub-Query-Status&quot;, StatusController.get().getState().state.toString());
+    }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

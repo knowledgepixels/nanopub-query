@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Utils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Nanopub Query</a> &gt; <a href="index.source.html" class="el_package">com.knowledgepixels.query</a> &gt; <span class="el_source">Utils.java</span></div><h1>Utils.java</h1><pre class="source lang-java linenums">package com.knowledgepixels.query;
 
-import com.google.common.hash.Hashing;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.client.config.CookieSpecs;
+import org.apache.http.client.config.RequestConfig;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -13,11 +20,7 @@ import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import com.google.common.hash.Hashing;
 
 /**
  * Utils class for Nanopub Registry.
@@ -27,17 +30,17 @@ public class Utils {
     private Utils() {
     }  // no instances allowed
 
-<span class="fc" id="L30">    private static final ValueFactory vf = SimpleValueFactory.getInstance();</span>
+<span class="fc" id="L33">    private static final ValueFactory vf = SimpleValueFactory.getInstance();</span>
 
     /**
      * IRI for the predicate that indicates that a hash value is associated with an object.
      */
-<span class="fc" id="L35">    public static final IRI IS_HASH_OF = vf.createIRI(&quot;http://purl.org/nanopub/admin/isHashOf&quot;);</span>
+<span class="fc" id="L38">    public static final IRI IS_HASH_OF = vf.createIRI(&quot;http://purl.org/nanopub/admin/isHashOf&quot;);</span>
 
     /**
      * Prefix for the hash values stored in the admin graph.
      */
-<span class="fc" id="L40">    public static final IRI HASH_PREFIX = vf.createIRI(&quot;http://purl.org/nanopub/admin/hash/&quot;);</span>
+<span class="fc" id="L43">    public static final IRI HASH_PREFIX = vf.createIRI(&quot;http://purl.org/nanopub/admin/hash/&quot;);</span>
 
     private static Map&lt;String, Value&gt; hashToObjMap;
 
@@ -47,23 +50,23 @@ public class Utils {
      * @return Map from hashes to their original objects
      */
     static Map&lt;String, Value&gt; getHashToObjectMap() {
-<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (hashToObjMap == null) {</span>
-<span class="fc" id="L51">            hashToObjMap = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L52">            try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {</span>
-<span class="fc" id="L53">                TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph ?g { ?s ?p ?o } }&quot;);</span>
-<span class="fc" id="L54">                query.setBinding(&quot;g&quot;, NanopubLoader.ADMIN_GRAPH);</span>
-<span class="fc" id="L55">                query.setBinding(&quot;p&quot;, IS_HASH_OF);</span>
-<span class="fc" id="L56">                try (TupleQueryResult r = query.evaluate()) {</span>
-<span class="fc bfc" id="L57" title="All 2 branches covered.">                    while (r.hasNext()) {</span>
-<span class="fc" id="L58">                        BindingSet b = r.next();</span>
-<span class="fc" id="L59">                        String hash = b.getBinding(&quot;s&quot;).getValue().stringValue();</span>
-<span class="fc" id="L60">                        hash = StringUtils.replace(hash, HASH_PREFIX.toString(), &quot;&quot;);</span>
-<span class="fc" id="L61">                        hashToObjMap.put(hash, b.getBinding(&quot;o&quot;).getValue());</span>
-<span class="fc" id="L62">                    }</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (hashToObjMap == null) {</span>
+<span class="fc" id="L54">            hashToObjMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L55">            try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {</span>
+<span class="fc" id="L56">                TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph ?g { ?s ?p ?o } }&quot;);</span>
+<span class="fc" id="L57">                query.setBinding(&quot;g&quot;, NanopubLoader.ADMIN_GRAPH);</span>
+<span class="fc" id="L58">                query.setBinding(&quot;p&quot;, IS_HASH_OF);</span>
+<span class="fc" id="L59">                try (TupleQueryResult r = query.evaluate()) {</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">                    while (r.hasNext()) {</span>
+<span class="fc" id="L61">                        BindingSet b = r.next();</span>
+<span class="fc" id="L62">                        String hash = b.getBinding(&quot;s&quot;).getValue().stringValue();</span>
+<span class="fc" id="L63">                        hash = StringUtils.replace(hash, HASH_PREFIX.toString(), &quot;&quot;);</span>
+<span class="fc" id="L64">                        hashToObjMap.put(hash, b.getBinding(&quot;o&quot;).getValue());</span>
+<span class="fc" id="L65">                    }</span>
                 }
             }
         }
-<span class="fc" id="L66">        return hashToObjMap;</span>
+<span class="fc" id="L69">        return hashToObjMap;</span>
     }
 
     /**
@@ -73,7 +76,7 @@ public class Utils {
      * @return The original object
      */
     public static Value getObjectForHash(String hash) {
-<span class="fc" id="L76">        return getHashToObjectMap().get(hash);</span>
+<span class="fc" id="L79">        return getHashToObjectMap().get(hash);</span>
     }
 
     /**
@@ -83,16 +86,16 @@ public class Utils {
      * @return hash value
      */
     public static String createHash(Object obj) {
-<span class="fc" id="L86">        String hash = Hashing.sha256().hashString(obj.toString(), StandardCharsets.UTF_8).toString();</span>
+<span class="fc" id="L89">        String hash = Hashing.sha256().hashString(obj.toString(), StandardCharsets.UTF_8).toString();</span>
 
-<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (!getHashToObjectMap().containsKey(hash)) {</span>
-<span class="fc" id="L89">            Value objV = getValue(obj);</span>
-<span class="fc" id="L90">            try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {</span>
-<span class="fc" id="L91">                conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (!getHashToObjectMap().containsKey(hash)) {</span>
+<span class="fc" id="L92">            Value objV = getValue(obj);</span>
+<span class="fc" id="L93">            try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {</span>
+<span class="fc" id="L94">                conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));</span>
             }
-<span class="fc" id="L93">            getHashToObjectMap().put(hash, objV);</span>
+<span class="fc" id="L96">            getHashToObjectMap().put(hash, objV);</span>
         }
-<span class="fc" id="L95">        return hash;</span>
+<span class="fc" id="L98">        return hash;</span>
     }
 
     /**
@@ -102,10 +105,10 @@ public class Utils {
      * @return A Value object with the string content of the input object
      */
     static Value getValue(Object obj) {
-<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (obj instanceof Value) {</span>
-<span class="fc" id="L106">            return (Value) obj;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (obj instanceof Value) {</span>
+<span class="fc" id="L109">            return (Value) obj;</span>
         } else {
-<span class="fc" id="L108">            return vf.createLiteral(obj.toString());</span>
+<span class="fc" id="L111">            return vf.createLiteral(obj.toString());</span>
         }
     }
 
@@ -116,7 +119,7 @@ public class Utils {
      * @return Short &quot;name&quot;
      */
     public static String getShortPubkeyName(String pubkey) {
-<span class="fc" id="L119">        return pubkey.replaceFirst(&quot;^(.).{39}(.{5}).*$&quot;, &quot;$1..$2..&quot;);</span>
+<span class="fc" id="L122">        return pubkey.replaceFirst(&quot;^(.).{39}(.{5}).*$&quot;, &quot;$1..$2..&quot;);</span>
     }
 
     /**
@@ -129,11 +132,11 @@ public class Utils {
      * @return the first object to match the pattern
      */
     public static Value getObjectForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
-<span class="fc" id="L132">        TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + graph.stringValue() + &quot;&gt; { &lt;&quot; + subj.stringValue() + &quot;&gt; &lt;&quot; + pred.stringValue() + &quot;&gt; ?o } }&quot;).evaluate();</span>
-<span class="fc" id="L133">        try (r) {</span>
-<span class="fc bfc" id="L134" title="All 2 branches covered.">            if (!r.hasNext()) return null;</span>
-<span class="fc" id="L135">            return r.next().getBinding(&quot;o&quot;).getValue();</span>
-<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L135">        TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + graph.stringValue() + &quot;&gt; { &lt;&quot; + subj.stringValue() + &quot;&gt; &lt;&quot; + pred.stringValue() + &quot;&gt; ?o } }&quot;).evaluate();</span>
+<span class="fc" id="L136">        try (r) {</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (!r.hasNext()) return null;</span>
+<span class="fc" id="L138">            return r.next().getBinding(&quot;o&quot;).getValue();</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        }</span>
     }
 
     /**
@@ -146,13 +149,13 @@ public class Utils {
      * @return a list of all objects matching the pattern
      */
     public static List&lt;Value&gt; getObjectsForPattern(RepositoryConnection conn, IRI graph, IRI subj, IRI pred) {
-<span class="fc" id="L149">        List&lt;Value&gt; values = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L150">        TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + graph.stringValue() + &quot;&gt; { &lt;&quot; + subj.stringValue() + &quot;&gt; &lt;&quot; + pred.stringValue() + &quot;&gt; ?o } }&quot;).evaluate();</span>
-<span class="fc" id="L151">        try (r) {</span>
-<span class="fc bfc" id="L152" title="All 2 branches covered.">            while (r.hasNext()) {</span>
-<span class="fc" id="L153">                values.add(r.next().getBinding(&quot;o&quot;).getValue());</span>
+<span class="fc" id="L152">        List&lt;Value&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L153">        TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, &quot;SELECT * { graph &lt;&quot; + graph.stringValue() + &quot;&gt; { &lt;&quot; + subj.stringValue() + &quot;&gt; &lt;&quot; + pred.stringValue() + &quot;&gt; ?o } }&quot;).evaluate();</span>
+<span class="fc" id="L154">        try (r) {</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            while (r.hasNext()) {</span>
+<span class="fc" id="L156">                values.add(r.next().getBinding(&quot;o&quot;).getValue());</span>
             }
-<span class="fc" id="L155">            return values;</span>
+<span class="fc" id="L158">            return values;</span>
         }
     }
 
@@ -165,14 +168,14 @@ public class Utils {
      */
     public static String getEnvString(String envVarName, String defaultValue) {
         try {
-<span class="fc" id="L168">            String s = EnvironmentUtils.getProcEnvironment().get(envVarName);</span>
-<span class="fc bfc" id="L169" title="All 4 branches covered.">            if (s != null &amp;&amp; !s.isEmpty()) {</span>
-<span class="fc" id="L170">                return s;</span>
+<span class="fc" id="L171">            String s = EnvironmentUtils.getProcEnvironment().get(envVarName);</span>
+<span class="fc bfc" id="L172" title="All 4 branches covered.">            if (s != null &amp;&amp; !s.isEmpty()) {</span>
+<span class="fc" id="L173">                return s;</span>
             }
-<span class="fc" id="L172">        } catch (Exception ex) {</span>
-<span class="fc" id="L173">            ex.printStackTrace();</span>
-<span class="fc" id="L174">        }</span>
-<span class="fc" id="L175">        return defaultValue;</span>
+<span class="fc" id="L175">        } catch (Exception ex) {</span>
+<span class="fc" id="L176">            ex.printStackTrace();</span>
+<span class="fc" id="L177">        }</span>
+<span class="fc" id="L178">        return defaultValue;</span>
     }
 
     /**
@@ -184,14 +187,14 @@ public class Utils {
      */
     public static int getEnvInt(String envVarName, int defaultValue) {
         try {
-<span class="fc" id="L187">            String s = getEnvString(envVarName, null);</span>
-<span class="fc bfc" id="L188" title="All 2 branches covered.">            if (s != null) {</span>
-<span class="fc" id="L189">                return Integer.parseInt(s);</span>
+<span class="fc" id="L190">            String s = getEnvString(envVarName, null);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (s != null) {</span>
+<span class="fc" id="L192">                return Integer.parseInt(s);</span>
             }
-<span class="fc" id="L191">        } catch (Exception ex) {</span>
-<span class="fc" id="L192">            ex.printStackTrace();</span>
-<span class="fc" id="L193">        }</span>
-<span class="fc" id="L194">        return defaultValue;</span>
+<span class="fc" id="L194">        } catch (Exception ex) {</span>
+<span class="fc" id="L195">            ex.printStackTrace();</span>
+<span class="fc" id="L196">        }</span>
+<span class="fc" id="L197">        return defaultValue;</span>
     }
 
     /**
@@ -216,6 +219,19 @@ public class Utils {
             #   optional { ?np rdfs:label ?label }
             # }
             } limit 10&quot;&quot;&quot;;
+
+    /**
+     * Get the HTTP request config for fetching nanopublications.
+     *
+     * @return the HTTP client
+     */
+    static RequestConfig getHttpRequestConfig() {
+<span class="fc" id="L229">        return RequestConfig.custom()</span>
+<span class="fc" id="L230">        		.setConnectTimeout(getEnvInt(&quot;NANOPUB_QUERY_FETCHING_CONNECT_TIMEOUT&quot;, 1000))</span>
+<span class="fc" id="L231">        		.setConnectionRequestTimeout(getEnvInt(&quot;NANOPUB_QUERY_FETCHING_CONNECTION_REQUEST_TIMEOUT&quot;, 100))</span>
+<span class="fc" id="L232">        		.setSocketTimeout(getEnvInt(&quot;NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT&quot;, 1000))</span>
+<span class="fc" id="L233">        		.setCookieSpec(CookieSpecs.IGNORE_COOKIES).build();</span>
+    }
 
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
