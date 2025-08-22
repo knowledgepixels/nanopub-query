@@ -129,6 +129,7 @@ public class TripleStore {
 
     private final CloseableHttpClient httpclient = HttpClients.createDefault();
 
+    @GeneratedFlagForDependentElements
     Repository getRepository(String name) {
         synchronized (this) {
             while (repositories.size() > 100) {
@@ -167,6 +168,7 @@ public class TripleStore {
      * @param name repository name
      * @return repository connection
      */
+    @GeneratedFlagForDependentElements
     public RepositoryConnection getRepoConnection(String name) {
         Repository repo = getRepository(name);
         if (repo == null) {
@@ -175,6 +177,7 @@ public class TripleStore {
         return repo.getConnection();
     }
 
+    @GeneratedFlagForDependentElements
     private void createRepo(String repoName) {
         if (!repoName.equals(ADMIN_REPO)) {
             getRepository(ADMIN_REPO);  // make sure admin repo is loaded first
@@ -258,6 +261,7 @@ public class TripleStore {
     /**
      * Sends shutdown signal to all repositories.
      */
+    @GeneratedFlagForDependentElements
     public void shutdownRepositories() {
         for (Repository repo : repositories.values()) {
             if (repo != null && repo.isInitialized()) {
@@ -271,6 +275,7 @@ public class TripleStore {
      *
      * @return repository connection to admin repository
      */
+    @GeneratedFlagForDependentElements
     public RepositoryConnection getAdminRepoConnection() {
         return get().getRepoConnection(ADMIN_REPO);
     }
@@ -308,6 +313,7 @@ public class TripleStore {
         return repositoryNames.keySet();
     }
 
+    @GeneratedFlagForDependentElements
     private void initNewRepo(String repoName) {
         String repoInitId = new Random().nextLong() + "";
         getRepository(repoName).init();

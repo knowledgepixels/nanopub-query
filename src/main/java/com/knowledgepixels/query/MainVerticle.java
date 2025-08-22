@@ -87,6 +87,7 @@ public class MainVerticle extends AbstractVerticle {
         rdf4jProxy.addInterceptor(new ProxyInterceptor() {
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
                 ProxyRequest request = context.request();
                 request.setURI(request.getURI().replaceAll("/", "_").replaceFirst("^_repo_", "/rdf4j-server/repositories/"));
@@ -99,6 +100,7 @@ public class MainVerticle extends AbstractVerticle {
             }
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future<Void> handleProxyResponse(ProxyContext context) {
                 ProxyResponse resp = context.response();
                 resp.putHeader("Access-Control-Allow-Origin", "*");
@@ -327,6 +329,7 @@ public class MainVerticle extends AbstractVerticle {
         grlcProxy.addInterceptor(new ProxyInterceptor() {
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
                 final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
                 if (context.request().getURI().matches(apiPattern)) {
@@ -351,6 +354,7 @@ public class MainVerticle extends AbstractVerticle {
             }
 
             @Override
+            @GeneratedFlagForDependentElements
             public Future<Void> handleProxyResponse(ProxyContext context) {
                 // To avoid double entries:
                 context.response().headers().remove("Access-Control-Allow-Origin");
