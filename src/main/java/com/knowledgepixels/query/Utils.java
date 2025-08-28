@@ -1,11 +1,6 @@
 package com.knowledgepixels.query;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
+import com.google.common.hash.Hashing;
 import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.config.CookieSpecs;
@@ -19,8 +14,13 @@ import org.eclipse.rdf4j.query.QueryLanguage;
 import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.nanopub.vocabulary.NPA;
 
-import com.google.common.hash.Hashing;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Utils class for Nanopub Registry.
@@ -31,16 +31,6 @@ public class Utils {
     }  // no instances allowed
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
-
-    /**
-     * IRI for the predicate that indicates that a hash value is associated with an object.
-     */
-    public static final IRI IS_HASH_OF = vf.createIRI("http://purl.org/nanopub/admin/isHashOf");
-
-    /**
-     * Prefix for the hash values stored in the admin graph.
-     */
-    public static final IRI HASH_PREFIX = vf.createIRI("http://purl.org/nanopub/admin/hash/");
 
     private static Map<String, Value> hashToObjMap;
 
@@ -54,13 +44,13 @@ public class Utils {
             hashToObjMap = new HashMap<>();
             try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {
                 TupleQuery query = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }");
-                query.setBinding("g", NanopubLoader.ADMIN_GRAPH);
-                query.setBinding("p", IS_HASH_OF);
+                query.setBinding("g", NPA.GRAPH);
+                query.setBinding("p", NPA.IS_HASH_OF);
                 try (TupleQueryResult r = query.evaluate()) {
                     while (r.hasNext()) {
                         BindingSet b = r.next();
                         String hash = b.getBinding("s").getValue().stringValue();
-                        hash = StringUtils.replace(hash, HASH_PREFIX.toString(), "");
+                        hash = StringUtils.replace(hash, NPA.HASH.toString(), "");
                         hashToObjMap.put(hash, b.getBinding("o").getValue());
                     }
                 }
@@ -91,7 +81,7 @@ public class Utils {
         if (!getHashToObjectMap().containsKey(hash)) {
             Value objV = getValue(obj);
             try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {
-                conn.add(vf.createStatement(vf.createIRI(HASH_PREFIX + hash), IS_HASH_OF, objV, NanopubLoader.ADMIN_GRAPH));
+                conn.add(vf.createStatement(vf.createIRI(NPA.HASH + hash), NPA.IS_HASH_OF, objV, NPA.GRAPH));
             }
             getHashToObjectMap().put(hash, objV);
         }
@@ -227,10 +217,10 @@ public class Utils {
      */
     static RequestConfig getHttpRequestConfig() {
         return RequestConfig.custom()
-        		.setConnectTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECT_TIMEOUT", 1000))
-        		.setConnectionRequestTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECTION_REQUEST_TIMEOUT", 100))
-        		.setSocketTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT", 1000))
-        		.setCookieSpec(CookieSpecs.IGNORE_COOKIES).build();
+                .setConnectTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECT_TIMEOUT", 1000))
+                .setConnectionRequestTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECTION_REQUEST_TIMEOUT", 100))
+                .setSocketTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT", 1000))
+                .setCookieSpec(CookieSpecs.IGNORE_COOKIES).build();
     }
 
 }

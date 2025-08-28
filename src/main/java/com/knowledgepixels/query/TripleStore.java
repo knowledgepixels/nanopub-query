@@ -9,13 +9,13 @@ import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
-import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
 import org.nanopub.NanopubUtils;
+import org.nanopub.vocabulary.NPA;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -34,66 +34,6 @@ public class TripleStore {
     public static final String ADMIN_REPO = "admin";
 
     private static ValueFactory vf = SimpleValueFactory.getInstance();
-
-    /**
-     * IRI for the repo init ID.
-     */
-    public static final IRI HAS_REPO_INIT_ID = vf.createIRI("http://purl.org/nanopub/admin/hasRepoInitId");
-
-    /**
-     * IRI for the nanopub count.
-     */
-    public static final IRI HAS_NANOPUB_COUNT = vf.createIRI("http://purl.org/nanopub/admin/hasNanopubCount");
-
-    /**
-     * IRI for the nanopub checksum.
-     */
-    public static final IRI HAS_NANOPUB_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasNanopubChecksum");
-
-    /**
-     * IRI for the nanopub load number.
-     */
-    public static final IRI HAS_LOAD_NUMBER = vf.createIRI("http://purl.org/nanopub/admin/hasLoadNumber");
-
-    /**
-     * IRI for the nanopub load checksum.
-     */
-    public static final IRI HAS_LOAD_CHECKSUM = vf.createIRI("http://purl.org/nanopub/admin/hasLoadChecksum");
-
-    /**
-     * IRI for the nanopub load timestamp.
-     */
-    public static final IRI HAS_LOAD_TIMESTAMP = vf.createIRI("http://purl.org/nanopub/admin/hasLoadTimestamp");
-
-    /**
-     * IRI for the nanopub load status.
-     */
-    public static final IRI HAS_STATUS = vf.createIRI("http://purl.org/nanopub/admin/hasStatus");
-
-    /**
-     * IRI for the nanopub registry load counter.
-     */
-    public static final IRI HAS_REGISTRY_LOAD_COUNTER = vf.createIRI("http://purl.org/nanopub/admin/hasRegistryLoadCounter");
-
-    /**
-     * IRI for the nanopub repository ID.
-     */
-    public static final IRI THIS_REPO_ID = vf.createIRI("http://purl.org/nanopub/admin/thisRepo");
-
-    /**
-     * IRI for the nanopub coverage item.
-     */
-    public static final IRI HAS_COVERAGE_ITEM = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageItem");
-
-    /**
-     * IRI for the nanopub coverage hash.
-     */
-    public static final IRI HAS_COVERAGE_HASH = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageHash");
-
-    /**
-     * IRI for the nanopub coverage filter.
-     */
-    public static final IRI HAS_COVERAGE_FILTER = vf.createIRI("http://purl.org/nanopub/admin/hasCoverageFilter");
 
     private final Map<String, Repository> repositories = new LinkedHashMap<>();
 
@@ -322,14 +262,14 @@ public class TripleStore {
             try (conn) {
                 // Full isolation, just in case.
                 conn.begin(IsolationLevels.SERIALIZABLE);
-                conn.add(THIS_REPO_ID, HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NanopubLoader.ADMIN_GRAPH);
-                conn.add(THIS_REPO_ID, HAS_NANOPUB_COUNT, vf.createLiteral(0L), NanopubLoader.ADMIN_GRAPH);
-                conn.add(THIS_REPO_ID, HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NanopubLoader.ADMIN_GRAPH);
+                conn.add(NPA.THIS_REPO, NPA.HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NPA.GRAPH);
+                conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(0L), NPA.GRAPH);
+                conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NPA.GRAPH);
                 if (repoName.startsWith("pubkey_") || repoName.startsWith("type_")) {
                     String h = repoName.replaceFirst("^[^_]+_", "");
-                    conn.add(THIS_REPO_ID, HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NanopubLoader.ADMIN_GRAPH);
-                    conn.add(THIS_REPO_ID, HAS_COVERAGE_HASH, vf.createLiteral(h), NanopubLoader.ADMIN_GRAPH);
-                    conn.add(THIS_REPO_ID, HAS_COVERAGE_FILTER, vf.createLiteral("_" + repoName), NanopubLoader.ADMIN_GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_HASH, vf.createLiteral(h), NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_FILTER, vf.createLiteral("_" + repoName), NPA.GRAPH);
                 }
                 conn.commit();
             }
