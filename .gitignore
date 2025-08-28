@@ -1,5 +1,6 @@
-/.classpath
-/.settings
+.classpath
+.settings/
+.project
 /data
 /target
 /scratch
