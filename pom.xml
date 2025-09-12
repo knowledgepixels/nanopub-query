@@ -103,14 +103,14 @@
     <dependency>
       <groupId>org.nanopub</groupId>
       <artifactId>nanopub</artifactId>
-      <version>1.78</version>
+      <version>1.81</version>
     </dependency>
     <!-- Temporary: dependency on Jitpack for snapshot builds -->
-    <!--    <dependency>-->
-    <!--      <groupId>com.github.Nanopublication</groupId>-->
-    <!--      <artifactId>nanopub-java</artifactId>-->
-    <!--      <version>e4e430b3b5f09caa1c852e67a15a86bfc7b5a986</version>-->
-    <!--    </dependency>-->
+    <!-- <dependency>
+      <groupId>com.github.Nanopublication</groupId>
+      <artifactId>nanopub-java</artifactId>
+      <version>f41ec1b77b</version>
+    </dependency> -->
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-exec</artifactId>

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.nanopub.vocabulary.NPA;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -20,8 +21,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.knowledgepixels.query.Utils.HASH_PREFIX;
-import static com.knowledgepixels.query.Utils.IS_HASH_OF;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.*;
@@ -189,8 +188,8 @@ class UtilsTest {
             when(mockTripleStore.getAdminRepoConnection()).thenReturn(mockConnection);
 
             when(mockConnection.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }")).thenReturn(mockQuery);
-            mockQuery.setBinding("g", NanopubLoader.ADMIN_GRAPH);
-            mockQuery.setBinding("p", IS_HASH_OF);
+            mockQuery.setBinding("g", NPA.GRAPH);
+            mockQuery.setBinding("p", NPA.IS_HASH_OF);
 
             when(mockQuery.evaluate()).thenReturn(mockResult);
 
@@ -199,7 +198,7 @@ class UtilsTest {
             when(mockResult.next()).thenReturn(mockBindingSet);
 
             // Mock BindingSet values
-            Value mockSubject = Values.iri(HASH_PREFIX + UtilsTest.this.existingHash);
+            Value mockSubject = Values.iri(NPA.HASH + UtilsTest.this.existingHash);
 
             when(mockBindingSet.getBinding("s")).thenReturn(mock(Binding.class));
             when(mockBindingSet.getBinding("o")).thenReturn(mock(Binding.class));
@@ -231,8 +230,8 @@ class UtilsTest {
             when(mockTripleStore.getAdminRepoConnection()).thenReturn(mockConnection);
 
             when(mockConnection.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph ?g { ?s ?p ?o } }")).thenReturn(mockQuery);
-            mockQuery.setBinding("g", NanopubLoader.ADMIN_GRAPH);
-            mockQuery.setBinding("p", IS_HASH_OF);
+            mockQuery.setBinding("g", NPA.GRAPH);
+            mockQuery.setBinding("p", NPA.IS_HASH_OF);
 
             when(mockQuery.evaluate()).thenReturn(mockResult);
 
@@ -241,7 +240,7 @@ class UtilsTest {
             when(mockResult.next()).thenReturn(mockBindingSet);
 
             // Mock BindingSet values
-            Value mockSubject = Values.iri(HASH_PREFIX + UtilsTest.this.existingHash);
+            Value mockSubject = Values.iri(NPA.HASH + UtilsTest.this.existingHash);
 
             when(mockBindingSet.getBinding("s")).thenReturn(mock(Binding.class));
             when(mockBindingSet.getBinding("o")).thenReturn(mock(Binding.class));
@@ -299,8 +298,8 @@ class UtilsTest {
 
     @Test
     void getRequestConfig() {
-    	RequestConfig rc = Utils.getHttpRequestConfig();
-    	assert(rc != null);
+        RequestConfig rc = Utils.getHttpRequestConfig();
+        assert (rc != null);
     }
 
 }

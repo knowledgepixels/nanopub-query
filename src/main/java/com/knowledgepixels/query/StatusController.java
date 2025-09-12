@@ -3,6 +3,7 @@ package com.knowledgepixels.query;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.nanopub.vocabulary.NPA;
 
 import java.util.Objects;
 
@@ -112,18 +113,18 @@ public class StatusController {
             // Serializable, as the service state needs to be strictly consistent
             adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
             // Fetch the state from the DB
-            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, null, NanopubLoader.ADMIN_GRAPH)) {
+            try (var statements = adminRepoConn.getStatements(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH)) {
                 if (!statements.hasNext()) {
-                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, stateAsLiteral(state), NanopubLoader.ADMIN_GRAPH);
+                    adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_STATUS, stateAsLiteral(state), NPA.GRAPH);
                 } else {
                     var stateStatement = statements.next();
                     state = State.valueOf(stateStatement.getObject().stringValue());
                 }
             }
             // Fetch the load counter from the DB
-            try (var statements = adminRepoConn.getStatements(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, null, NanopubLoader.ADMIN_GRAPH)) {
+            try (var statements = adminRepoConn.getStatements(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH)) {
                 if (!statements.hasNext()) {
-                    adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(-1L), NanopubLoader.ADMIN_GRAPH);
+                    adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(-1L), NPA.GRAPH);
                 } else {
                     var counterStatement = statements.next();
                     var stringVal = counterStatement.getObject().stringValue();
@@ -206,10 +207,10 @@ public class StatusController {
             try {
                 // Serializable, as the service state needs to be strictly consistent
                 adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
-                adminRepoConn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, null, NanopubLoader.ADMIN_GRAPH);
-                adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_STATUS, stateAsLiteral(newState), NanopubLoader.ADMIN_GRAPH);
-                adminRepoConn.remove(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, null, NanopubLoader.ADMIN_GRAPH);
-                adminRepoConn.add(TripleStore.THIS_REPO_ID, TripleStore.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(loadCounter), NanopubLoader.ADMIN_GRAPH);
+                adminRepoConn.remove(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH);
+                adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_STATUS, stateAsLiteral(newState), NPA.GRAPH);
+                adminRepoConn.remove(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH);
+                adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(loadCounter), NPA.GRAPH);
                 adminRepoConn.commit();
                 state = newState;
                 lastCommittedCounter = loadCounter;
