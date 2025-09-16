@@ -113,6 +113,7 @@ public class GrlcSpec {
         }
 
         final Set<String> placeholders = new HashSet<>();
+        // TODO Make sure we properly handle MalformedQueryException thrown here:
         ParsedQuery query = new SPARQLParser().parseQuery(queryContent, null);
         query.getTupleExpr().visitChildren(new AbstractSimpleQueryModelVisitor<>() {
 
