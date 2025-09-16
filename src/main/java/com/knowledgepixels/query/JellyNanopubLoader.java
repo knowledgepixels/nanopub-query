@@ -11,6 +11,8 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 import org.nanopub.NanopubUtils;
 import org.nanopub.jelly.NanopubStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
@@ -24,6 +26,8 @@ public class JellyNanopubLoader {
     private static final int MAX_RETRIES_METADATA = 10;
     private static final int RETRY_DELAY_METADATA = 3000;
     private static final int RETRY_DELAY_JELLY = 5000;
+
+    private static final Logger log = LoggerFactory.getLogger(JellyNanopubLoader.class);
 
     /**
      * The interval in milliseconds at which the updates loader should poll for new nanopubs.
@@ -55,15 +59,15 @@ public class JellyNanopubLoader {
      */
     public static void loadInitial(long afterCounter) {
         long targetCounter = fetchRegistryLoadCounter();
-        System.err.println("Fetched Registry load counter: " + targetCounter);
+        log.info("Fetched Registry load counter: {}", targetCounter);
         lastCommittedCounter = afterCounter;
         while (lastCommittedCounter < targetCounter) {
             try {
                 loadBatch(lastCommittedCounter, LoadingType.INITIAL);
-                System.err.println("Initial load: loaded batch up to counter " + lastCommittedCounter);
+                log.info("Initial load: loaded batch up to counter {}", lastCommittedCounter);
             } catch (Exception e) {
-                System.err.println("Failed to load batch starting from counter " + lastCommittedCounter);
-                System.err.println(e.getMessage());
+                log.info("Failed to load batch starting from counter {}", lastCommittedCounter);
+                log.info("Failure reason: ", e);
                 try {
                     Thread.sleep(RETRY_DELAY_JELLY);
                 } catch (InterruptedException e2) {
@@ -71,7 +75,7 @@ public class JellyNanopubLoader {
                 }
             }
         }
-        System.err.println("Initial load complete.");
+        log.info("Initial load complete.");
     }
 
     /**
@@ -87,27 +91,27 @@ public class JellyNanopubLoader {
             long targetCounter = fetchRegistryLoadCounter();
             if (lastCommittedCounter >= targetCounter) {
                 // Keep quiet so as not to spam the log every second
-                // System.err.println("No updates to load.");
+                // log.info("No updates to load.");
                 StatusController.get().setReady();
                 return;
             }
             loadBatch(lastCommittedCounter, LoadingType.UPDATE);
-            System.err.println("Loaded " + (lastCommittedCounter - status.loadCounter) +
-                    " update(s). Counter: " + lastCommittedCounter + ", target was: " + targetCounter);
+            log.info("Loaded {} update(s). Counter: {}, target was: {}",
+                    lastCommittedCounter - status.loadCounter, lastCommittedCounter, targetCounter);
             if (lastCommittedCounter < targetCounter) {
-                System.err.println("Warning: expected to load nanopubs up to (inclusive) counter " +
+                log.info("Warning: expected to load nanopubs up to (inclusive) counter " +
                         targetCounter + " based on the counter reported in Registry's headers, " +
-                        "but loaded only up to " + lastCommittedCounter + ".");
+                        "but loaded only up to {}.", lastCommittedCounter);
             }
         } catch (Exception e) {
-            System.err.println("Failed to load updates. Current counter: " + lastCommittedCounter);
-            System.err.println(e.getMessage());
+            log.info("Failed to load updates. Current counter: {}", lastCommittedCounter);
+            log.info("Failure Reason: ", e);
         } finally {
             try {
                 StatusController.get().setReady();
             } catch (Exception e) {
-                System.err.println("Update loader: failed to set status to READY.");
-                System.err.println(e.getMessage());
+                log.info("Update loader: failed to set status to READY.");
+                log.info("Failure Reason: ", e);
             }
         }
     }
@@ -168,7 +172,7 @@ public class JellyNanopubLoader {
                 if (loaded.get() % 50 == 0) {
                     long currTime = System.currentTimeMillis();
                     double speed = 50 / ((currTime - checkpointTime.get()) / 1000.0);
-                    System.err.println("Loading speed: " + String.format("%.2f", speed) +
+                    log.info("Loading speed: " + String.format("%.2f", speed) +
                             " np/s. Counter: " + lastCommittedCounter);
                     checkpointTime.set(currTime);
                     checkpointCounter.set(lastCommittedCounter);
@@ -184,7 +188,7 @@ public class JellyNanopubLoader {
             try {
                 response.close();
             } catch (IOException e) {
-                System.err.println("Failed to close the Jelly stream response.");
+                log.info("Failed to close the Jelly stream response.");
             }
         }
     }
@@ -220,9 +224,9 @@ public class JellyNanopubLoader {
                 counter = fetchRegistryLoadCounterInner();
             } catch (Exception e) {
                 tries++;
-                System.err.println("Failed to fetch registry load counter, try " + tries +
-                        ". Retrying in " + RETRY_DELAY_METADATA + "ms...");
-                System.err.println(e.getMessage());
+                log.info("Failed to fetch registry load counter, try " + tries +
+                        ". Retrying in {}ms...", RETRY_DELAY_METADATA);
+                log.info("Failure Reason: ", e);
                 try {
                     Thread.sleep(RETRY_DELAY_METADATA);
                 } catch (InterruptedException e2) {

@@ -3,6 +3,8 @@ package com.knowledgepixels.query;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.MultiNanopubRdfHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -13,6 +15,8 @@ import java.io.IOException;
  * Local loader left here in case it's needed for testing or when the Jelly loader breaks.
  */
 public class LocalNanopubLoader {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalNanopubLoader.class);
 
     private LocalNanopubLoader() {
     }  // no instances allowed
@@ -37,28 +41,27 @@ public class LocalNanopubLoader {
     public static boolean init() {
         // FIXME should this be loadNanopubsFile.exists() || loadUrisFile.exists()?
         if (!(loadNanopubsFile.exists() || loadNanopubsFile.exists())) {
-            System.err.println("No local nanopub files for loading found. Moving on to loading " +
-                    "via Jelly...");
+            log.info("No local nanopub files for loading found. Moving on to loading via Jelly...");
             return false;
         }
-        System.err.println("Waiting " + WAIT_SECONDS + " seconds to make sure the triple store is up...");
+        log.info("Waiting {} seconds to make sure the triple store is up...", WAIT_SECONDS);
         try {
             for (int w = 0; w < WAIT_SECONDS; w++) {
-                System.err.println("Waited " + w + " seconds...");
+                log.info("Waited {} seconds...", w);
                 Thread.sleep(1000);
             }
         } catch (InterruptedException ex) {
-            ex.printStackTrace();
+            // ignore
         }
 
-        System.err.println("Loading the local list of nanopubs...");
+        log.info("Loading the local list of nanopubs...");
         load();
         return true;
     }
 
     static void load() {
         if (!loadUrisFile.exists()) {
-            System.err.println("No local nanopub URI file found.");
+            log.info("No local nanopub URI file found.");
         } else {
             try (BufferedReader reader = new BufferedReader(new FileReader(loadUrisFile))) {
                 String line = reader.readLine();
@@ -67,16 +70,16 @@ public class LocalNanopubLoader {
                     line = reader.readLine();
                 }
             } catch (IOException ex) {
-                ex.printStackTrace();
+                log.info("Loading nanopubs failed.", ex);
             }
         }
         if (!loadNanopubsFile.exists()) {
-            System.err.println("No local nanopub file found.");
+            log.info("No local nanopub file found.");
         } else {
             try {
                 MultiNanopubRdfHandler.process(RDFFormat.TRIG, loadNanopubsFile, np -> NanopubLoader.load(np, -1));
             } catch (IOException | MalformedNanopubException ex) {
-                ex.printStackTrace();
+                log.info("Loading nanopubs failed.", ex);
             }
         }
     }

@@ -39,6 +39,8 @@ import io.vertx.httpproxy.ProxyRequest;
 import io.vertx.httpproxy.ProxyResponse;
 import io.vertx.micrometer.PrometheusScrapingHandler;
 import io.vertx.micrometer.backends.BackendRegistries;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 // TODO merge this class with GrlcQuery of Nanodash and move to a library like nanopub-java
@@ -49,6 +51,8 @@ import io.vertx.micrometer.backends.BackendRegistries;
 public class MainVerticle extends AbstractVerticle {
 
     private static String css = null;
+
+    private static final Logger log = LoggerFactory.getLogger(MainVerticle.class);
 
     /**
      * Start the main verticle.
@@ -423,7 +427,7 @@ public class MainVerticle extends AbstractVerticle {
         new Thread(() -> {
             try {
                 var status = StatusController.get().initialize();
-                System.err.println("Current state: " + status.state + ", last committed counter: " + status.loadCounter);
+                log.info("Current state: {}, last committed counter: {}", status.state, status.loadCounter);
                 if (status.state == StatusController.State.LAUNCHING || status.state == StatusController.State.LOADING_INITIAL) {
                     // Do the initial nanopublication loading
                     StatusController.get().setLoadingInitial(status.loadCounter);
@@ -431,21 +435,20 @@ public class MainVerticle extends AbstractVerticle {
                     if (!LocalNanopubLoader.init()) {
                         JellyNanopubLoader.loadInitial(status.loadCounter);
                     } else {
-                        System.err.println("Local nanopublication loading finished");
+                        log.info("Local nanopublication loading finished");
                     }
                     StatusController.get().setReady();
                 } else {
-                    System.err.println("Initial load is already done");
+                    log.info("Initial load is already done");
                     StatusController.get().setReady();
                 }
             } catch (Exception ex) {
-                ex.printStackTrace();
-                System.err.println("Initial load failed, terminating...");
+                log.info("Initial load failed, terminating...", ex);
                 Runtime.getRuntime().exit(1);
             }
 
             // Start periodic nanopub loading
-            System.err.println("Starting periodic nanopub loading...");
+            log.info("Starting periodic nanopub loading...");
             var executor = Executors.newSingleThreadScheduledExecutor();
             executor.scheduleWithFixedDelay(
                     JellyNanopubLoader::loadUpdates,
@@ -457,13 +460,12 @@ public class MainVerticle extends AbstractVerticle {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
-                System.err.println("Gracefully shutting down...");
+                log.info("Gracefully shutting down...");
                 TripleStore.get().shutdownRepositories();
                 vertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
-                System.err.println("Graceful shutdown completed");
+                log.info("Graceful shutdown completed");
             } catch (Exception ex) {
-                System.err.println("Graceful shutdown failed");
-                ex.printStackTrace();
+                log.info("Graceful shutdown failed", ex);
             }
         }));
     }

@@ -16,6 +16,8 @@ import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
 import org.nanopub.NanopubUtils;
 import org.nanopub.vocabulary.NPA;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -35,6 +37,8 @@ public class TripleStore {
 
     private static ValueFactory vf = SimpleValueFactory.getInstance();
 
+    private static final Logger log = LoggerFactory.getLogger(TripleStore.class);
+
     private final Map<String, Repository> repositories = new LinkedHashMap<>();
 
     private String endpointBase = null;
@@ -52,7 +56,7 @@ public class TripleStore {
             try {
                 tripleStoreInstance = new TripleStore();
             } catch (IOException ex) {
-                ex.printStackTrace();
+                log.info("Could not init TripleStore. ", ex);
             }
         }
         return tripleStoreInstance;
@@ -61,7 +65,7 @@ public class TripleStore {
     private TripleStore() throws IOException {
         Map<String, String> env = EnvironmentUtils.getProcEnvironment();
         endpointBase = env.get("ENDPOINT_BASE");
-        System.err.println("Endpoint base: " + endpointBase);
+        log.info("Endpoint base: {}", endpointBase);
         endpointType = env.get("ENDPOINT_TYPE");
 
         getRepository("empty");  // Make sure empty repo exists
@@ -75,9 +79,9 @@ public class TripleStore {
             while (repositories.size() > 100) {
                 Entry<String, Repository> e = repositories.entrySet().iterator().next();
                 repositories.remove(e.getKey());
-                System.err.println("Shutting down repo: " + e.getKey());
+                log.info("Shutting down repo: {}", e.getKey());
                 e.getValue().shutDown();
-                System.err.println("Shutdown complete");
+                log.info("Shutdown complete");
             }
             if (repositories.containsKey(name)) {
                 // Move to the end of the list:
@@ -123,7 +127,7 @@ public class TripleStore {
             getRepository(ADMIN_REPO);  // make sure admin repo is loaded first
         }
         try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-            //System.err.println("Trying to creating repo " + name);
+            //log.info("Trying to creating repo " + name);
 
             // TODO new syntax somehow doesn't work for the Lucene case:
 
@@ -183,18 +187,19 @@ public class TripleStore {
             HttpResponse response = httpclient.execute(createRepoRequest);
             int statusCode = response.getStatusLine().getStatusCode();
             if (statusCode == 409) {
-                //System.err.println("Already exists.");
+                //log.info("Already exists.");
                 getRepository(repoName).init();
             } else if (statusCode >= 200 && statusCode < 300) {
-                //System.err.println("Successfully created.");
+                //log.info("Successfully created.");
                 initNewRepo(repoName);
             } else {
-                System.err.println("Status code: " + response.getStatusLine().getStatusCode());
-                System.err.println(response.getStatusLine().getReasonPhrase());
-                System.err.println("Response: " + new BasicResponseHandler().handleResponse(response));
+                log.info("Status code: {}", response.getStatusLine().getStatusCode());
+                log.info(response.getStatusLine().getReasonPhrase());
+                String handledResponse = new BasicResponseHandler().handleResponse(response);
+                log.info("Response: ", handledResponse);
             }
         } catch (IOException ex) {
-            ex.printStackTrace();
+            log.info("Could not create repo.", ex);
         }
     }
 
@@ -247,7 +252,7 @@ public class TripleStore {
                 lineCount = lineCount + 1;
             }
         } catch (IOException ex) {
-            ex.printStackTrace();
+            log.info("Could not get repository names.", ex);
             return null;
         }
         return repositoryNames.keySet();

@@ -14,7 +14,10 @@ import org.eclipse.rdf4j.query.QueryLanguage;
 import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.nanopub.extra.services.QueryCall;
 import org.nanopub.vocabulary.NPA;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -31,6 +34,8 @@ public class Utils {
     }  // no instances allowed
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
+
+    private static final Logger log = LoggerFactory.getLogger(Utils.class);
 
     private static Map<String, Value> hashToObjMap;
 
@@ -163,7 +168,7 @@ public class Utils {
                 return s;
             }
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.info("Could not get environment variable", ex);
         }
         return defaultValue;
     }
@@ -182,7 +187,7 @@ public class Utils {
                 return Integer.parseInt(s);
             }
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.info("Could not get environment variable", ex);
         }
         return defaultValue;
     }
