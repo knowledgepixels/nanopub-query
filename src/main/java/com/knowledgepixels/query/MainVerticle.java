@@ -40,6 +40,8 @@ import io.vertx.httpproxy.ProxyResponse;
 import io.vertx.micrometer.PrometheusScrapingHandler;
 import io.vertx.micrometer.backends.BackendRegistries;
 
+
+// TODO merge this class with GrlcQuery of Nanodash and move to a library like nanopub-java
 /**
  * Main verticle that coordinates the incoming HTTP requests.
  */
