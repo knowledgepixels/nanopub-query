@@ -63,6 +63,7 @@ class LocalNanopubLoaderTest {
         loadUrisFile.createNewFile();
 
         try (MockedStatic<LocalNanopubLoader> mockedLoader = mockStatic(LocalNanopubLoader.class, CALLS_REAL_METHODS)) {
+            mockedLoader.when(LocalNanopubLoader::getWaitSeconds).thenReturn(2);
             mockedLoader.when(LocalNanopubLoader::load).thenAnswer(invocation -> null);
             assertTrue(LocalNanopubLoader.init());
         }
