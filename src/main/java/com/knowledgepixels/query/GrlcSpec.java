@@ -24,6 +24,8 @@ import org.nanopub.extra.services.QueryAccess;
 
 import io.vertx.core.MultiMap;
 import net.trustyuri.TrustyUriUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class produces a page with the grlc specification. This is needed internally to tell grlc
@@ -32,6 +34,8 @@ import net.trustyuri.TrustyUriUtils;
 public class GrlcSpec {
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
+
+    private static final Logger log = LoggerFactory.getLogger(GrlcSpec.class);
 
     /**
      * IRI for relation to link a grlc query instance to its SPARQL template.
@@ -195,8 +199,8 @@ public class GrlcSpec {
     public String getExpandedQueryContent() {
         String expanded = queryContent;
         for (String ph : placeholdersList) {
-            System.err.println("ph: " + ph);
-            System.err.println("getParamName(ph): " + getParamName(ph));
+            log.info("ph: ", ph);
+            log.info("getParamName(ph): ", getParamName(ph));
             if (isMultiPlaceholder(ph)) {
                 // TODO multi placeholders need proper documentation
                 List<String> val = parameters.getAll(getParamName(ph));
@@ -219,7 +223,7 @@ public class GrlcSpec {
                 expanded = expanded.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + valueList + "}");
             } else {
                 String val = parameters.get(getParamName(ph));
-                System.err.println("val: " + val);
+                log.info("val: ", val);
                 if (!isOptionalPlaceholder(ph) && val == null) {
                     // TODO throw exception
                     return null;
@@ -232,7 +236,7 @@ public class GrlcSpec {
                 }
             }
         }
-        System.err.println("expanded: " + expanded);
+        log.info("expanded: ", expanded);
         return expanded;
     }
 

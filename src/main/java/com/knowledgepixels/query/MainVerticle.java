@@ -393,7 +393,7 @@ public class MainVerticle extends AbstractVerticle {
                     //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
 
                     req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
-                    System.err.println("Forwarding apix request to /rdf4j-server/repositories/" + grlcSpec.getRepoName());
+                    log.info("Forwarding apix request to /rdf4j-server/repositories/", grlcSpec.getRepoName());
                 }
                 return ProxyInterceptor.super.handleProxyRequest(context);
             }
@@ -401,7 +401,7 @@ public class MainVerticle extends AbstractVerticle {
             @Override
             @GeneratedFlagForDependentElements
             public Future<Void> handleProxyResponse(ProxyContext context) {
-                System.err.println("Receiving apix response");
+                log.info("Receiving apix response");
                 ProxyResponse resp = context.response();
                 resp.putHeader("Access-Control-Allow-Origin", "*");
                 resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
