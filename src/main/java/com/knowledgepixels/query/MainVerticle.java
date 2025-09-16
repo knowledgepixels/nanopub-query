@@ -19,6 +19,7 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpMethod;
@@ -30,6 +31,7 @@ import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.handler.StaticHandler;
 import io.vertx.ext.web.proxy.handler.ProxyHandler;
+import io.vertx.httpproxy.Body;
 import io.vertx.httpproxy.HttpProxy;
 import io.vertx.httpproxy.ProxyContext;
 import io.vertx.httpproxy.ProxyInterceptor;
@@ -303,7 +305,7 @@ public class MainVerticle extends AbstractVerticle {
         });
 
         proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
-            GrlcSpecPage gsp = new GrlcSpecPage(req.normalizedPath(), req.queryParams());
+            GrlcSpec gsp = new GrlcSpec(req.normalizedPath(), req.queryParams());
             String spec = gsp.getSpec();
             if (spec == null) {
                 req.response().setStatusCode(404).end("query definition not found / not valid");
@@ -346,7 +348,7 @@ public class MainVerticle extends AbstractVerticle {
                         }
                     }
                     String url = "/api-url/" + queryName +
-                            "?specUrl=" + URLEncoder.encode(GrlcSpecPage.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
+                            "?specUrl=" + URLEncoder.encode(GrlcSpec.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
                             grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
                     context.request().setURI(url);
                 }
@@ -362,6 +364,46 @@ public class MainVerticle extends AbstractVerticle {
             }
 
         });
+
+        HttpProxy grlcxProxy = HttpProxy.reverseProxy(httpClient);
+        grlcxProxy.origin(proxyPort, proxy);
+
+        grlcxProxy.addInterceptor(new ProxyInterceptor() {
+
+            @Override
+            @GeneratedFlagForDependentElements
+            public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
+                final ProxyRequest req = context.request();
+                final String apiPattern = "^/apix/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
+                if (req.getURI().matches(apiPattern)) {
+                    GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
+                    req.setMethod(HttpMethod.POST);
+
+                    // Variant 1:
+                    req.putHeader("Content-Type", "application/sparql-query");
+                    req.setBody(Body.body(Buffer.buffer(grlcSpec.getExpandedQueryContent())));
+                    // Variant 2:
+                    //req.putHeader("Content-Type", "application/x-www-form-urlencoded");
+                    //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
+
+                    req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
+                    System.err.println("Forwarding apix request to /rdf4j-server/repositories/" + grlcSpec.getRepoName());
+                }
+                return ProxyInterceptor.super.handleProxyRequest(context);
+            }
+
+            @Override
+            @GeneratedFlagForDependentElements
+            public Future<Void> handleProxyResponse(ProxyContext context) {
+                System.err.println("Receiving apix response");
+                ProxyResponse resp = context.response();
+                resp.putHeader("Access-Control-Allow-Origin", "*");
+                resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+                return ProxyInterceptor.super.handleProxyResponse(context);
+            }
+
+        });
+        proxyRouter.route(HttpMethod.GET, "/apix/*").handler(ProxyHandler.create(grlcxProxy));
 
         proxyServer.requestHandler(req -> {
             applyGlobalHeaders(req.response());

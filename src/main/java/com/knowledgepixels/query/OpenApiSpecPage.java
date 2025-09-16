@@ -65,12 +65,12 @@ public class OpenApiSpecPage {
                 desc = st.getObject().stringValue();
 //			} else if (st.getPredicate().equals(DCTERMS.LICENSE) && st.getObject() instanceof IRI) {
 //				license = st.getObject().stringValue();
-            } else if (st.getPredicate().equals(GrlcSpecPage.HAS_SPARQL)) {
-                queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpecPage.nanopubQueryUrl);
-            } else if (st.getPredicate().equals(GrlcSpecPage.HAS_ENDPOINT) && st.getObject() instanceof IRI) {
+            } else if (st.getPredicate().equals(GrlcSpec.HAS_SPARQL)) {
+                queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpec.nanopubQueryUrl);
+            } else if (st.getPredicate().equals(GrlcSpec.HAS_ENDPOINT) && st.getObject() instanceof IRI) {
                 endpoint = st.getObject().stringValue();
                 if (endpoint.startsWith("https://w3id.org/np/l/nanopub-query-1.1/")) {
-                    endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpecPage.nanopubQueryUrl);
+                    endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/", GrlcSpec.nanopubQueryUrl);
                 }
             }
         }

@@ -28,7 +28,7 @@ class GrlcSpecPageTest {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
-            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName, parameters);
+            GrlcSpec page = new GrlcSpec(baseUri + artifactCode + "/" + queryName, parameters);
             assertNotNull(page);
         }
     }
@@ -40,14 +40,14 @@ class GrlcSpecPageTest {
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "random-version");
-            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName, parameters);
+            GrlcSpec page = new GrlcSpec(baseUri + artifactCode + "/" + queryName, parameters);
             assertNotNull(page);
         }
     }
 
     @Test
     void constructWithInvalidUrl() {
-        GrlcSpecPage page = new GrlcSpecPage("https://invalid-url", MultiMap.caseInsensitiveMultiMap());
+        GrlcSpec page = new GrlcSpec("https://invalid-url", MultiMap.caseInsensitiveMultiMap());
         assertNull(page.getSpec());
     }
 
@@ -58,7 +58,7 @@ class GrlcSpecPageTest {
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "latest");
-            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName, parameters);
+            GrlcSpec page = new GrlcSpec(baseUri + artifactCode + "/" + queryName, parameters);
             assertNotNull(page);
         }
     }
@@ -68,7 +68,7 @@ class GrlcSpecPageTest {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
-            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/", MultiMap.caseInsensitiveMultiMap());
+            GrlcSpec page = new GrlcSpec(baseUri + artifactCode + "/", MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
                     title: "Get participation links"
                     description: "This query returns all participation links."
@@ -87,7 +87,7 @@ class GrlcSpecPageTest {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
-            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/" + queryName + ".rq", MultiMap.caseInsensitiveMultiMap());
+            GrlcSpec page = new GrlcSpec(baseUri + artifactCode + "/" + queryName + ".rq", MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
                     #+ summary: "Get participation links"
                     #+ description: "This query returns all participation links."
@@ -122,7 +122,7 @@ class GrlcSpecPageTest {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
-            GrlcSpecPage page = new GrlcSpecPage(baseUri + artifactCode + "/invalid-query.rq", MultiMap.caseInsensitiveMultiMap());
+            GrlcSpec page = new GrlcSpec(baseUri + artifactCode + "/invalid-query.rq", MultiMap.caseInsensitiveMultiMap());
             assertNull(page.getSpec());
         }
     }
