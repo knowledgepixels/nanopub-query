@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mockStatic;
 
-class GrlcSpecPageTest {
+class GrlcSpecTest {
 
     private final String baseUri = "https://w3id.org/np/";
     private final String artifactCode = "RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA";
