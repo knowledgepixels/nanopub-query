@@ -8,6 +8,8 @@ import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 import org.nanopub.extra.server.GetNanopub;
 
+import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.Objects;
@@ -23,7 +25,7 @@ class GrlcSpecTest {
     private final String queryName = "get-participation";
 
     @Test
-    void constructWithNullApiVersion() throws MalformedNanopubException, IOException {
+    void constructWithNullApiVersion() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
@@ -34,7 +36,7 @@ class GrlcSpecTest {
     }
 
     @Test
-    void constructWithSpecificApiVersion() throws MalformedNanopubException, IOException {
+    void constructWithSpecificApiVersion() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
@@ -46,13 +48,13 @@ class GrlcSpecTest {
     }
 
     @Test
-    void constructWithInvalidUrl() {
+    void constructWithInvalidUrl() throws InvalidGrlcSpecException {
         GrlcSpec page = new GrlcSpec("https://invalid-url", MultiMap.caseInsensitiveMultiMap());
         assertNull(page.getSpec());
     }
 
     @Test
-    void constructWithParameters() throws MalformedNanopubException, IOException {
+    void constructWithParameters() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
@@ -64,7 +66,7 @@ class GrlcSpecTest {
     }
 
     @Test
-    void getSpecWithEmptyQueryPart() throws MalformedNanopubException, IOException {
+    void getSpecWithEmptyQueryPart() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
@@ -83,7 +85,7 @@ class GrlcSpecTest {
     }
 
     @Test
-    void getSpecWithRqExtension() throws MalformedNanopubException, IOException {
+    void getSpecWithRqExtension() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
@@ -118,7 +120,7 @@ class GrlcSpecTest {
     }
 
     @Test
-    void getSpecWithInvalidQueryPart() throws MalformedNanopubException, IOException {
+    void getSpecWithInvalidQueryPart() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
             Nanopub mockNanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);

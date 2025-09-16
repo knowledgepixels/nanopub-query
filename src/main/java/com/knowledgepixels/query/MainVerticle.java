@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.eclipse.rdf4j.model.Value;
 
 import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
+import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
 
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.vertx.core.AbstractVerticle;
@@ -311,12 +312,16 @@ public class MainVerticle extends AbstractVerticle {
         });
 
         proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
-            GrlcSpec gsp = new GrlcSpec(req.normalizedPath(), req.queryParams());
-            String spec = gsp.getSpec();
-            if (spec == null) {
-                req.response().setStatusCode(404).end("query definition not found / not valid");
-            } else {
-                req.response().putHeader("content-type", "text/yaml").end(spec);
+            try {
+                GrlcSpec gsp = new GrlcSpec(req.normalizedPath(), req.queryParams());
+                String spec = gsp.getSpec();
+                if (spec == null) {
+                    req.response().setStatusCode(404).end("query definition not found / not valid");
+                } else {
+                    req.response().putHeader("content-type", "text/yaml").end(spec);
+                }
+            } catch (InvalidGrlcSpecException ex) {
+                req.response().setStatusCode(400).end(ex.getMessage());
             }
         });
 
@@ -382,18 +387,22 @@ public class MainVerticle extends AbstractVerticle {
                 final ProxyRequest req = context.request();
                 final String apiPattern = "^/apix/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
                 if (req.getURI().matches(apiPattern)) {
-                    GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
-                    req.setMethod(HttpMethod.POST);
-
-                    // Variant 1:
-                    req.putHeader("Content-Type", "application/sparql-query");
-                    req.setBody(Body.body(Buffer.buffer(grlcSpec.getExpandedQueryContent())));
-                    // Variant 2:
-                    //req.putHeader("Content-Type", "application/x-www-form-urlencoded");
-                    //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
-
-                    req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
-                    log.info("Forwarding apix request to /rdf4j-server/repositories/", grlcSpec.getRepoName());
+                    try {
+                        GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
+                        req.setMethod(HttpMethod.POST);
+    
+                        // Variant 1:
+                        req.putHeader("Content-Type", "application/sparql-query");
+                        req.setBody(Body.body(Buffer.buffer(grlcSpec.getExpandedQueryContent())));
+                        // Variant 2:
+                        //req.putHeader("Content-Type", "application/x-www-form-urlencoded");
+                        //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
+    
+                        req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
+                        log.info("Forwarding apix request to /rdf4j-server/repositories/", grlcSpec.getRepoName());
+                    } catch (InvalidGrlcSpecException ex) {
+                        req.response().setStatusCode(400).setStatusMessage(ex.getMessage());
+                    }
                 }
                 return ProxyInterceptor.super.handleProxyRequest(context);
             }

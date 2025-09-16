@@ -37,6 +37,14 @@ public class GrlcSpec {
 
     private static final Logger log = LoggerFactory.getLogger(GrlcSpec.class);
 
+    public static class InvalidGrlcSpecException extends Exception {
+
+        private InvalidGrlcSpecException(String msg) {
+            super(msg);
+        }
+
+    }
+
     /**
      * IRI for relation to link a grlc query instance to its SPARQL template.
      */
@@ -70,7 +78,7 @@ public class GrlcSpec {
      * @param requestUrl The request URL
      * @param parameters The URL request parameters
      */
-    public GrlcSpec(String requestUrl, MultiMap parameters) {
+    public GrlcSpec(String requestUrl, MultiMap parameters) throws InvalidGrlcSpecException {
         requestUrl = requestUrl.replaceFirst("\\?.*$", "");
         this.parameters = parameters;
         if (!requestUrl.matches(".*/RA[A-Za-z0-9\\-_]{43}/(.*)?")) {
@@ -110,8 +118,7 @@ public class GrlcSpec {
                 if (endpoint.startsWith("https://w3id.org/np/l/nanopub-query-1.1/repo/")) {
                     endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/repo/", nanopubQueryUrl + "repo/");
                 } else {
-                    // TODO Raise exception
-                    endpoint = null;
+                    throw new InvalidGrlcSpecException("Invalid/non-recognized endpoint: " + endpoint);
                 }
             }
         }
