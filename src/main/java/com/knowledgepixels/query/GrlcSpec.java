@@ -69,7 +69,10 @@ public class GrlcSpec {
     public GrlcSpec(String requestUrl, MultiMap parameters) {
         requestUrl = requestUrl.replaceFirst("\\?.*$", "");
         this.parameters = parameters;
-        if (!requestUrl.matches(".*/RA[A-Za-z0-9\\-_]{43}/(.*)?")) return;
+        if (!requestUrl.matches(".*/RA[A-Za-z0-9\\-_]{43}/(.*)?")) {
+            // TODO Raise exception
+            return;
+        }
         artifactCode = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$2");
         queryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
         requestUrlBase = requestUrl.replaceFirst("^/(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$1");
@@ -96,11 +99,15 @@ public class GrlcSpec {
             } else if (st.getPredicate().equals(DCTERMS.LICENSE) && st.getObject() instanceof IRI) {
                 license = st.getObject().stringValue();
             } else if (st.getPredicate().equals(HAS_SPARQL)) {
-                queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/", nanopubQueryUrl);
+                // TODO Improve this:
+                queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/repo/", nanopubQueryUrl + "repo/");
             } else if (st.getPredicate().equals(HAS_ENDPOINT) && st.getObject() instanceof IRI) {
                 endpoint = st.getObject().stringValue();
-                if (endpoint.startsWith("https://w3id.org/np/l/nanopub-query-1.1/")) {
-                    endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/", nanopubQueryUrl);
+                if (endpoint.startsWith("https://w3id.org/np/l/nanopub-query-1.1/repo/")) {
+                    endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/repo/", nanopubQueryUrl + "repo/");
+                } else {
+                    // TODO Raise exception
+                    endpoint = null;
                 }
             }
         }
@@ -189,17 +196,39 @@ public class GrlcSpec {
         for (String ph : placeholdersList) {
             System.err.println("ph: " + ph);
             System.err.println("getParamName(ph): " + getParamName(ph));
-            String val = parameters.get(getParamName(ph));
-            System.err.println("val: " + val);
-            if (!isOptionalPlaceholder(ph) && val == null) {
-                // TODO throw exception
-                return null;
-            }
-            if (val == null) continue;
-            if (isIriPlaceholder(ph)) {
-                expanded = expanded.replaceAll("\\?" + ph, "<" + val + ">");
+            if (isMultiPlaceholder(ph)) {
+                // TODO multi placeholders need proper documentation
+                List<String> val = parameters.getAll(getParamName(ph));
+                if (!isOptionalPlaceholder(ph) && val.isEmpty()) {
+                    // TODO throw exception
+                    return null;
+                }
+                if (val.isEmpty()) {
+                    expanded = expanded.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}(\\s*\\.)?", "");
+                    continue;
+                }
+                String valueList = "";
+                for (String v : val) {
+                    if (isIriPlaceholder(ph)) {
+                        valueList += serializeIri(v) + " ";
+                    } else {
+                        valueList += serializeLiteral(v) + " ";
+                    }
+                }
+                expanded = expanded.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + valueList + "}");
             } else {
-                expanded = expanded.replaceAll("\\?" + ph, "\"" + escapeLiteral(val) + "\"");
+                String val = parameters.get(getParamName(ph));
+                System.err.println("val: " + val);
+                if (!isOptionalPlaceholder(ph) && val == null) {
+                    // TODO throw exception
+                    return null;
+                }
+                if (val == null) continue;
+                if (isIriPlaceholder(ph)) {
+                    expanded = expanded.replaceAll("\\?" + ph, serializeIri(val));
+                } else {
+                    expanded = expanded.replaceAll("\\?" + ph, serializeLiteral(val));
+                }
             }
         }
         System.err.println("expanded: " + expanded);
@@ -214,12 +243,24 @@ public class GrlcSpec {
         return placeholder.startsWith("__");
     }
 
+    public static boolean isMultiPlaceholder(String placeholder) {
+        return placeholder.endsWith("_multi") || placeholder.endsWith("_multi_iri");
+    }
+
     public static boolean isIriPlaceholder(String placeholder) {
         return placeholder.endsWith("_iri");
     }
 
     public static String getParamName(String placeholder) {
-        return placeholder.replaceFirst("^_+", "").replaceFirst("_iri$", "");
+        return placeholder.replaceFirst("^_+", "").replaceFirst("_iri$", "").replaceFirst("_multi$", "");
+    }
+
+    public static String serializeIri(String iriString) {
+        return "<" + iriString + ">";
+    }
+
+    public static String serializeLiteral(String literalString) {
+        return "\"" + escapeLiteral(literalString) + "\"";
     }
 
 }
