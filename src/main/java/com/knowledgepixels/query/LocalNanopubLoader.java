@@ -31,7 +31,7 @@ public class LocalNanopubLoader {
      */
     public final static File loadNanopubsFile = new File("load/nanopubs.trig.gz");
 
-    private static final int WAIT_SECONDS = Utils.getEnvInt("INIT_WAIT_SECONDS", 120);
+    private static final int DEFAULT_WAIT_SECONDS = 120;
 
     /**
      * Load nanopubs from local files.
@@ -39,14 +39,13 @@ public class LocalNanopubLoader {
      * @return true if local nanopubs were found and loaded, false otherwise
      */
     public static boolean init() {
-        // FIXME should this be loadNanopubsFile.exists() || loadUrisFile.exists()?
-        if (!(loadNanopubsFile.exists() || loadNanopubsFile.exists())) {
+        if (!(loadNanopubsFile.exists() || loadUrisFile.exists())) {
             log.info("No local nanopub files for loading found. Moving on to loading via Jelly...");
             return false;
         }
-        log.info("Waiting {} seconds to make sure the triple store is up...", WAIT_SECONDS);
+        log.info("Waiting {} seconds to make sure the triple store is up...", getWaitSeconds());
         try {
-            for (int w = 0; w < WAIT_SECONDS; w++) {
+            for (int w = 0; w < getWaitSeconds(); w++) {
                 log.info("Waited {} seconds...", w);
                 Thread.sleep(1000);
             }
@@ -82,6 +81,10 @@ public class LocalNanopubLoader {
                 log.info("Loading nanopubs failed.", ex);
             }
         }
+    }
+
+    static int getWaitSeconds() {
+        return Utils.getEnvInt("INIT_WAIT_SECONDS", DEFAULT_WAIT_SECONDS);
     }
 
 }
