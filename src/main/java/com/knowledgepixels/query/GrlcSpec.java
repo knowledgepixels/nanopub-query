@@ -13,6 +13,7 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
+import org.eclipse.rdf4j.query.MalformedQueryException;
 import org.eclipse.rdf4j.query.algebra.Var;
 import org.eclipse.rdf4j.query.algebra.helpers.AbstractSimpleQueryModelVisitor;
 import org.eclipse.rdf4j.query.parser.ParsedQuery;
@@ -41,6 +42,10 @@ public class GrlcSpec {
 
         private InvalidGrlcSpecException(String msg) {
             super(msg);
+        }
+
+        private InvalidGrlcSpecException(String msg, Throwable throwable) {
+            super(msg, throwable);
         }
 
     }
@@ -79,11 +84,10 @@ public class GrlcSpec {
      * @param parameters The URL request parameters
      */
     public GrlcSpec(String requestUrl, MultiMap parameters) throws InvalidGrlcSpecException {
-        requestUrl = requestUrl.replaceFirst("\\?.*$", "");
         this.parameters = parameters;
+        requestUrl = requestUrl.replaceFirst("\\?.*$", "");
         if (!requestUrl.matches(".*/RA[A-Za-z0-9\\-_]{43}/(.*)?")) {
-            // TODO Raise exception
-            return;
+            throw new InvalidGrlcSpecException("Invalid grlc API request: " + requestUrl);
         }
         artifactCode = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$2");
         queryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
@@ -100,8 +104,7 @@ public class GrlcSpec {
             if (!st.getSubject().stringValue().startsWith(np.getUri().stringValue())) continue;
             String qn = st.getSubject().stringValue().replaceFirst("^.*[#/](.*)$", "$1");
             if (queryName != null && !qn.equals(queryName)) {
-                np = null;
-                break;
+                throw new InvalidGrlcSpecException("Subject suffixes don't match: " + queryName);
             }
             queryName = qn;
             if (st.getPredicate().equals(RDFS.LABEL)) {
@@ -123,20 +126,27 @@ public class GrlcSpec {
             }
         }
 
+        if (!queryPart.isEmpty() && !queryPart.equals(queryName + ".rq")) {
+            throw new InvalidGrlcSpecException("Query part doesn't match query name: " + queryPart + " / " + queryName);
+        }
+
         final Set<String> placeholders = new HashSet<>();
-        // TODO Make sure we properly handle MalformedQueryException thrown here:
-        ParsedQuery query = new SPARQLParser().parseQuery(queryContent, null);
-        query.getTupleExpr().visitChildren(new AbstractSimpleQueryModelVisitor<>() {
-
-            @Override
-            public void meet(Var node) throws RuntimeException {
-                super.meet(node);
-                if (!node.isConstant() && !node.isAnonymous() && node.getName().startsWith("_")) {
-                    placeholders.add(node.getName());
+        try {
+            ParsedQuery query = new SPARQLParser().parseQuery(queryContent, null);
+            query.getTupleExpr().visitChildren(new AbstractSimpleQueryModelVisitor<>() {
+        
+                @Override
+                public void meet(Var node) throws RuntimeException {
+                    super.meet(node);
+                    if (!node.isConstant() && !node.isAnonymous() && node.getName().startsWith("_")) {
+                        placeholders.add(node.getName());
+                    }
                 }
-            }
-
-        });
+        
+            });
+        } catch (MalformedQueryException ex) {
+            throw new InvalidGrlcSpecException("Invalid SPARQL string", ex);
+        }
         List<String> placeholdersListPre = new ArrayList<>(placeholders);
         Collections.sort(placeholdersListPre);
         placeholdersListPre.sort(Comparator.comparing(String::length));
@@ -149,7 +159,6 @@ public class GrlcSpec {
      * @return grlc specification string
      */
     public String getSpec() {
-        if (np == null) return null;
         String s = "";
         if (queryPart.isEmpty()) {
             if (label == null) {
@@ -190,9 +199,37 @@ public class GrlcSpec {
             s += "\n";
             s += queryContent;
         } else {
-            return null;
+            throw new RuntimeException("Unexpected queryPart: " + queryPart);
         }
         return s;
+    }
+
+    public MultiMap getParameters() {
+        return parameters;
+    }
+
+    public Nanopub getNanopub() {
+        return np;
+    }
+
+    public String getArtifactCode() {
+        return artifactCode;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public String getDescription() {
+        return desc;
+    }
+
+    public String getQueryName() {
+        return queryName;
+    }
+
+    public List<String> getPlaceholdersList() {
+        return placeholdersList;
     }
 
     public String getRepoName() {
@@ -203,8 +240,8 @@ public class GrlcSpec {
         return queryContent;
     }
 
-    public String getExpandedQueryContent() {
-        String expanded = queryContent;
+    public String expandQuery() throws InvalidGrlcSpecException {
+        String expandedQueryContent = queryContent;
         for (String ph : placeholdersList) {
             log.info("ph: ", ph);
             log.info("getParamName(ph): ", getParamName(ph));
@@ -212,11 +249,10 @@ public class GrlcSpec {
                 // TODO multi placeholders need proper documentation
                 List<String> val = parameters.getAll(getParamName(ph));
                 if (!isOptionalPlaceholder(ph) && val.isEmpty()) {
-                    // TODO throw exception
-                    return null;
+                    throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
                 }
                 if (val.isEmpty()) {
-                    expanded = expanded.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}(\\s*\\.)?", "");
+                    expandedQueryContent = expandedQueryContent.replaceAll("[]values\\s*\\?" + ph + "\\s*\\{\\s*\\}(\\s*\\.)?", "");
                     continue;
                 }
                 String valueList = "";
@@ -227,24 +263,23 @@ public class GrlcSpec {
                         valueList += serializeLiteral(v) + " ";
                     }
                 }
-                expanded = expanded.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + valueList + "}");
+                expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + valueList + "}");
             } else {
                 String val = parameters.get(getParamName(ph));
                 log.info("val: ", val);
                 if (!isOptionalPlaceholder(ph) && val == null) {
-                    // TODO throw exception
-                    return null;
+                    throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
                 }
                 if (val == null) continue;
                 if (isIriPlaceholder(ph)) {
-                    expanded = expanded.replaceAll("\\?" + ph, serializeIri(val));
+                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, serializeIri(val));
                 } else {
-                    expanded = expanded.replaceAll("\\?" + ph, serializeLiteral(val));
+                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, serializeLiteral(val));
                 }
             }
         }
-        log.info("expanded: ", expanded);
-        return expanded;
+        log.info("Expanded grlc query:\n", expandedQueryContent);
+        return expandedQueryContent;
     }
 
     public static String escapeLiteral(String s) {

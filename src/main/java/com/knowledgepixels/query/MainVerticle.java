@@ -314,24 +314,22 @@ public class MainVerticle extends AbstractVerticle {
         proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
             try {
                 GrlcSpec gsp = new GrlcSpec(req.normalizedPath(), req.queryParams());
-                String spec = gsp.getSpec();
-                if (spec == null) {
-                    req.response().setStatusCode(404).end("query definition not found / not valid");
-                } else {
-                    req.response().putHeader("content-type", "text/yaml").end(spec);
-                }
+                req.response().putHeader("content-type", "text/yaml").end(gsp.getSpec());
             } catch (InvalidGrlcSpecException ex) {
                 req.response().setStatusCode(400).end(ex.getMessage());
+            } catch (Exception ex) {
+                req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
             }
         });
 
         proxyRouter.route(HttpMethod.GET, "/openapi/spec/*").handler(req -> {
-            OpenApiSpecPage osp = new OpenApiSpecPage(req.normalizedPath(), req.queryParams());
-            String spec = osp.getSpec();
-            if (spec == null) {
-                req.response().setStatusCode(404).end("query definition not found / not valid");
-            } else {
-                req.response().putHeader("content-type", "text/yaml").end(spec);
+            try {
+                OpenApiSpecPage osp = new OpenApiSpecPage(req.normalizedPath(), req.queryParams());
+                req.response().putHeader("content-type", "text/yaml").end(osp.getSpec());
+            } catch (InvalidGrlcSpecException ex) {
+                req.response().setStatusCode(400).end("Invlid grlc API definition: " + ex.getMessage());
+            } catch (Exception ex) {
+                req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
             }
         });
 
@@ -393,7 +391,7 @@ public class MainVerticle extends AbstractVerticle {
     
                         // Variant 1:
                         req.putHeader("Content-Type", "application/sparql-query");
-                        req.setBody(Body.body(Buffer.buffer(grlcSpec.getExpandedQueryContent())));
+                        req.setBody(Body.body(Buffer.buffer(grlcSpec.expandQuery())));
                         // Variant 2:
                         //req.putHeader("Content-Type", "application/x-www-form-urlencoded");
                         //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
@@ -401,7 +399,17 @@ public class MainVerticle extends AbstractVerticle {
                         req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
                         log.info("Forwarding apix request to /rdf4j-server/repositories/", grlcSpec.getRepoName());
                     } catch (InvalidGrlcSpecException ex) {
-                        req.response().setStatusCode(400).setStatusMessage(ex.getMessage());
+                        return Future.succeededFuture(context.request()
+                                .response()
+                                .setStatusCode(400)
+                                .putHeader("Content-Type", "text/plain")
+                                .setBody(Body.body(Buffer.buffer("Bad request: " + ex.getMessage()))));
+                    } catch (Exception ex) {
+                        return Future.succeededFuture(context.request()
+                                .response()
+                                .setStatusCode(500)
+                                .putHeader("Content-Type", "text/plain")
+                                .setBody(Body.body(Buffer.buffer("Unexpected error: " + ex.getMessage()))));
                     }
                 }
                 return ProxyInterceptor.super.handleProxyRequest(context);
