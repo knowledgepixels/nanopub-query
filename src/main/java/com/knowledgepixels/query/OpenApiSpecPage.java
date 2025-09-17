@@ -62,15 +62,26 @@ public class OpenApiSpecPage {
         successrespMap.put("description", "result table");
         responsesMap.put("200", successrespMap);
         List<Object> parametersList = new ArrayList<>();
+
+        final Map<String, Object> stringType = new LinkedHashMap<>();
+        stringType.put("type", "string");
+        final Map<String, Object> stringListType = new LinkedHashMap<>();
+        stringListType.put("type", "array");
+        stringListType.put("items", stringType);
+
         for (String p : grlcSpec.getPlaceholdersList()) {
             Map<String, Object> paramMap = new LinkedHashMap<>();
             paramMap.put("in", "query");
             String name = GrlcSpec.getParamName(p);
             paramMap.put("name", name);
             paramMap.put("required", GrlcSpec.isOptionalPlaceholder(p));
-            Map<String, Object> stringType = new LinkedHashMap<>();
-            stringType.put("type", "string");
-            paramMap.put("schema", stringType);
+            if (GrlcSpec.isMultiPlaceholder(p)) {
+                paramMap.put("style", "form");
+                paramMap.put("explde", "true");
+                paramMap.put("schema", stringListType);
+            } else {
+                paramMap.put("schema", stringType);
+            }
             parametersList.add(paramMap);
         }
         getOpMap.put("parameters", parametersList);
