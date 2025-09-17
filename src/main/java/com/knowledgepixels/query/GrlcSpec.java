@@ -68,7 +68,8 @@ public class GrlcSpec {
     private MultiMap parameters;
     private Nanopub np;
     private String requestUrlBase;
-    private String artifactCode, queryPart;
+    private String artifactCode;
+    private String queryPart;
     private String queryName;
     private String label;
     private String desc;
@@ -90,8 +91,10 @@ public class GrlcSpec {
             throw new InvalidGrlcSpecException("Invalid grlc API request: " + requestUrl);
         }
         artifactCode = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$2");
-        queryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
         requestUrlBase = requestUrl.replaceFirst("^/(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$1");
+
+        queryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
+        queryPart = queryPart.replaceFirst(".rq$", "");
 
         // TODO Get the nanopub from the local store:
         np = GetNanopub.get(artifactCode);
@@ -126,7 +129,7 @@ public class GrlcSpec {
             }
         }
 
-        if (!queryPart.isEmpty() && !queryPart.equals(queryName + ".rq")) {
+        if (!queryPart.isEmpty() && !queryPart.equals(queryName)) {
             throw new InvalidGrlcSpecException("Query part doesn't match query name: " + queryPart + " / " + queryName);
         }
 
@@ -183,7 +186,7 @@ public class GrlcSpec {
             }
             s += "queries:\n";
             s += "  - " + nanopubQueryUrl + requestUrlBase + artifactCode + "/" + queryName + ".rq";
-        } else if (queryPart.equals(queryName + ".rq")) {
+        } else if (queryPart.equals(queryName)) {
             if (label != null) {
                 s += "#+ summary: \"" + escapeLiteral(label) + "\"\n";
             }
