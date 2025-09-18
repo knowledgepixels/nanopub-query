@@ -342,7 +342,7 @@ public class MainVerticle extends AbstractVerticle {
             @Override
             @GeneratedFlagForDependentElements
             public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
-                final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
+                final String apiPattern = "^/api-old/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
                 if (context.request().getURI().matches(apiPattern)) {
                     String artifactCode = context.request().getURI().replaceFirst(apiPattern, "$1");
                     String queryName = context.request().getURI().replaceFirst(apiPattern, "$2");
@@ -383,7 +383,7 @@ public class MainVerticle extends AbstractVerticle {
             @GeneratedFlagForDependentElements
             public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
                 final ProxyRequest req = context.request();
-                final String apiPattern = "^/apix/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
+                final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
                 if (req.getURI().matches(apiPattern)) {
                     try {
                         GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
@@ -418,15 +418,16 @@ public class MainVerticle extends AbstractVerticle {
             @Override
             @GeneratedFlagForDependentElements
             public Future<Void> handleProxyResponse(ProxyContext context) {
-                log.info("Receiving apix response");
+                log.info("Receiving api response");
                 ProxyResponse resp = context.response();
                 resp.putHeader("Access-Control-Allow-Origin", "*");
                 resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+                resp.putHeader("Content-Disposition", "inline");
                 return ProxyInterceptor.super.handleProxyResponse(context);
             }
 
         });
-        proxyRouter.route(HttpMethod.GET, "/apix/*").handler(ProxyHandler.create(grlcxProxy));
+        proxyRouter.route(HttpMethod.GET, "/api/*").handler(ProxyHandler.create(grlcxProxy));
 
         proxyServer.requestHandler(req -> {
             applyGlobalHeaders(req.response());
@@ -434,7 +435,7 @@ public class MainVerticle extends AbstractVerticle {
         });
         proxyServer.listen(9393);
 
-        proxyRouter.route("/api/*").handler(ProxyHandler.create(grlcProxy));
+        proxyRouter.route("/api-old/*").handler(ProxyHandler.create(grlcProxy));
         proxyRouter.route("/static/*").handler(ProxyHandler.create(grlcProxy));
 
         // Periodic metrics update
