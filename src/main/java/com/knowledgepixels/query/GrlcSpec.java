@@ -255,7 +255,7 @@ public class GrlcSpec {
                     throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
                 }
                 if (val.isEmpty()) {
-                    expandedQueryContent = expandedQueryContent.replaceAll("[]values\\s*\\?" + ph + "\\s*\\{\\s*\\}(\\s*\\.)?", "");
+                    expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}(\\s*\\.)?", "");
                     continue;
                 }
                 String valueList = "";
