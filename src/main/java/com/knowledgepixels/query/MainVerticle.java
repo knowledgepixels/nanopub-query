@@ -5,12 +5,13 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Scanner;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.rdf4j.model.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
 import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
@@ -18,7 +19,6 @@ import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
-import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -40,11 +40,7 @@ import io.vertx.httpproxy.ProxyRequest;
 import io.vertx.httpproxy.ProxyResponse;
 import io.vertx.micrometer.PrometheusScrapingHandler;
 import io.vertx.micrometer.backends.BackendRegistries;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-
-// TODO merge this class with GrlcQuery of Nanodash and move to a library like nanopub-java
 /**
  * Main verticle that coordinates the incoming HTTP requests.
  */
@@ -311,6 +307,7 @@ public class MainVerticle extends AbstractVerticle {
             req.response().end(css);
         });
 
+        // TODO This is no longer needed and can be removed at some point:
         proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
             try {
                 GrlcSpec gsp = new GrlcSpec(req.normalizedPath(), req.queryParams());
@@ -334,45 +331,6 @@ public class MainVerticle extends AbstractVerticle {
         });
 
         proxyRouter.route("/openapi/*").handler(StaticHandler.create("com/knowledgepixels/query/swagger"));
-
-        HttpProxy grlcProxy = HttpProxy.reverseProxy(httpClient);
-        grlcProxy.origin(80, "grlc");
-        grlcProxy.addInterceptor(new ProxyInterceptor() {
-
-            @Override
-            @GeneratedFlagForDependentElements
-            public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
-                final String apiPattern = "^/api-old/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
-                if (context.request().getURI().matches(apiPattern)) {
-                    String artifactCode = context.request().getURI().replaceFirst(apiPattern, "$1");
-                    String queryName = context.request().getURI().replaceFirst(apiPattern, "$2");
-                    String grlcUrlParams = "";
-                    String grlcSpecUrlParams = "";
-                    MultiMap pm = context.request().proxiedRequest().params();
-                    for (Entry<String, String> e : pm) {
-                        if (e.getKey().equals("api-version")) {
-                            grlcSpecUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
-                        } else {
-                            grlcUrlParams += "&" + e.getKey() + "=" + URLEncoder.encode(e.getValue(), Charsets.UTF_8);
-                        }
-                    }
-                    String url = "/api-url/" + queryName +
-                            "?specUrl=" + URLEncoder.encode(GrlcSpec.nanopubQueryUrl + "grlc-spec/" + artifactCode + "/?" +
-                            grlcSpecUrlParams, Charsets.UTF_8) + grlcUrlParams;
-                    context.request().setURI(url);
-                }
-                return context.sendRequest();
-            }
-
-            @Override
-            @GeneratedFlagForDependentElements
-            public Future<Void> handleProxyResponse(ProxyContext context) {
-                // To avoid double entries:
-                context.response().headers().remove("Access-Control-Allow-Origin");
-                return context.sendResponse();
-            }
-
-        });
 
         HttpProxy grlcxProxy = HttpProxy.reverseProxy(httpClient);
         grlcxProxy.origin(proxyPort, proxy);
@@ -434,9 +392,6 @@ public class MainVerticle extends AbstractVerticle {
             proxyRouter.handle(req);
         });
         proxyServer.listen(9393);
-
-        proxyRouter.route("/api-old/*").handler(ProxyHandler.create(grlcProxy));
-        proxyRouter.route("/static/*").handler(ProxyHandler.create(grlcProxy));
 
         // Periodic metrics update
         vertx.setPeriodic(1000, id -> collector.updateMetrics());

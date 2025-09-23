@@ -28,6 +28,7 @@ import net.trustyuri.TrustyUriUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+//TODO merge this class with GrlcQuery of Nanodash and move to a library like nanopub-java
 /**
  * This class produces a page with the grlc specification. This is needed internally to tell grlc
  * how to execute a particular query template.

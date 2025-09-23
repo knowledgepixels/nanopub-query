@@ -50,14 +50,3 @@ services:
       interval: 60s
       timeout: 60s
       start_period: 300s
-
-  grlc:
-    image: clariah/grlc:v1.3.9  # causes error locally ("failed to register layer: failed to Lchown ..."), but seems to work on the servers
-    #    image: clariah/grlc:v1.3.8  # works locally but leads to problems on the servers
-    restart: unless-stopped
-    #   ports:
-    #     - 8088:80
-    logging:
-      options:
-        max-size: "10m"
-        max-file: "3"

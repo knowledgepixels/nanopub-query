@@ -10,9 +10,6 @@ services:
     ports:
       - 5005:5005
     entrypoint: 'java -jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 nanopub-query.jar'
-  grlc:
-    environment:
-      - GRLC_SERVER_NAME=query.your.domain.com
 # rdf4j:
 #   environment:
 #     - JAVA_OPTS=-Xmx16g -Xms1g -Xss100m -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000
