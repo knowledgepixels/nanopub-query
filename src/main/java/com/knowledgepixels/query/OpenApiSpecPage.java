@@ -74,7 +74,7 @@ public class OpenApiSpecPage {
             paramMap.put("in", "query");
             String name = GrlcSpec.getParamName(p);
             paramMap.put("name", name);
-            paramMap.put("required", GrlcSpec.isOptionalPlaceholder(p));
+            paramMap.put("required", !GrlcSpec.isOptionalPlaceholder(p));
             if (GrlcSpec.isMultiPlaceholder(p)) {
                 paramMap.put("style", "form");
                 paramMap.put("explde", "true");
