@@ -267,7 +267,7 @@ public class GrlcSpec {
                         valueList += serializeLiteral(v) + " ";
                     }
                 }
-                expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + valueList + "}");
+                expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + escapeSlashes(valueList) + "}");
             } else {
                 String val = parameters.get(getParamName(ph));
                 log.info("val: ", val);
@@ -276,9 +276,9 @@ public class GrlcSpec {
                 }
                 if (val == null) continue;
                 if (isIriPlaceholder(ph)) {
-                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, serializeIri(val));
+                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, escapeSlashes(serializeIri(val)));
                 } else {
-                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, serializeLiteral(val));
+                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, escapeSlashes(serializeLiteral(val)));
                 }
             }
         }
@@ -308,6 +308,10 @@ public class GrlcSpec {
 
     public static String serializeIri(String iriString) {
         return "<" + iriString + ">";
+    }
+
+    private static String escapeSlashes(String string) {
+        return string.replace("\\", "\\\\");
     }
 
     public static String serializeLiteral(String literalString) {
