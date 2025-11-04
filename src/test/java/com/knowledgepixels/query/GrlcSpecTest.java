@@ -1,14 +1,14 @@
 package com.knowledgepixels.query;
 
+import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
 import io.vertx.core.MultiMap;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.nanopub.MalformedNanopubException;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 import org.nanopub.extra.server.GetNanopub;
-
-import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
 
 import java.io.File;
 import java.io.IOException;
@@ -137,6 +137,80 @@ class GrlcSpecTest {
                 // all good
             }
         }
+    }
+
+    @Test
+    void isIriPlaceholder() {
+        assertTrue(GrlcSpec.isIriPlaceholder("example_iri"));
+    }
+
+    @Test
+    void isIriPlaceholderWhenNotEndingWithIri() {
+        assertFalse(GrlcSpec.isIriPlaceholder("example"));
+    }
+
+    @Test
+    void isIriPlaceholderWhenEmpty() {
+        assertFalse(GrlcSpec.isIriPlaceholder(""));
+    }
+
+    @Test
+    void isIriPlaceholderWhenNull() {
+        assertThrows(NullPointerException.class, () -> GrlcSpec.isIriPlaceholder(null));
+    }
+
+    @Test
+    void isOptionalPlaceholder() {
+        assertTrue(GrlcSpec.isOptionalPlaceholder("__example"));
+    }
+
+    @Test
+    void isOptionalPlaceholderNotValid() {
+        assertFalse(GrlcSpec.isOptionalPlaceholder("placeholder"));
+    }
+
+    @Test
+    void isOptionalPlaceholderWhenEmpty() {
+        assertFalse(GrlcSpec.isOptionalPlaceholder(""));
+    }
+
+    @Test
+    void isOptionalPlaceholderWhenNull() {
+        assertThrows(NullPointerException.class, () -> GrlcSpec.isOptionalPlaceholder(null));
+    }
+
+    @Test
+    void isMultiPlaceholderValid() {
+        assertTrue(GrlcSpec.isMultiPlaceholder("example_multi"));
+        assertTrue(GrlcSpec.isMultiPlaceholder("example_multi_iri"));
+    }
+
+    @Test
+    void isMultiPlaceholderValidNotValid() {
+        assertFalse(GrlcSpec.isMultiPlaceholder("placeholder_iri"));
+        assertFalse(GrlcSpec.isMultiPlaceholder("placeholder"));
+    }
+
+    @Test
+    void isMultiPlaceholderValidWhenEmpty() {
+        assertFalse(GrlcSpec.isMultiPlaceholder(""));
+    }
+
+    @Test
+    void isMultiPlaceholderWhenNull() {
+        assertThrows(NullPointerException.class, () -> GrlcSpec.isMultiPlaceholder(null));
+    }
+
+    @Test
+    void serializeIri() {
+        String iri = "https://example.org/resource";
+        assertEquals("<https://example.org/resource>", GrlcSpec.serializeIri(iri));
+    }
+
+    @Test
+    void serializeLiteral() {
+        String literal = "Example Literal";
+        assertEquals("\"Example Literal\"", GrlcSpec.serializeLiteral(literal));
     }
 
 }
