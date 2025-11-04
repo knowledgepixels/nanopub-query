@@ -64,6 +64,8 @@ public class GrlcSpec {
      */
     public static final String nanopubQueryUrl = Utils.getEnvString("NANOPUB_QUERY_URL", "http://query:9393/");
 
+    private static final String NANOPUB_QUERY_REPO_URL = "https://w3id.org/np/l/nanopub-query-1.1/repo/";
+
     private MultiMap parameters;
     private Nanopub np;
     private String requestUrlBase;
@@ -117,11 +119,11 @@ public class GrlcSpec {
                 license = st.getObject().stringValue();
             } else if (st.getPredicate().equals(HAS_SPARQL)) {
                 // TODO Improve this:
-                queryContent = st.getObject().stringValue().replace("https://w3id.org/np/l/nanopub-query-1.1/repo/", nanopubQueryUrl + "repo/");
+                queryContent = st.getObject().stringValue().replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
             } else if (st.getPredicate().equals(HAS_ENDPOINT) && st.getObject() instanceof IRI) {
                 endpoint = st.getObject().stringValue();
-                if (endpoint.startsWith("https://w3id.org/np/l/nanopub-query-1.1/repo/")) {
-                    endpoint = endpoint.replace("https://w3id.org/np/l/nanopub-query-1.1/repo/", nanopubQueryUrl + "repo/");
+                if (endpoint.startsWith(NANOPUB_QUERY_REPO_URL)) {
+                    endpoint = endpoint.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
                 } else {
                     throw new InvalidGrlcSpecException("Invalid/non-recognized endpoint: " + endpoint);
                 }
@@ -260,18 +262,39 @@ public class GrlcSpec {
         return queryName;
     }
 
+    /**
+     * Returns the list of placeholders.
+     *
+     * @return the list of placeholders
+     */
     public List<String> getPlaceholdersList() {
         return placeholdersList;
     }
 
+    /**
+     * Returns the repository name derived from the endpoint URL.
+     *
+     * @return the repository name
+     */
     public String getRepoName() {
         return endpoint.replaceAll("/", "_").replaceFirst("^.*_repo_", "");
     }
 
+    /**
+     * Returns the query content.
+     *
+     * @return the query content
+     */
     public String getQueryContent() {
         return queryContent;
     }
 
+    /**
+     * Expands the query by replacing the placeholders with the provided parameter values.
+     *
+     * @return the expanded query
+     * @throws InvalidGrlcSpecException if a non-optional placeholder is missing a value
+     */
     public String expandQuery() throws InvalidGrlcSpecException {
         String expandedQueryContent = queryContent;
         for (String ph : placeholdersList) {
