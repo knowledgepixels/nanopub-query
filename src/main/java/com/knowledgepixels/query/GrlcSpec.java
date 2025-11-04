@@ -1,12 +1,7 @@
 package com.knowledgepixels.query;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
+import io.vertx.core.MultiMap;
+import net.trustyuri.TrustyUriUtils;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -22,13 +17,13 @@ import org.nanopub.Nanopub;
 import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.extra.server.GetNanopub;
 import org.nanopub.extra.services.QueryAccess;
-
-import io.vertx.core.MultiMap;
-import net.trustyuri.TrustyUriUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.*;
+
 //TODO merge this class with GrlcQuery of Nanodash and move to a library like nanopub-java
+
 /**
  * This class produces a page with the grlc specification. This is needed internally to tell grlc
  * how to execute a particular query template.
@@ -39,6 +34,9 @@ public class GrlcSpec {
 
     private static final Logger log = LoggerFactory.getLogger(GrlcSpec.class);
 
+    /**
+     * Exception for invalid grlc specifications.
+     */
     public static class InvalidGrlcSpecException extends Exception {
 
         private InvalidGrlcSpecException(String msg) {
@@ -138,7 +136,7 @@ public class GrlcSpec {
         try {
             ParsedQuery query = new SPARQLParser().parseQuery(queryContent, null);
             query.getTupleExpr().visitChildren(new AbstractSimpleQueryModelVisitor<>() {
-        
+
                 @Override
                 public void meet(Var node) throws RuntimeException {
                     super.meet(node);
@@ -146,7 +144,7 @@ public class GrlcSpec {
                         placeholders.add(node.getName());
                     }
                 }
-        
+
             });
         } catch (MalformedQueryException ex) {
             throw new InvalidGrlcSpecException("Invalid SPARQL string", ex);
@@ -208,26 +206,56 @@ public class GrlcSpec {
         return s;
     }
 
+    /**
+     * Returns the request parameters.
+     *
+     * @return the request parameters
+     */
     public MultiMap getParameters() {
         return parameters;
     }
 
+    /**
+     * Returns the nanopub.
+     *
+     * @return the nanopub
+     */
     public Nanopub getNanopub() {
         return np;
     }
 
+    /**
+     * Returns the artifact code.
+     *
+     * @return the artifact code
+     */
     public String getArtifactCode() {
         return artifactCode;
     }
 
+    /**
+     * Returns the label.
+     *
+     * @return the label
+     */
     public String getLabel() {
         return label;
     }
 
+    /**
+     * Returns the description.
+     *
+     * @return the description
+     */
     public String getDescription() {
         return desc;
     }
 
+    /**
+     * Returns the query name.
+     *
+     * @return the query name
+     */
     public String getQueryName() {
         return queryName;
     }
@@ -247,8 +275,8 @@ public class GrlcSpec {
     public String expandQuery() throws InvalidGrlcSpecException {
         String expandedQueryContent = queryContent;
         for (String ph : placeholdersList) {
-            log.info("ph: ", ph);
-            log.info("getParamName(ph): ", getParamName(ph));
+            log.info("ph: {}", ph);
+            log.info("getParamName(ph): {}", getParamName(ph));
             if (isMultiPlaceholder(ph)) {
                 // TODO multi placeholders need proper documentation
                 List<String> val = parameters.getAll(getParamName(ph));
@@ -270,7 +298,7 @@ public class GrlcSpec {
                 expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + escapeSlashes(valueList) + "}");
             } else {
                 String val = parameters.get(getParamName(ph));
-                log.info("val: ", val);
+                log.info("val: {}", val);
                 if (!isOptionalPlaceholder(ph) && val == null) {
                     throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
                 }
@@ -282,38 +310,86 @@ public class GrlcSpec {
                 }
             }
         }
-        log.info("Expanded grlc query:\n", expandedQueryContent);
+        log.info("Expanded grlc query:\n {}", expandedQueryContent);
         return expandedQueryContent;
     }
 
+    /**
+     * Escapes a literal string for SPARQL.
+     *
+     * @param s The string
+     * @return The escaped string
+     */
     public static String escapeLiteral(String s) {
         return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\"", "\\\"");
     }
 
+    /**
+     * Checks whether the given placeholder is an optional placeholder.
+     *
+     * @param placeholder The placeholder name
+     * @return true if it is an optional placeholder, false otherwise
+     */
     public static boolean isOptionalPlaceholder(String placeholder) {
         return placeholder.startsWith("__");
     }
 
+    /**
+     * Checks whether the given placeholder is a multi-value placeholder.
+     *
+     * @param placeholder The placeholder name
+     * @return true if it is a multi-value placeholder, false otherwise
+     */
     public static boolean isMultiPlaceholder(String placeholder) {
         return placeholder.endsWith("_multi") || placeholder.endsWith("_multi_iri");
     }
 
+    /**
+     * Checks whether the given placeholder is an IRI placeholder.
+     *
+     * @param placeholder The placeholder name
+     * @return true if it is an IRI placeholder, false otherwise
+     */
     public static boolean isIriPlaceholder(String placeholder) {
         return placeholder.endsWith("_iri");
     }
 
+    /**
+     * Returns the parameter name for the given placeholder.
+     *
+     * @param placeholder The placeholder name
+     * @return The parameter name
+     */
     public static String getParamName(String placeholder) {
         return placeholder.replaceFirst("^_+", "").replaceFirst("_iri$", "").replaceFirst("_multi$", "");
     }
 
+    /**
+     * Serializes an IRI string for SPARQL.
+     *
+     * @param iriString The IRI string
+     * @return The serialized IRI
+     */
     public static String serializeIri(String iriString) {
         return "<" + iriString + ">";
     }
 
+    /**
+     * Escapes slashes in a string.
+     *
+     * @param string The string
+     * @return The escaped string
+     */
     private static String escapeSlashes(String string) {
         return string.replace("\\", "\\\\");
     }
 
+    /**
+     * Serializes a literal string for SPARQL.
+     *
+     * @param literalString The literal string
+     * @return The serialized literal
+     */
     public static String serializeLiteral(String literalString) {
         return "\"" + escapeLiteral(literalString) + "\"";
     }
