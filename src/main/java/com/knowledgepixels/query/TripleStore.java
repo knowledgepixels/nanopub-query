@@ -212,7 +212,7 @@ public class TripleStore {
                 "        sr:sailImpl [\n" +
                 "            sail:sailType \"openrdf:LuceneSail\" ;\n" +
                 "            sail-luc:indexDir \"index/\" ;\n" +
-                "            sail-luc:fsyncInterval \"5000\" ;\n" +
+                "            sail-luc:transactional false ;\n" +
                 "            sail:delegate [\n" +
                 "              sail:sailType \"rdf4j:LmdbStore\" ;\n" +
                 "              sail:iterationCacheSyncThreshold \"10000\";\n" +
