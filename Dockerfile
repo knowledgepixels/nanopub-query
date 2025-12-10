@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21 AS build
+FROM eclipse-temurin:25 AS build
 
 ENV APP_DIR /app
 
@@ -10,7 +10,7 @@ RUN ./mvnw package -Dmaven.test.skip=true && \
     mv target/nanopub-query-*-fat.jar $APP_DIR/nanopub-query.jar
 
 
-FROM eclipse-temurin:21
+FROM eclipse-temurin:25
 
 WORKDIR /app
 
