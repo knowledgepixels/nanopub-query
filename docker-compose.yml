@@ -29,7 +29,7 @@ services:
     # - Fixed issue with federated query deadlocks
     # - Allowed for disabling transactions in text repos for faster writes
     # Source branch: https://github.com/Ostrzyciel/rdf4j/tree/piotr/merged-fixes-2025-12-10
-    image: ostrzyciel/rdf4j-workbench-tomcat:5.2.2-SNAPSHOT
+    image: ostrzyciel/rdf4j-workbench-tomcat:5.2.2-SNAPSHOT-b
     #   image: eclipse/rdf4j-workbench:5.0.3
     restart: unless-stopped
     environment:
