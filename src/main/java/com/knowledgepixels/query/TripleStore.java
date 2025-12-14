@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Class to access the database in the form of triple stores.
@@ -270,37 +272,78 @@ public class TripleStore {
         return get().getRepoConnection(ADMIN_REPO);
     }
 
+    private Set<String> cachedRepositoryNames = Set.of();
+    private boolean repoNamesCacheValid = false;
+    private final ReadWriteLock repoNamesCacheLock = new ReentrantReadWriteLock();
+
     /**
      * Returns set of all repository names.
      *
      * @return Repository name set
      */
     public Set<String> getRepositoryNames() {
-        Map<String, Boolean> repositoryNames = null;
-        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-            HttpResponse resp = httpclient.execute(RequestBuilder.get()
-                    .setUri(endpointBase + "/repositories")
-                    .addHeader("Content-Type", "text/csv")
-                    .build());
-            BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
-            int code = resp.getStatusLine().getStatusCode();
-            if (code < 200 || code >= 300) return null;
-            repositoryNames = new HashMap<>();
-            int lineCount = 0;
-            while (true) {
-                String line = reader.readLine();
-                if (line == null) break;
-                if (lineCount > 0) {
-                    String repoName = line.split(",")[1];
-                    repositoryNames.put(repoName, true);
-                }
-                lineCount = lineCount + 1;
+        // See if the repository names are cached:
+        final var readLock = repoNamesCacheLock.readLock();
+        try {
+            readLock.lock();
+            if (repoNamesCacheValid) {
+                return cachedRepositoryNames;
             }
-        } catch (IOException ex) {
-            log.info("Could not get repository names.", ex);
-            return null;
+        } finally {
+            readLock.unlock();
         }
-        return repositoryNames.keySet();
+
+        // Not cached, get from server:
+        final var writeLock = repoNamesCacheLock.writeLock();
+        try {
+            writeLock.lock();
+            // Check again if another thread has already updated the cache:
+            if (repoNamesCacheValid) {
+                return cachedRepositoryNames;
+            }
+            Map<String, Boolean> repositoryNames = null;
+            try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+                HttpResponse resp = httpclient.execute(RequestBuilder.get()
+                        .setUri(endpointBase + "/repositories")
+                        .addHeader("Content-Type", "text/csv")
+                        .build());
+                BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
+                int code = resp.getStatusLine().getStatusCode();
+                if (code < 200 || code >= 300) return null;
+                repositoryNames = new HashMap<>();
+                int lineCount = 0;
+                while (true) {
+                    String line = reader.readLine();
+                    if (line == null) break;
+                    if (lineCount > 0) {
+                        String repoName = line.split(",")[1];
+                        repositoryNames.put(repoName, true);
+                    }
+                    lineCount = lineCount + 1;
+                }
+            } catch (IOException ex) {
+                log.info("Could not get repository names.", ex);
+                return null;
+            }
+            cachedRepositoryNames = repositoryNames.keySet();
+            repoNamesCacheValid = true;
+            return cachedRepositoryNames;
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    /**
+     * Invalidates the repository names cache. Call this method when a repository is created or deleted.
+     */
+    private void invalidateRepositoryNamesCache() {
+        final var writeLock = repoNamesCacheLock.writeLock();
+        try {
+            writeLock.lock();
+            repoNamesCacheValid = false;
+        } finally {
+            writeLock.unlock();
+        }
     }
 
     @GeneratedFlagForDependentElements
@@ -323,6 +366,8 @@ public class TripleStore {
                 }
                 conn.commit();
             }
+            // Refresh repository names cache
+            invalidateRepositoryNamesCache();
         }
     }
 
