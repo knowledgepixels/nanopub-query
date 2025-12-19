@@ -11,10 +11,6 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-  MAVEN_USERNAME: ${{ vars.MAVEN_USERNAME }}
-  MAVEN_TOKEN: ${{ secrets.MAVEN_TOKEN }}
-  MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
-  MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
 
 jobs:
   test:
@@ -47,20 +43,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
       - name: Set up JDK
         uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5.1.0
         with:
           distribution: "temurin"
           java-version: "23"
+
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22.20.0
+
       - name: Release
         run: |
           npm ci
