@@ -33,6 +33,7 @@
     <maven-surefire-plugin.version>3.5.3</maven-surefire-plugin.version>
     <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
     <jacoco-maven-plugin.version>0.8.13</jacoco-maven-plugin.version>
+    <jib-maven-plugin.version>3.5.1</jib-maven-plugin.version>
 
     <vertx.version>4.5.11</vertx.version>
     <junit-jupiter.version>5.13.3</junit-jupiter.version>
@@ -238,7 +239,7 @@
       <plugin>
         <groupId>com.google.cloud.tools</groupId>
         <artifactId>jib-maven-plugin</artifactId>
-        <version>3.4.4</version>
+        <version>${jib-maven-plugin.version}</version>
         <configuration>
           <from>
             <image>eclipse-temurin:21-jre</image>
