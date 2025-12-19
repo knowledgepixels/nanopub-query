@@ -213,7 +213,7 @@
           <execution>
             <id>run-main-verticle</id>
             <configuration>
-              <mainClass>io.vertx.core.Launcher</mainClass>
+              <mainClass>${launcher.class}</mainClass>
               <arguments>
                 <argument>run</argument>
                 <argument>${main.verticle}</argument>
