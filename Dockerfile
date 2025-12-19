@@ -6,8 +6,8 @@ WORKDIR $APP_DIR
 
 COPY . .
 
-RUN ./mvnw package -Dmaven.test.skip=true && \
-    mv target/nanopub-query-*-fat.jar $APP_DIR/nanopub-query.jar
+RUN ./mvnw package -Dmaven.test.skip=true
+RUN cp ./target/nanopub-query*fat.jar $APP_DIR/nanopub-query.jar
 
 
 FROM eclipse-temurin:21
