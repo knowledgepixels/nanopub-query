@@ -1,7 +1,7 @@
 services:
   query:
     build: .
-    image: nanopub/query
+    image: nanopub/query:latest
     restart: unless-stopped
     ports:
       - "9393:9393"

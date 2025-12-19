@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21 AS build
+FROM eclipse-temurin:25-jre AS build
 
 ENV APP_DIR /app
 
