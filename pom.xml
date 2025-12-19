@@ -40,6 +40,8 @@
 
     <main.verticle>com.knowledgepixels.query.MainVerticle</main.verticle>
     <launcher.class>com.knowledgepixels.query.ApplicationLauncher</launcher.class>
+
+    <eclipse-jre-base-image>eclipse-temurin:25-jre</eclipse-jre-base-image>
   </properties>
 
   <repositories>
@@ -242,7 +244,7 @@
         <version>${jib-maven-plugin.version}</version>
         <configuration>
           <from>
-            <image>eclipse-temurin:21-jre</image>
+            <image>${eclipse-jre-base-image}</image>
           </from>
           <to>
             <image>${env.IMAGE_NAME}</image>
