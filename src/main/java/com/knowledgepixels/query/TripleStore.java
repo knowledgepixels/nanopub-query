@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Class to access the database in the form of triple stores.
@@ -172,10 +174,55 @@ public class TripleStore {
                 indexTypes = "spoc,posc,ospc";
             }
 
-            String createRegularRepoQueryString = "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" + "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" + "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" + "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" + "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" + "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" + "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" + "\n" + "[] a rep:Repository ;\n" + "    rep:repositoryID \"" + repoName + "\" ;\n" + "    rdfs:label \"" + repoName + " LMDB store\" ;\n" + "    rep:repositoryImpl [\n" + "        rep:repositoryType \"openrdf:SailRepository\" ;\n" + "        sr:sailImpl [\n" + "            sail:sailType \"rdf4j:LmdbStore\" ;\n" + "            sail:iterationCacheSyncThreshold \"10000\";\n" + "            lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" + "            sb:defaultQueryEvaluationMode \"STANDARD\"\n" + "        ]\n" + "    ].\n";
+            String createRegularRepoQueryString =
+                "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
+                "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
+                "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
+                "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
+                "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" +
+                "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" +
+                "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" +
+                "\n" +
+                "[] a rep:Repository ;\n" +
+                "    rep:repositoryID \"" + repoName + "\" ;\n" +
+                "    rdfs:label \"" + repoName + " LMDB store\" ;\n" +
+                "    rep:repositoryImpl [\n" +
+                "        rep:repositoryType \"openrdf:SailRepository\" ;\n" +
+                "        sr:sailImpl [\n" +
+                "            sail:sailType \"rdf4j:LmdbStore\" ;\n" +
+                "            sail:iterationCacheSyncThreshold \"10000\";\n" +
+                "            lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
+                "            sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
+                "        ]\n"
+                + "    ].\n";
 
             // TODO Index npa:hasFilterLiteral predicate too (see https://groups.google.com/g/rdf4j-users/c/epF4Af1jXGU):
-            String createTextRepoQueryString = "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" + "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" + "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" + "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" + "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" + "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" + "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" + "\n" + "[] a rep:Repository ;\n" + "    rep:repositoryID \"" + repoName + "\" ;\n" + "    rdfs:label \"" + repoName + " store\" ;\n" + "    rep:repositoryImpl [\n" + "        rep:repositoryType \"openrdf:SailRepository\" ;\n" + "        sr:sailImpl [\n" + "            sail:sailType \"openrdf:LuceneSail\" ;\n" + "            sail-luc:indexDir \"index/\" ;\n" + "            sail:delegate [" + "              sail:sailType \"rdf4j:LmdbStore\" ;\n" + "              sail:iterationCacheSyncThreshold \"10000\";\n" + "              lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" + "              sb:defaultQueryEvaluationMode \"STANDARD\"\n" + "            ]\n" + "        ]\n" + "    ].";
+            String createTextRepoQueryString =
+                "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
+                "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
+                "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
+                "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
+                "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" +
+                "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" +
+                "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" +
+                "\n"
+                + "[] a rep:Repository ;\n" +
+                "    rep:repositoryID \"" + repoName + "\" ;\n" +
+                "    rdfs:label \"" + repoName + " store\" ;\n" +
+                "    rep:repositoryImpl [\n" +
+                "        rep:repositoryType \"openrdf:SailRepository\" ;\n" +
+                "        sr:sailImpl [\n" +
+                "            sail:sailType \"openrdf:LuceneSail\" ;\n" +
+                "            sail-luc:indexDir \"index/\" ;\n" +
+                "            sail-luc:transactional false ;\n" +
+                "            sail:delegate [\n" +
+                "              sail:sailType \"rdf4j:LmdbStore\" ;\n" +
+                "              sail:iterationCacheSyncThreshold \"10000\";\n" +
+                "              lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
+                "              sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
+                "            ]\n" +
+                "        ]\n" +
+                "    ].";
 
             String createRepoQueryString = createRegularRepoQueryString;
             if (repoName.startsWith("text")) {
@@ -225,37 +272,78 @@ public class TripleStore {
         return get().getRepoConnection(ADMIN_REPO);
     }
 
+    private Set<String> cachedRepositoryNames = Set.of();
+    private boolean repoNamesCacheValid = false;
+    private final ReadWriteLock repoNamesCacheLock = new ReentrantReadWriteLock();
+
     /**
      * Returns set of all repository names.
      *
      * @return Repository name set
      */
     public Set<String> getRepositoryNames() {
-        Map<String, Boolean> repositoryNames = null;
-        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-            HttpResponse resp = httpclient.execute(RequestBuilder.get()
-                    .setUri(endpointBase + "/repositories")
-                    .addHeader("Content-Type", "text/csv")
-                    .build());
-            BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
-            int code = resp.getStatusLine().getStatusCode();
-            if (code < 200 || code >= 300) return null;
-            repositoryNames = new HashMap<>();
-            int lineCount = 0;
-            while (true) {
-                String line = reader.readLine();
-                if (line == null) break;
-                if (lineCount > 0) {
-                    String repoName = line.split(",")[1];
-                    repositoryNames.put(repoName, true);
-                }
-                lineCount = lineCount + 1;
+        // See if the repository names are cached:
+        final var readLock = repoNamesCacheLock.readLock();
+        try {
+            readLock.lock();
+            if (repoNamesCacheValid) {
+                return cachedRepositoryNames;
             }
-        } catch (IOException ex) {
-            log.info("Could not get repository names.", ex);
-            return null;
+        } finally {
+            readLock.unlock();
         }
-        return repositoryNames.keySet();
+
+        // Not cached, get from server:
+        final var writeLock = repoNamesCacheLock.writeLock();
+        try {
+            writeLock.lock();
+            // Check again if another thread has already updated the cache:
+            if (repoNamesCacheValid) {
+                return cachedRepositoryNames;
+            }
+            Map<String, Boolean> repositoryNames = null;
+            try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+                HttpResponse resp = httpclient.execute(RequestBuilder.get()
+                        .setUri(endpointBase + "/repositories")
+                        .addHeader("Content-Type", "text/csv")
+                        .build());
+                BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
+                int code = resp.getStatusLine().getStatusCode();
+                if (code < 200 || code >= 300) return null;
+                repositoryNames = new HashMap<>();
+                int lineCount = 0;
+                while (true) {
+                    String line = reader.readLine();
+                    if (line == null) break;
+                    if (lineCount > 0) {
+                        String repoName = line.split(",")[1];
+                        repositoryNames.put(repoName, true);
+                    }
+                    lineCount = lineCount + 1;
+                }
+            } catch (IOException ex) {
+                log.info("Could not get repository names.", ex);
+                return null;
+            }
+            cachedRepositoryNames = repositoryNames.keySet();
+            repoNamesCacheValid = true;
+            return cachedRepositoryNames;
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    /**
+     * Invalidates the repository names cache. Call this method when a repository is created or deleted.
+     */
+    private void invalidateRepositoryNamesCache() {
+        final var writeLock = repoNamesCacheLock.writeLock();
+        try {
+            writeLock.lock();
+            repoNamesCacheValid = false;
+        } finally {
+            writeLock.unlock();
+        }
     }
 
     @GeneratedFlagForDependentElements
@@ -278,6 +366,8 @@ public class TripleStore {
                 }
                 conn.commit();
             }
+            // Refresh repository names cache
+            invalidateRepositoryNamesCache();
         }
     }
 

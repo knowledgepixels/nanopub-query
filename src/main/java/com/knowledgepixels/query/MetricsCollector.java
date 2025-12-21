@@ -3,6 +3,7 @@ package com.knowledgepixels.query;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -50,28 +51,24 @@ public final class MetricsCollector {
     public void updateMetrics() {
         // Update numeric metrics
         loadCounter.set((int) StatusController.get().getState().loadCounter);
+        // Request repository names once, to avoid multiple calls
+        var repoNames = TripleStore.get().getRepositoryNames();
+        if (repoNames == null) {
+            repoNames = Set.of();
+        }
         typeRepositoriesCounter.set(
-                (int) Optional
-                        .ofNullable(TripleStore.get().getRepositoryNames())
-                        .orElse(Set.of())
+                (int) repoNames
                         .stream()
                         .filter(repo -> repo.startsWith("type_"))
                         .count()
         );
         pubkeyRepositoriesCounter.set(
-                (int) Optional
-                        .ofNullable(TripleStore.get().getRepositoryNames())
-                        .orElse(Set.of())
+                (int) repoNames
                         .stream()
                         .filter(repo -> repo.startsWith("pubkey_"))
                         .count()
         );
-        fullRepositoriesCounter.set(
-                Optional
-                        .ofNullable(TripleStore.get().getRepositoryNames())
-                        .orElse(Set.of())
-                        .size()
-        );
+        fullRepositoriesCounter.set(repoNames.size());
 
         // Update status gauge
         final var currentStatus = StatusController.get().getState().state;
