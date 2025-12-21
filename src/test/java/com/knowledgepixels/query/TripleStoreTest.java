@@ -10,14 +10,11 @@ import org.eclipse.rdf4j.repository.Repository;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.commons.support.HierarchyTraversalMode;
 import org.junit.platform.commons.support.ReflectionSupport;
-import org.mockito.MockSettings;
-import org.mockito.internal.creation.MockSettingsImpl;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Set;
-import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,7 +59,7 @@ class TripleStoreTest {
     }
 
     @Test
-    void getRepositoryNamesHandlesIOException() throws IOException, IllegalAccessException {
+    void getRepositoryNamesHandlesIOException() throws IOException {
         TripleStore mock = mock(TripleStore.class, CALLS_REAL_METHODS);
         ReentrantReadWriteLock repoNamesCacheLock = initRepoNamesCacheLock(mock);
         CloseableHttpClient httpClientMock = mock(CloseableHttpClient.class);

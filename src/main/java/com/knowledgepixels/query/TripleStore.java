@@ -175,54 +175,54 @@ public class TripleStore {
             }
 
             String createRegularRepoQueryString =
-                "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
-                "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
-                "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
-                "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
-                "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" +
-                "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" +
-                "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" +
-                "\n" +
-                "[] a rep:Repository ;\n" +
-                "    rep:repositoryID \"" + repoName + "\" ;\n" +
-                "    rdfs:label \"" + repoName + " LMDB store\" ;\n" +
-                "    rep:repositoryImpl [\n" +
-                "        rep:repositoryType \"openrdf:SailRepository\" ;\n" +
-                "        sr:sailImpl [\n" +
-                "            sail:sailType \"rdf4j:LmdbStore\" ;\n" +
-                "            sail:iterationCacheSyncThreshold \"10000\";\n" +
-                "            lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
-                "            sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
-                "        ]\n"
-                + "    ].\n";
+                    "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
+                    "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
+                    "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
+                    "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
+                    "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" +
+                    "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" +
+                    "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" +
+                    "\n" +
+                    "[] a rep:Repository ;\n" +
+                    "    rep:repositoryID \"" + repoName + "\" ;\n" +
+                    "    rdfs:label \"" + repoName + " LMDB store\" ;\n" +
+                    "    rep:repositoryImpl [\n" +
+                    "        rep:repositoryType \"openrdf:SailRepository\" ;\n" +
+                    "        sr:sailImpl [\n" +
+                    "            sail:sailType \"rdf4j:LmdbStore\" ;\n" +
+                    "            sail:iterationCacheSyncThreshold \"10000\";\n" +
+                    "            lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
+                    "            sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
+                    "        ]\n"
+                    + "    ].\n";
 
             // TODO Index npa:hasFilterLiteral predicate too (see https://groups.google.com/g/rdf4j-users/c/epF4Af1jXGU):
             String createTextRepoQueryString =
-                "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
-                "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
-                "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
-                "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
-                "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" +
-                "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" +
-                "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" +
-                "\n"
-                + "[] a rep:Repository ;\n" +
-                "    rep:repositoryID \"" + repoName + "\" ;\n" +
-                "    rdfs:label \"" + repoName + " store\" ;\n" +
-                "    rep:repositoryImpl [\n" +
-                "        rep:repositoryType \"openrdf:SailRepository\" ;\n" +
-                "        sr:sailImpl [\n" +
-                "            sail:sailType \"openrdf:LuceneSail\" ;\n" +
-                "            sail-luc:indexDir \"index/\" ;\n" +
-                "            sail-luc:transactional false ;\n" +
-                "            sail:delegate [\n" +
-                "              sail:sailType \"rdf4j:LmdbStore\" ;\n" +
-                "              sail:iterationCacheSyncThreshold \"10000\";\n" +
-                "              lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
-                "              sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
-                "            ]\n" +
-                "        ]\n" +
-                "    ].";
+                    "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
+                    "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
+                    "@prefix sr: <http://www.openrdf.org/config/repository/sail#>.\n" +
+                    "@prefix sail: <http://www.openrdf.org/config/sail#>.\n" +
+                    "@prefix sail-luc: <http://www.openrdf.org/config/sail/lucene#>.\n" +
+                    "@prefix lmdb: <http://rdf4j.org/config/sail/lmdb#>.\n" +
+                    "@prefix sb: <http://www.openrdf.org/config/sail/base#>.\n" +
+                    "\n"
+                    + "[] a rep:Repository ;\n" +
+                    "    rep:repositoryID \"" + repoName + "\" ;\n" +
+                    "    rdfs:label \"" + repoName + " store\" ;\n" +
+                    "    rep:repositoryImpl [\n" +
+                    "        rep:repositoryType \"openrdf:SailRepository\" ;\n" +
+                    "        sr:sailImpl [\n" +
+                    "            sail:sailType \"openrdf:LuceneSail\" ;\n" +
+                    "            sail-luc:indexDir \"index/\" ;\n" +
+                    "            sail-luc:transactional false ;\n" +
+                    "            sail:delegate [\n" +
+                    "              sail:sailType \"rdf4j:LmdbStore\" ;\n" +
+                    "              sail:iterationCacheSyncThreshold \"10000\";\n" +
+                    "              lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
+                    "              sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
+                    "            ]\n" +
+                    "        ]\n" +
+                    "    ].";
 
             String createRepoQueryString = createRegularRepoQueryString;
             if (repoName.startsWith("text")) {
@@ -243,7 +243,7 @@ public class TripleStore {
                 log.info("Status code: {}", response.getStatusLine().getStatusCode());
                 log.info(response.getStatusLine().getReasonPhrase());
                 String handledResponse = new BasicResponseHandler().handleResponse(response);
-                log.info("Response: ", handledResponse);
+                log.info("Response: {}", handledResponse);
             }
         } catch (IOException ex) {
             log.info("Could not create repo.", ex);

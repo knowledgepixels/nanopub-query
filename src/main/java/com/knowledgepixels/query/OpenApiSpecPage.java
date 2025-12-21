@@ -1,17 +1,11 @@
 package com.knowledgepixels.query;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
+import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
+import io.vertx.core.MultiMap;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
-import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
-
-import io.vertx.core.MultiMap;
+import java.util.*;
 
 /**
  * Page for Open API compliant specification.
@@ -25,19 +19,19 @@ public class OpenApiSpecPage {
      *
      * @param requestUrl The request URL
      * @param parameters The URL request parameters
-     * @throws InvalidGrlcSpecException 
+     * @throws InvalidGrlcSpecException If the GRLC specification is invalid
      */
     public OpenApiSpecPage(String requestUrl, MultiMap parameters) throws InvalidGrlcSpecException {
         GrlcSpec grlcSpec = new GrlcSpec(requestUrl, parameters);
-        
+
 
         dataMap.put("openapi", "3.0.4");
 
         Map<String, Object> infoMap = new LinkedHashMap<>();
         infoMap.put("title", grlcSpec.getLabel());
         infoMap.put("description", "API definition source: <a target=\"_blank\" href=\"" + grlcSpec.getNanopub().getUri() +
-                "\"><svg height=\"0.8em\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 8 8\"><path d=\"M5,8H8L3,0H0M8,4.8V0H5M0,3.2V8H3\"/></svg> " +
-                grlcSpec.getArtifactCode().substring(0, 10) + "</a>");
+                                   "\"><svg height=\"0.8em\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 8 8\"><path d=\"M5,8H8L3,0H0M8,4.8V0H5M0,3.2V8H3\"/></svg> " +
+                                   grlcSpec.getArtifactCode().substring(0, 10) + "</a>");
         infoMap.put("version", grlcSpec.getArtifactCode().substring(0, 10));
         dataMap.put("info", infoMap);
 

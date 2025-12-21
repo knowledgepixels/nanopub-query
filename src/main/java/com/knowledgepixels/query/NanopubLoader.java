@@ -429,7 +429,7 @@ public class NanopubLoader {
                 conn.begin(IsolationLevels.SERIALIZABLE);
                 var repoStatus = fetchRepoStatus(conn, npId);
                 if (repoStatus.isLoaded) {
-                    log.info("Already loaded: ", npId);
+                    log.info("Already loaded: {}", npId);
                 } else {
                     String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
                     conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, null, NPA.GRAPH);
@@ -665,7 +665,7 @@ public class NanopubLoader {
                 loaded = true;
             }
         } catch (Exception ex) {
-            log.info("Could no load nanopub. ",ex);
+            log.info("Could no load nanopub. ", ex);
         }
         return loaded;
     }

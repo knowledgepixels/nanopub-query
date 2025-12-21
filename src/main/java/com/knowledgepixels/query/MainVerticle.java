@@ -1,5 +1,25 @@
 package com.knowledgepixels.query;
 
+import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
+import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.*;
+import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.CorsHandler;
+import io.vertx.ext.web.handler.StaticHandler;
+import io.vertx.ext.web.proxy.handler.ProxyHandler;
+import io.vertx.httpproxy.*;
+import io.vertx.micrometer.PrometheusScrapingHandler;
+import io.vertx.micrometer.backends.BackendRegistries;
+import org.eclipse.rdf4j.model.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -8,38 +28,6 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import org.eclipse.rdf4j.model.Value;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
-import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
-
-import io.micrometer.prometheus.PrometheusMeterRegistry;
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.PoolOptions;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
-import io.vertx.ext.web.handler.CorsHandler;
-import io.vertx.ext.web.handler.StaticHandler;
-import io.vertx.ext.web.proxy.handler.ProxyHandler;
-import io.vertx.httpproxy.Body;
-import io.vertx.httpproxy.HttpProxy;
-import io.vertx.httpproxy.ProxyContext;
-import io.vertx.httpproxy.ProxyInterceptor;
-import io.vertx.httpproxy.ProxyRequest;
-import io.vertx.httpproxy.ProxyResponse;
-import io.vertx.micrometer.PrometheusScrapingHandler;
-import io.vertx.micrometer.backends.BackendRegistries;
 
 /**
  * Main verticle that coordinates the incoming HTTP requests.
@@ -134,28 +122,28 @@ public class MainVerticle extends AbstractVerticle {
                 req.response()
                         .putHeader("content-type", "text/html")
                         .end("<!DOCTYPE html>\n"
-                                + "<html lang=\"en\">\n"
-                                + "<head>\n"
-                                + "<meta charset=\"utf-8\">\n"
-                                + "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
-                                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-                                + "<title>Nanopub Query SPARQL Editor for repository: " + repo + "</title>\n"
-                                + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
-                                + "<link href='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.css' rel='stylesheet' type='text/css'/>\n"
-                                + "<style>.yasgui .endpointText {display:none !important;}</style>\n"
-                                + "<script type=\"text/javascript\">localStorage.clear();</script>\n"
-                                + "</head>\n"
-                                + "<body>\n"
-                                + "<h3>Nanopub Query SPARQL Editor for repository: " + repo + "</h3>\n"
-                                + "<div id='yasgui'></div>\n"
-                                + "<script src='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.js'></script>\n"
-                                + "<script type=\"text/javascript\">\n"
-                                + "var yasgui = YASGUI(document.getElementById(\"yasgui\"), {\n"
-                                + "  yasqe:{sparql:{endpoint:'/repo/" + repo + "'},value:'" + Utils.defaultQuery.replaceAll("\n", "\\\\n") + "'}\n"
-                                + "});\n"
-                                + "</script>\n"
-                                + "</body>\n"
-                                + "</html>");
+                             + "<html lang=\"en\">\n"
+                             + "<head>\n"
+                             + "<meta charset=\"utf-8\">\n"
+                             + "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
+                             + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+                             + "<title>Nanopub Query SPARQL Editor for repository: " + repo + "</title>\n"
+                             + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+                             + "<link href='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.css' rel='stylesheet' type='text/css'/>\n"
+                             + "<style>.yasgui .endpointText {display:none !important;}</style>\n"
+                             + "<script type=\"text/javascript\">localStorage.clear();</script>\n"
+                             + "</head>\n"
+                             + "<body>\n"
+                             + "<h3>Nanopub Query SPARQL Editor for repository: " + repo + "</h3>\n"
+                             + "<div id='yasgui'></div>\n"
+                             + "<script src='https://cdn.jsdelivr.net/yasgui/2.6.1/yasgui.min.js'></script>\n"
+                             + "<script type=\"text/javascript\">\n"
+                             + "var yasgui = YASGUI(document.getElementById(\"yasgui\"), {\n"
+                             + "  yasqe:{sparql:{endpoint:'/repo/" + repo + "'},value:'" + Utils.defaultQuery.replaceAll("\n", "\\\\n") + "'}\n"
+                             + "});\n"
+                             + "</script>\n"
+                             + "</body>\n"
+                             + "</html>");
             } else {
                 req.response()
                         .putHeader("content-type", "text/plain")
@@ -171,20 +159,20 @@ public class MainVerticle extends AbstractVerticle {
                 req.response()
                         .putHeader("content-type", "text/html")
                         .end("<!DOCTYPE html>\n"
-                                + "<html lang=\"en\">\n"
-                                + "<head>\n"
-                                + "<meta charset=\"utf-8\">\n"
-                                + "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
-                                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-                                + "<title>Nanopub Query repo: " + repo + "</title>\n"
-                                + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
-                                + "</head>\n"
-                                + "<body>\n"
-                                + "<h3>Nanopub Query repo: " + repo + "</h3>\n"
-                                + "<p>Endpoint: <a href=\"/repo/" + repo + "\">/repo/" + repo + "</a></p>"
-                                + "<p>YASGUI: <a href=\"/tools/" + repo + "/yasgui.html\">/tools/" + repo + "/yasgui.hml</a></p>"
-                                + "</body>\n"
-                                + "</html>");
+                             + "<html lang=\"en\">\n"
+                             + "<head>\n"
+                             + "<meta charset=\"utf-8\">\n"
+                             + "<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n"
+                             + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+                             + "<title>Nanopub Query repo: " + repo + "</title>\n"
+                             + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+                             + "</head>\n"
+                             + "<body>\n"
+                             + "<h3>Nanopub Query repo: " + repo + "</h3>\n"
+                             + "<p>Endpoint: <a href=\"/repo/" + repo + "\">/repo/" + repo + "</a></p>"
+                             + "<p>YASGUI: <a href=\"/tools/" + repo + "/yasgui.html\">/tools/" + repo + "/yasgui.hml</a></p>"
+                             + "</body>\n"
+                             + "</html>");
             } else {
                 req.response()
                         .putHeader("content-type", "text/plain")
@@ -208,31 +196,31 @@ public class MainVerticle extends AbstractVerticle {
                     pinnedApiLinks = pinnedApiLinks + "<li><a href=\"openapi/?url=spec/" + s + "%3Fapi-version=latest\">" + s.replaceFirst("^.*/", "") + "</a></li>";
                 }
                 pinnedApiLinks = "<p>Pinned APIs:</p>\n" +
-                        "<ul>\n" +
-                        pinnedApiLinks +
-                        "</ul>\n";
+                                 "<ul>\n" +
+                                 pinnedApiLinks +
+                                 "</ul>\n";
             }
             req.response()
                     .putHeader("content-type", "text/html")
                     .end("<!DOCTYPE html>\n"
-                            + "<html lang='en'>\n"
-                            + "<head>\n"
-                            + "<title>Nanopub Query</title>\n"
-                            + "<meta charset='utf-8'>\n"
-                            + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
-                            + "</head>\n"
-                            + "<body>\n"
-                            + "<h1>Nanopub Query</h1>"
-                            + "<p>General repos:</p>"
-                            + "<ul>" + repos + "</ul>"
-                            + "<p>Specific repos:</p>"
-                            + "<ul>"
-                            + "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
-                            + "<li><a href=\"/types\">Type Repos</a></li>"
-                            + "</ul>"
-                            + pinnedApiLinks
-                            + "</body>\n"
-                            + "</html>");
+                         + "<html lang='en'>\n"
+                         + "<head>\n"
+                         + "<title>Nanopub Query</title>\n"
+                         + "<meta charset='utf-8'>\n"
+                         + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+                         + "</head>\n"
+                         + "<body>\n"
+                         + "<h1>Nanopub Query</h1>"
+                         + "<p>General repos:</p>"
+                         + "<ul>" + repos + "</ul>"
+                         + "<p>Specific repos:</p>"
+                         + "<ul>"
+                         + "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
+                         + "<li><a href=\"/types\">Type Repos</a></li>"
+                         + "</ul>"
+                         + pinnedApiLinks
+                         + "</body>\n"
+                         + "</html>");
         });
         proxyRouter.route(HttpMethod.GET, "/pubkeys").handler(req -> {
             String repos = "";
@@ -254,18 +242,18 @@ public class MainVerticle extends AbstractVerticle {
             req.response()
                     .putHeader("content-type", "text/html")
                     .end("<!DOCTYPE html>\n"
-                            + "<html lang='en'>\n"
-                            + "<head>\n"
-                            + "<title>Nanopub Query: Pubkey Repos</title>\n"
-                            + "<meta charset='utf-8'>\n"
-                            + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
-                            + "</head>\n"
-                            + "<body>\n"
-                            + "<h3>Pubkey Repos</h3>"
-                            + "<p>Repos:</p>"
-                            + "<ul>" + repos + "</ul>"
-                            + "</body>\n"
-                            + "</html>");
+                         + "<html lang='en'>\n"
+                         + "<head>\n"
+                         + "<title>Nanopub Query: Pubkey Repos</title>\n"
+                         + "<meta charset='utf-8'>\n"
+                         + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+                         + "</head>\n"
+                         + "<body>\n"
+                         + "<h3>Pubkey Repos</h3>"
+                         + "<p>Repos:</p>"
+                         + "<ul>" + repos + "</ul>"
+                         + "</body>\n"
+                         + "</html>");
         });
         proxyRouter.route(HttpMethod.GET, "/types").handler(req -> {
             String repos = "";
@@ -287,18 +275,18 @@ public class MainVerticle extends AbstractVerticle {
             req.response()
                     .putHeader("content-type", "text/html")
                     .end("<!DOCTYPE html>\n"
-                            + "<html lang='en'>\n"
-                            + "<head>\n"
-                            + "<title>Nanopub Query: Type Repos</title>\n"
-                            + "<meta charset='utf-8'>\n"
-                            + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
-                            + "</head>\n"
-                            + "<body>\n"
-                            + "<h3>Type Repos</h3>"
-                            + "<p>Repos:</p>"
-                            + "<ul>" + repos + "</ul>"
-                            + "</body>\n"
-                            + "</html>");
+                         + "<html lang='en'>\n"
+                         + "<head>\n"
+                         + "<title>Nanopub Query: Type Repos</title>\n"
+                         + "<meta charset='utf-8'>\n"
+                         + "<link rel=\"stylesheet\" href=\"/style.css\">\n"
+                         + "</head>\n"
+                         + "<body>\n"
+                         + "<h3>Type Repos</h3>"
+                         + "<p>Repos:</p>"
+                         + "<ul>" + repos + "</ul>"
+                         + "</body>\n"
+                         + "</html>");
         });
         proxyRouter.route(HttpMethod.GET, "/style.css").handler(req -> {
             if (css == null) {
@@ -346,14 +334,14 @@ public class MainVerticle extends AbstractVerticle {
                     try {
                         GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
                         req.setMethod(HttpMethod.POST);
-    
+
                         // Variant 1:
                         req.putHeader("Content-Type", "application/sparql-query");
                         req.setBody(Body.body(Buffer.buffer(grlcSpec.expandQuery())));
                         // Variant 2:
                         //req.putHeader("Content-Type", "application/x-www-form-urlencoded");
                         //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
-    
+
                         req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
                         log.info("Forwarding apix request to /rdf4j-server/repositories/", grlcSpec.getRepoName());
                     } catch (InvalidGrlcSpecException ex) {
@@ -454,17 +442,17 @@ public class MainVerticle extends AbstractVerticle {
     private static void handleRedirect(RoutingContext req, String path) {
         String queryString = "";
         if (!req.queryParam("query").isEmpty())
-            queryString = "?query=" + URLEncoder.encode(req.queryParam("query").get(0), Charsets.UTF_8);
+            queryString = "?query=" + URLEncoder.encode(req.queryParam("query").getFirst(), Charsets.UTF_8);
         if (req.queryParam("for-type").size() == 1) {
-            String type = req.queryParam("for-type").get(0);
+            String type = req.queryParam("for-type").getFirst();
             req.response().putHeader("location", path + "/type/" + Utils.createHash(type) + queryString);
             req.response().setStatusCode(301).end();
         } else if (req.queryParam("for-pubkey").size() == 1) {
-            String type = req.queryParam("for-pubkey").get(0);
+            String type = req.queryParam("for-pubkey").getFirst();
             req.response().putHeader("location", path + "/pubkey/" + Utils.createHash(type) + queryString);
             req.response().setStatusCode(301).end();
         } else if (req.queryParam("for-user").size() == 1) {
-            String type = req.queryParam("for-user").get(0);
+            String type = req.queryParam("for-user").getFirst();
             req.response().putHeader("location", path + "/user/" + Utils.createHash(type) + queryString);
             req.response().setStatusCode(301).end();
         }

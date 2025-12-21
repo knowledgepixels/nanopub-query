@@ -1,5 +1,6 @@
 package com.knowledgepixels.query;
 
+import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
 import io.vertx.core.MultiMap;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -7,8 +8,6 @@ import org.nanopub.MalformedNanopubException;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 import org.nanopub.extra.server.GetNanopub;
-
-import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
 
 import java.io.File;
 import java.io.IOException;
@@ -48,7 +47,7 @@ class OpenApiSpecPageTest {
     }
 
     @Test
-    void constructWithInvalidUrl() throws InvalidGrlcSpecException {
+    void constructWithInvalidUrl() {
         try {
             new OpenApiSpecPage("https://invalid-url", MultiMap.caseInsensitiveMultiMap());
             fail();
