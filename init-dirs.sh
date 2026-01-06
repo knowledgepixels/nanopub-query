@@ -8,3 +8,5 @@ mkdir -p data/rdf4j/logs
 mkdir -p data/info
 
 sudo chmod -R 777 data
+sudo chmod -R 777 data/rdf4j/data
+sudo chmod -R 777 data/rdf4j/logs
