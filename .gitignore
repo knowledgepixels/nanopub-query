@@ -1,6 +1,7 @@
 .classpath
 .settings/
 .project
+.vscode
 /data
 /target
 /scratch
