@@ -1,3 +1,14 @@
+## [1.2.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.2.2...nanopub-query-1.2.3) (2026-01-07)
+
+### Bug Fixes
+
+* **NanopubLoader:** Defer meta loading to fix half-loaded nanopubs ([1e8fca1](https://github.com/knowledgepixels/nanopub-query/commit/1e8fca121a119709f4d7ba84bb9459e10759cdfd))
+
+### General maintenance
+
+* Add nohub.out to .gitignore ([ad0bed4](https://github.com/knowledgepixels/nanopub-query/commit/ad0bed45f2a1db34f000e49679f6a14c19a75341))
+* setting next snapshot version [skip ci] ([3b8013f](https://github.com/knowledgepixels/nanopub-query/commit/3b8013ffe32f8987da51126f16ca0f1179721fb1))
+
 ## [1.2.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.2.1...nanopub-query-1.2.2) (2026-01-07)
 
 ### Dependency updates
