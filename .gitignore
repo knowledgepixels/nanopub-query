@@ -17,3 +17,4 @@
 /dependency-reduced-pom.xml
 /.idea
 node_modules/
+/nohup.out
