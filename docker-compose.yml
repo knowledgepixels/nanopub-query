@@ -42,18 +42,16 @@ services:
     ports:
       - "8081:8080"
     entrypoint: /var/entrypoint/init.sh
-    # healthcheck:
-    # This healthcheck is disabled for now as it is not working currently. Somehow it leads to 
-    # a restart loop.
-    #   test: >
-    #     curl -f --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
-    #       "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" \
-    #     || (
-    #       date >> /var/info/restart
-    #       pkill -15 java
-    #       sleep 10
-    #       pkill -9 java
-    #     )
-    #   interval: 60s
-    #   timeout: 60s
-    #   start_period: 300s
+    healthcheck:
+        test: >
+          curl -f --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
+            "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" >> /var/info/restart 2&>1 \
+          || (
+            date >> /var/info/restart
+            pkill -15 java
+            sleep 10
+            pkill -9 java
+          )
+        interval: 60s
+        timeout: 60s
+        start_period: 300s
