@@ -1,3 +1,14 @@
+## [1.2.4](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.2.3...nanopub-query-1.2.4) (2026-01-08)
+
+### Bug Fixes
+
+* Reactivate healthtest and make it work again ([8abbf41](https://github.com/knowledgepixels/nanopub-query/commit/8abbf41314d7ab4d209681717955608078d13dab))
+* Revert and switch to other rdf4j image, to solve curl problem ([0a10d04](https://github.com/knowledgepixels/nanopub-query/commit/0a10d04afc6a99233d7353b1416d762e50dc88d7))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([2c1dd9f](https://github.com/knowledgepixels/nanopub-query/commit/2c1dd9fd449615e4d11f62f11d8ad88cce6a2a6a))
+
 ## [1.2.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.2.2...nanopub-query-1.2.3) (2026-01-07)
 
 ### Bug Fixes
