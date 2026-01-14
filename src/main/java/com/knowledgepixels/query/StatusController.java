@@ -132,7 +132,14 @@ public class StatusController {
                 }
                 adminRepoConn.commit();
             } catch (Exception e) {
-                if (adminRepoConn.isActive()) adminRepoConn.rollback();
+                if (adminRepoConn.isActive()) {
+                    try {
+                        adminRepoConn.rollback();
+                    } catch (Exception rollbackException) {
+                        // Transaction may not be registered on server (e.g., already committed, timed out, or connection reset)
+                        // Log the rollback failure but don't mask the original exception
+                    }
+                }
                 throw new RuntimeException(e);
             }
             initialized = true;
@@ -215,7 +222,14 @@ public class StatusController {
                 state = newState;
                 lastCommittedCounter = loadCounter;
             } catch (Exception e) {
-                if (adminRepoConn.isActive()) adminRepoConn.rollback();
+                if (adminRepoConn.isActive()) {
+                    try {
+                        adminRepoConn.rollback();
+                    } catch (Exception rollbackException) {
+                        // Transaction may not be registered on server (e.g., already committed, timed out, or connection reset)
+                        // Log the rollback failure but don't mask the original exception
+                    }
+                }
                 throw new RuntimeException(e);
             }
         }
