@@ -318,6 +318,7 @@ public class NanopubLoader {
         }
 
         if (!aborted) {
+            // Submit all tasks except the "meta" task
             if (timestamp != null) {
                 if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
                     runTask.accept(() -> loadNanopubToLatest(allStatements));
@@ -326,7 +327,7 @@ public class NanopubLoader {
 
             runTask.accept(() -> loadNanopubToRepo(np.getUri(), textStatements, "text"));
             runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "full"));
-            runTask.accept(() -> loadNanopubToRepo(np.getUri(), metaStatements, "meta"));
+            // Note: "meta" task is deferred until all other tasks complete successfully
 
             runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString())));
             //		loadNanopubToRepo(np.getUri(), textStatements, "text-pubkey_" + Utils.createHash(el.getPublicKeyString()));
@@ -355,14 +356,22 @@ public class NanopubLoader {
             for (Statement st : invalidateStatements) {
                 runTask.accept(() -> loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));
             }
-        }
 
-        // Wait for all loading tasks to complete before returning
-        for (var task : runningTasks) {
+            // Wait for all non-meta tasks to complete successfully before submitting the meta task
+            for (var task : runningTasks) {
+                try {
+                    task.get();
+                } catch (ExecutionException | InterruptedException ex) {
+                    throw new RuntimeException("Error in nanopub loading thread", ex.getCause());
+                }
+            }
+
+            // Now submit and wait for the "meta" task after all other tasks have completed successfully
+            Future<?> metaTask = loadingPool.submit(() -> loadNanopubToRepo(np.getUri(), metaStatements, "meta"));
             try {
-                task.get();
+                metaTask.get();
             } catch (ExecutionException | InterruptedException ex) {
-                throw new RuntimeException("Error in nanopub loading thread", ex.getCause());
+                throw new RuntimeException("Error in nanopub loading thread (meta task)", ex.getCause());
             }
         }
     }

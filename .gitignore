@@ -1,6 +1,7 @@
 .classpath
 .settings/
 .project
+.vscode
 /data
 /target
 /scratch
@@ -16,3 +17,4 @@
 /dependency-reduced-pom.xml
 /.idea
 node_modules/
+/nohup.out

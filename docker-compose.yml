@@ -29,8 +29,9 @@ services:
     # - Fixed issue with federated query deadlocks
     # - Allowed for disabling transactions in text repos for faster writes
     # Source branch: https://github.com/Ostrzyciel/rdf4j/tree/piotr/merged-fixes-2025-12-10
-    image: ostrzyciel/rdf4j-workbench-tomcat:5.2.2-SNAPSHOT-b
-    #   image: eclipse/rdf4j-workbench:5.0.3
+    # (Commented out because it seems it doesn't have curl installed, which is needed for the healthcheck.)
+    #image: ostrzyciel/rdf4j-workbench-tomcat:5.2.2-SNAPSHOT-b
+    image: eclipse/rdf4j-workbench:5.2.2-tomcat
     restart: unless-stopped
     environment:
       - JAVA_OPTS=-Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000
@@ -43,15 +44,15 @@ services:
       - "8081:8080"
     entrypoint: /var/entrypoint/init.sh
     healthcheck:
-      test: >
-        curl -f --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
-          "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" \
-        || (
-          date >> /var/info/restart
-          pkill -15 java
-          sleep 10
-          pkill -9 java
-        )
-      interval: 60s
-      timeout: 60s
-      start_period: 300s
+        test: >
+          curl -f --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
+            "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" 2> /var/info/restart \
+          || (
+            date >> /var/info/restart
+            pkill -15 java
+            sleep 10
+            pkill -9 java
+          )
+        interval: 60s
+        timeout: 60s
+        start_period: 300s
