@@ -99,6 +99,8 @@ class OpenApiSpecPageTest {
                                   }
                                 application/json: {
                                   }
+                                application/xml: {
+                                  }
                               description: result table
                     """;
 
