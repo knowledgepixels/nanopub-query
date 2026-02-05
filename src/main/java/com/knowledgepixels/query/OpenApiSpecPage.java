@@ -52,6 +52,7 @@ public class OpenApiSpecPage {
         Map<String, Object> contentMap = new LinkedHashMap<>();
         contentMap.put("text/csv", new HashMap<>());
         contentMap.put("application/json", new HashMap<>());
+        contentMap.put("application/xml", new HashMap<>());
         successrespMap.put("content", contentMap);
         successrespMap.put("description", "result table");
         responsesMap.put("200", successrespMap);

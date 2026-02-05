@@ -329,11 +329,21 @@ public class MainVerticle extends AbstractVerticle {
             @GeneratedFlagForDependentElements
             public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
                 final ProxyRequest req = context.request();
-                final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([?].*)?$";
+                final String apiPattern = "^/api/(RA[a-zA-Z0-9-_]{43})/([a-zA-Z0-9-_]+)([.]csv|[.]json|[.]srx)?([?].*)?$";
                 if (req.getURI().matches(apiPattern)) {
                     try {
-                        GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
                         req.setMethod(HttpMethod.POST);
+                        if (req.getURI().matches(".*[.]csv([?].*)?$")) {
+                            req.putHeader("Accept", "text/csv");
+                            req.setURI(req.getURI().replaceFirst("[.]csv([?].*)?$", "$1"));
+                        } else if (req.getURI().matches(".*[.]json([?].*)?$")) {
+                            req.putHeader("Accept", "application/json");
+                            req.setURI(req.getURI().replaceFirst("[.]json([?].*)?$", "$1"));
+                        } else if (req.getURI().matches(".*[.]srx([?].*)?$")) {
+                            req.putHeader("Accept", "application/xml");
+                            req.setURI(req.getURI().replaceFirst("[.]srx([?].*)?$", "$1"));
+                        }
+                        GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
 
                         // Variant 1:
                         req.putHeader("Content-Type", "application/sparql-query");
