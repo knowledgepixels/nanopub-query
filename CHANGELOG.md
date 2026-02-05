@@ -1,3 +1,20 @@
+## [1.3.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.2.4...nanopub-query-1.3.0) (2026-02-05)
+
+### Features
+
+* File extensions (e.g. '.csv') as alternative to HTTP headers ([66e9f92](https://github.com/knowledgepixels/nanopub-query/commit/66e9f9265b3e86db517ffa52df08f58c65dbf424))
+* Support 'application/xml' in OpenApi spec page ([0115956](https://github.com/knowledgepixels/nanopub-query/commit/01159566ecf435badd625f1f3b6f48250baa255e))
+
+### Bug Fixes
+
+* Fix OpenApiSpecPageTest ([a1dbc1d](https://github.com/knowledgepixels/nanopub-query/commit/a1dbc1d7b27460540128035a538b9ca2b30bf212))
+* **StatusController:** Report original exception when rollback fails ([5e42c91](https://github.com/knowledgepixels/nanopub-query/commit/5e42c9111518520f715e11bc434f3b29f8c5bfe6))
+
+### General maintenance
+
+* add contributing guidelines ([7267870](https://github.com/knowledgepixels/nanopub-query/commit/7267870ca9d30b57ce6675f09c81841b113d1445))
+* setting next snapshot version [skip ci] ([8052bb5](https://github.com/knowledgepixels/nanopub-query/commit/8052bb5fd4cd9b86ef25edecd07f3ef99bf98102))
+
 ## [1.2.4](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.2.3...nanopub-query-1.2.4) (2026-01-08)
 
 ### Bug Fixes
