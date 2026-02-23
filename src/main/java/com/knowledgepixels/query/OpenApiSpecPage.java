@@ -50,9 +50,17 @@ public class OpenApiSpecPage {
         Map<String, Object> responsesMap = new LinkedHashMap<>();
         Map<String, Object> successrespMap = new LinkedHashMap<>();
         Map<String, Object> contentMap = new LinkedHashMap<>();
-        contentMap.put("text/csv", new HashMap<>());
-        contentMap.put("application/json", new HashMap<>());
-        contentMap.put("application/xml", new HashMap<>());
+        if (grlcSpec.isConstructQuery()) {
+            contentMap.put("text/turtle", new HashMap<>());
+            contentMap.put("application/ld+json", new HashMap<>());
+            contentMap.put("application/n-triples", new HashMap<>());
+            contentMap.put("application/trix", new HashMap<>());
+            contentMap.put("application/xml", new HashMap<>());
+        } else {
+            contentMap.put("text/csv", new HashMap<>());
+            contentMap.put("application/json", new HashMap<>());
+            contentMap.put("application/xml", new HashMap<>());
+        }
         successrespMap.put("content", contentMap);
         successrespMap.put("description", "result table");
         responsesMap.put("200", successrespMap);

@@ -11,6 +11,7 @@ import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.query.MalformedQueryException;
 import org.eclipse.rdf4j.query.algebra.Var;
 import org.eclipse.rdf4j.query.algebra.helpers.AbstractSimpleQueryModelVisitor;
+import org.eclipse.rdf4j.query.parser.ParsedGraphQuery;
 import org.eclipse.rdf4j.query.parser.ParsedQuery;
 import org.eclipse.rdf4j.query.parser.sparql.SPARQLParser;
 import org.nanopub.Nanopub;
@@ -78,6 +79,7 @@ public class GrlcSpec {
     private String queryContent;
     private String endpoint;
     private List<String> placeholdersList;
+    private boolean isConstructQuery;
 
     /**
      * Creates a new page instance.
@@ -137,6 +139,7 @@ public class GrlcSpec {
         final Set<String> placeholders = new HashSet<>();
         try {
             ParsedQuery query = new SPARQLParser().parseQuery(queryContent, null);
+            isConstructQuery = query instanceof ParsedGraphQuery;
             query.getTupleExpr().visitChildren(new AbstractSimpleQueryModelVisitor<>() {
 
                 @Override
@@ -287,6 +290,10 @@ public class GrlcSpec {
      */
     public String getQueryContent() {
         return queryContent;
+    }
+
+    public boolean isConstructQuery() {
+        return isConstructQuery;
     }
 
     /**
