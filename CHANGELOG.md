@@ -1,3 +1,13 @@
+## [1.4.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.3.0...nanopub-query-1.4.0) (2026-02-24)
+
+### Features
+
+* Adjust Accept header Media types for Construct queries ([2babdf7](https://github.com/knowledgepixels/nanopub-query/commit/2babdf7b5fffa7f6a5ba51f7448bb6d98527d306))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([a65280d](https://github.com/knowledgepixels/nanopub-query/commit/a65280d410dae5638e550766b9285641a4cf9030))
+
 ## [1.3.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.2.4...nanopub-query-1.3.0) (2026-02-05)
 
 ### Features
