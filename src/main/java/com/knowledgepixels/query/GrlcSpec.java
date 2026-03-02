@@ -33,7 +33,7 @@ public class GrlcSpec {
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
-    private static final Logger log = LoggerFactory.getLogger(GrlcSpec.class);
+    private static final Logger logger = LoggerFactory.getLogger(GrlcSpec.class);
 
     /**
      * Exception for invalid grlc specifications.
@@ -304,9 +304,9 @@ public class GrlcSpec {
      */
     public String expandQuery() throws InvalidGrlcSpecException {
         String expandedQueryContent = queryContent;
+        logger.info("Expanding grlc query with parameters: {}", parameters);
         for (String ph : placeholdersList) {
-            log.info("ph: {}", ph);
-            log.info("getParamName(ph): {}", getParamName(ph));
+            logger.info("Processing placeholder <{}> associated to parameter with name <{}>", ph, getParamName(ph));
             if (isMultiPlaceholder(ph)) {
                 // TODO multi placeholders need proper documentation
                 List<String> val = parameters.getAll(getParamName(ph));
@@ -328,7 +328,7 @@ public class GrlcSpec {
                 expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + escapeSlashes(valueList) + "}");
             } else {
                 String val = parameters.get(getParamName(ph));
-                log.info("val: {}", val);
+                logger.info("Value for placeholder <{}>: {}", ph, val);
                 if (!isOptionalPlaceholder(ph) && val == null) {
                     throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
                 }
@@ -340,7 +340,6 @@ public class GrlcSpec {
                 }
             }
         }
-        log.info("Expanded grlc query:\n {}", expandedQueryContent);
         return expandedQueryContent;
     }
 
