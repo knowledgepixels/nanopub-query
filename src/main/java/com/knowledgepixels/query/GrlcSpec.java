@@ -17,7 +17,11 @@ import org.eclipse.rdf4j.query.parser.sparql.SPARQLParser;
 import org.nanopub.Nanopub;
 import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.extra.server.GetNanopub;
-import org.nanopub.extra.services.QueryAccess;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQueryResult;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.nanopub.vocabulary.NPA;
+import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,8 +106,10 @@ public class GrlcSpec {
         // TODO Get the nanopub from the local store:
         np = GetNanopub.get(artifactCode);
         if (parameters.get("api-version") != null && parameters.get("api-version").equals("latest")) {
-            // TODO Get the latest version from the local store:
-            np = GetNanopub.get(QueryAccess.getLatestVersionId(np.getUri().stringValue()));
+            String latestUri = getLatestVersionIdLocally(np.getUri().stringValue());
+            if (!latestUri.equals(np.getUri().stringValue())) {
+                np = GetNanopub.get(TrustyUriUtils.getArtifactCode(latestUri));
+            }
             artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
         }
         for (Statement st : np.getAssertion()) {
@@ -421,6 +427,50 @@ public class GrlcSpec {
      */
     public static String serializeLiteral(String literalString) {
         return "\"" + escapeLiteral(literalString) + "\"";
+    }
+
+    /**
+     * Resolves the latest version of a nanopub by following the supersedes chain in the local store.
+     * Uses a single SPARQL query with a property path to find the latest non-invalidated version
+     * signed by the same key. If no result is found locally, or if the local store is unavailable,
+     * returns the original URI.
+     *
+     * @param nanopubUri the URI of the nanopub to resolve
+     * @return the URI of the latest version
+     */
+    static String getLatestVersionIdLocally(String nanopubUri) {
+        logger.info("Resolving latest version locally for: {}", nanopubUri);
+        try {
+            RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
+            try (conn) {
+                String query =
+                    "SELECT ?latest ?date WHERE { " +
+                    "GRAPH <" + NPA.GRAPH + "> { " +
+                        "<" + nanopubUri + "> <" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . " +
+                        "?latest <" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . " +
+                        "FILTER NOT EXISTS { ?npx <" + NPX.INVALIDATES + "> ?latest ; " +
+                            "<" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . } " +
+                        "?latest <" + DCTERMS.CREATED + "> ?date . " +
+                    "} " +
+                    "GRAPH <" + NPA.NETWORK_GRAPH + "> { " +
+                        "?latest (<" + NPX.SUPERSEDES + ">)* <" + nanopubUri + "> . " +
+                    "} " +
+                    "} ORDER BY DESC(?date) LIMIT 1";
+                TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate();
+                try (r) {
+                    if (r.hasNext()) {
+                        String latestUri = r.next().getBinding("latest").getValue().stringValue();
+                        logger.info("Resolved latest version: {}", latestUri);
+                        return latestUri;
+                    }
+                }
+                logger.info("No latest version found locally for: {}", nanopubUri);
+                return nanopubUri;
+            }
+        } catch (Exception ex) {
+            logger.warn("Could not resolve latest version locally, using original version: {}", ex.getMessage());
+            return nanopubUri;
+        }
     }
 
 }

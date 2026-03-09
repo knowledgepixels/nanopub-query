@@ -297,25 +297,33 @@ public class MainVerticle extends AbstractVerticle {
 
         // TODO This is no longer needed and can be removed at some point:
         proxyRouter.route(HttpMethod.GET, "/grlc-spec/*").handler(req -> {
-            try {
+            vertx.<String>executeBlocking(() -> {
                 GrlcSpec gsp = new GrlcSpec(req.normalizedPath(), req.queryParams());
-                req.response().putHeader("content-type", "text/yaml").end(gsp.getSpec());
-            } catch (InvalidGrlcSpecException ex) {
-                req.response().setStatusCode(400).end(ex.getMessage());
-            } catch (Exception ex) {
-                req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
-            }
+                return gsp.getSpec();
+            }, false).onSuccess(spec -> {
+                req.response().putHeader("content-type", "text/yaml").end(spec);
+            }).onFailure(ex -> {
+                if (ex instanceof InvalidGrlcSpecException) {
+                    req.response().setStatusCode(400).end(ex.getMessage());
+                } else {
+                    req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
+                }
+            });
         });
 
         proxyRouter.route(HttpMethod.GET, "/openapi/spec/*").handler(req -> {
-            try {
+            vertx.<String>executeBlocking(() -> {
                 OpenApiSpecPage osp = new OpenApiSpecPage(req.normalizedPath(), req.queryParams());
-                req.response().putHeader("content-type", "text/yaml").end(osp.getSpec());
-            } catch (InvalidGrlcSpecException ex) {
-                req.response().setStatusCode(400).end("Invlid grlc API definition: " + ex.getMessage());
-            } catch (Exception ex) {
-                req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
-            }
+                return osp.getSpec();
+            }, false).onSuccess(spec -> {
+                req.response().putHeader("content-type", "text/yaml").end(spec);
+            }).onFailure(ex -> {
+                if (ex instanceof InvalidGrlcSpecException) {
+                    req.response().setStatusCode(400).end("Invalid grlc API definition: " + ex.getMessage());
+                } else {
+                    req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
+                }
+            });
         });
 
         proxyRouter.route("/openapi/*").handler(StaticHandler.create("com/knowledgepixels/query/swagger"));
