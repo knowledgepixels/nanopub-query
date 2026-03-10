@@ -1,3 +1,18 @@
+## [1.4.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.4.0...nanopub-query-1.4.1) (2026-03-10)
+
+### Bug Fixes
+
+* **NanopubLoader:** add max retry limit to prevent loading from hanging indefinitely ([fed751a](https://github.com/knowledgepixels/nanopub-query/commit/fed751a0d5d0f6b42d6f37080548acc3552f816b)), closes [#57](https://github.com/knowledgepixels/nanopub-query/issues/57)
+* resolve api-version=latest locally instead of via network calls ([ecc13bb](https://github.com/knowledgepixels/nanopub-query/commit/ecc13bbfefccf28c6b1b6e9720e19a5dce8781e8)), closes [#58](https://github.com/knowledgepixels/nanopub-query/issues/58)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([bdf0679](https://github.com/knowledgepixels/nanopub-query/commit/bdf0679f43f17a002008929145d9d3294d7bad43))
+
+### Refactoring
+
+* **GrlcSpec:** rename logger variable for consistency and improve logging messages ([c5531c0](https://github.com/knowledgepixels/nanopub-query/commit/c5531c09a0c1356da862c65b2beec97c6ba0edcc))
+
 ## [1.4.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.3.0...nanopub-query-1.4.0) (2026-02-24)
 
 ### Features
