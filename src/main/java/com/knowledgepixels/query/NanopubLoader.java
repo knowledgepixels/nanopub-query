@@ -46,6 +46,8 @@ public class NanopubLoader {
 
     private static HttpClient httpClient;
     private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
+    private static final int MAX_RETRIES = 30;
+    private static final int RETRY_DELAY_MS = 10000;
     private Nanopub np;
     private NanopubSignatureElement el = null;
     private List<Statement> metaStatements = new ArrayList<>();
@@ -383,6 +385,7 @@ public class NanopubLoader {
     @GeneratedFlagForDependentElements
     private static void loadNanopubToLatest(List<Statement> statements) {
         boolean success = false;
+        int retries = 0;
         while (!success) {
             RepositoryConnection conn = TripleStore.get().getRepoConnection("last30d");
             try (conn) {
@@ -418,9 +421,13 @@ public class NanopubLoader {
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
-                log.info("Retrying in 10 second...");
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to load nanopub to last30d repo after " + MAX_RETRIES + " retries");
+                }
+                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(10000);
+                    Thread.sleep(RETRY_DELAY_MS);
                 } catch (InterruptedException x) {
                 }
             }
@@ -430,6 +437,7 @@ public class NanopubLoader {
     @GeneratedFlagForDependentElements
     private static void loadNanopubToRepo(IRI npId, List<Statement> statements, String repoName) {
         boolean success = false;
+        int retries = 0;
         while (!success) {
             RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
             try (conn) {
@@ -458,13 +466,17 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.info("Could no load nanopub to repo. ", ex);
+                log.info("Could not load nanopub to repo. ", ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
-                log.info("Retrying in 10 second...");
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to load nanopub " + npId + " to repo " + repoName + " after " + MAX_RETRIES + " retries");
+                }
+                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(10000);
+                    Thread.sleep(RETRY_DELAY_MS);
                 } catch (InterruptedException x) {
                 }
             }
@@ -499,6 +511,7 @@ public class NanopubLoader {
     @GeneratedFlagForDependentElements
     private static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
         boolean success = false;
+        int retries = 0;
         while (!success) {
             List<RepositoryConnection> connections = new ArrayList<>();
             RepositoryConnection metaConn = TripleStore.get().getRepoConnection("meta");
@@ -542,7 +555,7 @@ public class NanopubLoader {
                 for (RepositoryConnection c : connections) c.commit();
                 success = true;
             } catch (Exception ex) {
-                log.info("Could no load invalidate statements. ", ex);
+                log.info("Could not load invalidate statements. ", ex);
                 if (metaConn.isActive()) metaConn.rollback();
                 for (RepositoryConnection c : connections) {
                     if (c.isActive()) c.rollback();
@@ -552,9 +565,13 @@ public class NanopubLoader {
                 for (RepositoryConnection c : connections) c.close();
             }
             if (!success) {
-                log.info("Retrying in 10 second...");
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to load invalidate statements for " + thisNp.getUri() + " after " + MAX_RETRIES + " retries");
+                }
+                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(10000);
+                    Thread.sleep(RETRY_DELAY_MS);
                 } catch (InterruptedException x) {
                 }
             }
@@ -576,6 +593,7 @@ public class NanopubLoader {
     static List<Statement> getInvalidatingStatements(IRI npId) {
         List<Statement> invalidatingStatements = new ArrayList<>();
         boolean success = false;
+        int retries = 0;
         while (!success) {
             RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
             try (conn) {
@@ -593,13 +611,17 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.info("Could no load invalidating statements. ", ex);
+                log.info("Could not load invalidating statements. ", ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
-                log.info("Retrying in 10 second...");
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to get invalidating statements for " + npId + " after " + MAX_RETRIES + " retries");
+                }
+                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(10000);
+                    Thread.sleep(RETRY_DELAY_MS);
                 } catch (InterruptedException x) {
                 }
             }
@@ -610,6 +632,7 @@ public class NanopubLoader {
     @GeneratedFlagForDependentElements
     private static void loadNoteToRepo(Resource subj, String note) {
         boolean success = false;
+        int retries = 0;
         while (!success) {
             RepositoryConnection conn = TripleStore.get().getAdminRepoConnection();
             try (conn) {
@@ -618,12 +641,16 @@ public class NanopubLoader {
                 conn.add(statements);
                 success = true;
             } catch (Exception ex) {
-                log.info("Could no load note to repo. ", ex);
+                log.info("Could not load note to repo. ", ex);
             }
             if (!success) {
-                log.info("Retrying in 10 second...");
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to load note to repo for " + subj + " after " + MAX_RETRIES + " retries");
+                }
+                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(10000);
+                    Thread.sleep(RETRY_DELAY_MS);
                 } catch (InterruptedException x) {
                 }
             }
