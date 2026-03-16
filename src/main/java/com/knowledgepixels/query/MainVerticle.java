@@ -57,7 +57,9 @@ public class MainVerticle extends AbstractVerticle {
                 new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
         );
 
-        HttpServer proxyServer = vertx.createHttpServer();
+        HttpServer proxyServer = vertx.createHttpServer(
+                new HttpServerOptions().setMaxInitialLineLength(65536)
+        );
         Router proxyRouter = Router.router(vertx);
         proxyRouter.route().handler(CorsHandler.create().addRelativeOrigin(".*"));
 
