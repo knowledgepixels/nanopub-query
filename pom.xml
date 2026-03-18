@@ -13,7 +13,7 @@
   <licenses>
     <license>
       <name>MIT license</name>
-      <url>http://www.opensource.org/licenses/mit-license</url>
+      <url>https://opensource.org/license/mit</url>
     </license>
   </licenses>
   <developers>
@@ -106,7 +106,7 @@
     <dependency>
       <groupId>org.nanopub</groupId>
       <artifactId>nanopub</artifactId>
-      <version>1.83</version>
+      <version>1.86.1</version>
     </dependency>
     <!-- Temporary: dependency on Jitpack for snapshot builds -->
     <!-- <dependency>
