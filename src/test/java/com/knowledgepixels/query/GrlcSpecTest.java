@@ -8,10 +8,10 @@ import org.nanopub.MalformedNanopubException;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 import org.nanopub.extra.server.GetNanopub;
+import org.nanopub.testsuite.NanopubTestSuite;
+import org.nanopub.testsuite.TestSuiteEntry;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.any;
@@ -22,7 +22,7 @@ class GrlcSpecTest {
     private final String BASE_URI = "/grlc-spec/";
     private final String ARTIFACT_CODE = "RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA";
     private final String QUERY_PART = "get-participation.rq";
-    private final String EXAMPLE_NANOPUBLICATION_PATH = Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath();
+    private final TestSuiteEntry testSuiteEntry = NanopubTestSuite.getLatest().getByArtifactCode(ARTIFACT_CODE).getFirst();
     private final String REPO_NAME = "full";
     private final String QUERY_NAME = "get-participation";
     private final String DESCRIPTION = "This query returns all participation links.";
@@ -31,7 +31,7 @@ class GrlcSpecTest {
     @Test
     void constructWithNullApiVersion() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             GrlcSpec page = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/" + QUERY_PART, parameters);
@@ -42,7 +42,7 @@ class GrlcSpecTest {
     @Test
     void constructWithSpecificApiVersion() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "random-version");
@@ -59,7 +59,7 @@ class GrlcSpecTest {
     @Test
     void constructWithParameters() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "latest");
@@ -71,7 +71,7 @@ class GrlcSpecTest {
     @Test
     void getSpecWithEmptyQueryPart() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec page = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/", MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
@@ -92,7 +92,7 @@ class GrlcSpecTest {
     @Test
     void getSpec() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec page = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/" + QUERY_PART, MultiMap.caseInsensitiveMultiMap());
             String expectedSpec = """
@@ -127,7 +127,7 @@ class GrlcSpecTest {
     @Test
     void getSpecWithInvalidQueryPart() throws MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             assertThrows(InvalidGrlcSpecException.class, () -> new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/invalid-query.rq", MultiMap.caseInsensitiveMultiMap()));
         }
@@ -210,7 +210,7 @@ class GrlcSpecTest {
     @Test
     void getParameters() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             parameters.add("api-version", "latest");
@@ -222,7 +222,7 @@ class GrlcSpecTest {
     @Test
     void getNanopub() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             MultiMap parameters = MultiMap.caseInsensitiveMultiMap();
             GrlcSpec grlcSpec = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/" + QUERY_PART, parameters);
@@ -233,7 +233,7 @@ class GrlcSpecTest {
     @Test
     void getQueryName() throws InvalidGrlcSpecException, MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec grlcSpec = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/", MultiMap.caseInsensitiveMultiMap());
             assertEquals(QUERY_NAME, grlcSpec.getQueryName());
@@ -243,7 +243,7 @@ class GrlcSpecTest {
     @Test
     void getDescription() throws InvalidGrlcSpecException, MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec grlcSpec = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/", MultiMap.caseInsensitiveMultiMap());
             assertEquals(DESCRIPTION, grlcSpec.getDescription());
@@ -253,7 +253,7 @@ class GrlcSpecTest {
     @Test
     void getArtifactCode() throws InvalidGrlcSpecException, MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec grlcSpec = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/", MultiMap.caseInsensitiveMultiMap());
             assertEquals(ARTIFACT_CODE, grlcSpec.getArtifactCode());
@@ -263,7 +263,7 @@ class GrlcSpecTest {
     @Test
     void getLabel() throws InvalidGrlcSpecException, MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec grlcSpec = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/", MultiMap.caseInsensitiveMultiMap());
             assertEquals(LABEL, grlcSpec.getLabel());
@@ -273,7 +273,7 @@ class GrlcSpecTest {
     @Test
     void getQueryContent() throws InvalidGrlcSpecException, MalformedNanopubException, IOException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec grlcSpec = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/", MultiMap.caseInsensitiveMultiMap());
             assertEquals("""
@@ -302,7 +302,7 @@ class GrlcSpecTest {
     @Test
     void getRepoName() throws MalformedNanopubException, IOException, InvalidGrlcSpecException {
         try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
-            Nanopub mockNanopub = new NanopubImpl(new File(EXAMPLE_NANOPUBLICATION_PATH));
+            Nanopub mockNanopub = new NanopubImpl(testSuiteEntry.toFile());
             mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(mockNanopub);
             GrlcSpec grlcSpec = new GrlcSpec(BASE_URI + ARTIFACT_CODE + "/", MultiMap.caseInsensitiveMultiMap());
             assertEquals(REPO_NAME, grlcSpec.getRepoName());
