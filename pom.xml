@@ -147,6 +147,12 @@
       <version>2.0.17</version>
       <scope>compile</scope>
     </dependency>
+    <dependency>
+      <groupId>org.nanopub</groupId>
+      <artifactId>nanopub-testsuite-connector</artifactId>
+      <version>1.0.0</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
