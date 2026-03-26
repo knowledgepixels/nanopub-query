@@ -1,7 +1,9 @@
 package com.knowledgepixels.query;
 
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
+import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Literal;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.vocabulary.NPA;
 
@@ -32,6 +34,10 @@ public class StatusController {
          * The service is ready to serve requests.
          */
         READY,
+        /**
+         * The service detected a registry reset and is about to resync.
+         */
+        RESETTING,
     }
 
     /**
@@ -45,9 +51,13 @@ public class StatusController {
 
     private final static StatusController instance = new StatusController();
 
+    static final IRI HAS_REGISTRY_SETUP_ID =
+            SimpleValueFactory.getInstance().createIRI(NPA.NAMESPACE, "hasRegistrySetupId");
+
     private boolean initialized = false;
     private State state = null;
     private long lastCommittedCounter = -1;
+    private Long registrySetupId = null;
     private RepositoryConnection adminRepoConn;
 
     /**
@@ -130,6 +140,13 @@ public class StatusController {
                     var stringVal = counterStatement.getObject().stringValue();
                     lastCommittedCounter = Long.parseLong(stringVal);
                 }
+            }
+            // Fetch the registry setup ID from the DB
+            try (var statements = adminRepoConn.getStatements(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, null, NPA.GRAPH)) {
+                if (statements.hasNext()) {
+                    var setupIdStatement = statements.next();
+                    registrySetupId = Long.parseLong(setupIdStatement.getObject().stringValue());
+                }
                 adminRepoConn.commit();
             } catch (Exception e) {
                 if (adminRepoConn.isActive()) {
@@ -168,10 +185,10 @@ public class StatusController {
      */
     public void setLoadingInitial(long loadCounter) {
         synchronized (this) {
-            if (state != State.LAUNCHING && state != State.LOADING_INITIAL) {
+            if (state != State.LAUNCHING && state != State.LOADING_INITIAL && state != State.RESETTING) {
                 throw new IllegalStateException("Cannot transition to LOADING_INITIAL, as the " + "current state is " + state);
             }
-            if (lastCommittedCounter > loadCounter) {
+            if (state != State.RESETTING && lastCommittedCounter > loadCounter) {
                 throw new IllegalStateException("Cannot update the load counter from " + lastCommittedCounter + " to " + loadCounter);
             }
             updateState(State.LOADING_INITIAL, loadCounter);
@@ -205,6 +222,56 @@ public class StatusController {
         synchronized (this) {
             if (state != State.READY) {
                 updateState(State.READY, lastCommittedCounter);
+            }
+        }
+    }
+
+    /**
+     * Transition the service to the RESETTING state, resetting the load counter to -1.
+     * This is triggered when a registry reset is detected (setupId changed or counter decreased).
+     */
+    public void setResetting() {
+        synchronized (this) {
+            if (state != State.READY && state != State.LOADING_UPDATES) {
+                throw new IllegalStateException("Cannot transition to RESETTING, as the " + "current state is " + state);
+            }
+            updateState(State.RESETTING, -1);
+        }
+    }
+
+    /**
+     * Get the persisted registry setup ID.
+     *
+     * @return the registry setup ID, or null if not yet known
+     */
+    public Long getRegistrySetupId() {
+        synchronized (this) {
+            return registrySetupId;
+        }
+    }
+
+    /**
+     * Persist a new registry setup ID to the admin repo.
+     *
+     * @param setupId the new setup ID
+     */
+    public void setRegistrySetupId(long setupId) {
+        synchronized (this) {
+            try {
+                adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
+                adminRepoConn.remove(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, null, NPA.GRAPH);
+                adminRepoConn.add(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, adminRepoConn.getValueFactory().createLiteral(setupId), NPA.GRAPH);
+                adminRepoConn.commit();
+                registrySetupId = setupId;
+            } catch (Exception e) {
+                if (adminRepoConn.isActive()) {
+                    try {
+                        adminRepoConn.rollback();
+                    } catch (Exception rollbackException) {
+                        // Log the rollback failure but don't mask the original exception
+                    }
+                }
+                throw new RuntimeException(e);
             }
         }
     }
@@ -248,6 +315,7 @@ public class StatusController {
             initialized = false;
             state = null;
             lastCommittedCounter = -1;
+            registrySetupId = null;
             adminRepoConn = null;
         }
     }
