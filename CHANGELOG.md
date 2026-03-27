@@ -1,3 +1,38 @@
+## [1.5.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.4.1...nanopub-query-1.5.0) (2026-03-27)
+
+### Features
+
+* allow previewing unpublished nanopub queries via URL parameter ([#60](https://github.com/knowledgepixels/nanopub-query/issues/60)) ([9231d69](https://github.com/knowledgepixels/nanopub-query/commit/9231d6900056b631b1e27c37bb21530205bc2bb8))
+* detect and recover from Nanopub Registry resets ([1927e98](https://github.com/knowledgepixels/nanopub-query/commit/1927e98477d03e0298117033a3b1b3e635e89d00))
+
+### Dependency updates
+
+* **core-deps:** update org.nanopub:nanopub dependency to v1.86.1 ([7649559](https://github.com/knowledgepixels/nanopub-query/commit/76495599d73bfbf939367a4519975b9e404a66f6))
+* **deps:** update package-lock.json for improved compatibility and security ([55bf37c](https://github.com/knowledgepixels/nanopub-query/commit/55bf37c43b832b8bcf16baae1c9d06d53ab03748))
+
+### Documentation
+
+* add implementation plan for space repositories ([85e5a53](https://github.com/knowledgepixels/nanopub-query/commit/85e5a53d2023e5d8f9a2c966b1004843846b6127))
+
+### Tests
+
+* **deps:** add org.nanopub:nanopub-testsuite-connector dependency v1.0.0 ([58e31f5](https://github.com/knowledgepixels/nanopub-query/commit/58e31f53e6903e1346adb31ca864e935d6b0c19c))
+
+### Build and continuous integration
+
+* **release:** automate main branch update after release ([d9fa804](https://github.com/knowledgepixels/nanopub-query/commit/d9fa80409ea9cc02824308ae90114ceb1f729ef7))
+
+### General maintenance
+
+* remove testsuite submodule ([11f6cd9](https://github.com/knowledgepixels/nanopub-query/commit/11f6cd93cd8135bc0746d672cbb30db3e7409f33))
+* remove unused git submodule execution from exec-maven-plugin ([f5c86b1](https://github.com/knowledgepixels/nanopub-query/commit/f5c86b1683b4ef7d02d64e2aa100a6880ca3e745))
+* setting next snapshot version [skip ci] ([9c6427a](https://github.com/knowledgepixels/nanopub-query/commit/9c6427a8a7119b223342c40df60e4d5986a04496))
+* **vocabulary:** add KPXL_GRLC class for GRLC vocabulary IRIs and update references in GrlcSpec ([4394464](https://github.com/knowledgepixels/nanopub-query/commit/439446407edb6b2defa186d68d1f88327b7ac4eb))
+
+### Refactoring
+
+* **tests:** replace file path loading with TestSuiteEntry for nanopub tests ([45caa04](https://github.com/knowledgepixels/nanopub-query/commit/45caa049761c5a9a06adc30ad833519b511dd31a))
+
 ## [1.4.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.4.0...nanopub-query-1.4.1) (2026-03-10)
 
 ### Bug Fixes
