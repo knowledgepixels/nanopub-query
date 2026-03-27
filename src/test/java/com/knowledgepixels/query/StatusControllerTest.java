@@ -190,4 +190,97 @@ class StatusControllerTest {
         }
     }
 
+    @Test
+    void setResettingFromReady() {
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mock(RepositoryConnection.class));
+            when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
+            when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+
+            controller.initialize();
+            controller.updateState(StatusController.State.READY, 5000);
+            controller.setResetting();
+
+            StatusController.LoadingStatus status = controller.getState();
+            assertEquals(StatusController.State.RESETTING, status.state);
+            assertEquals(-1, status.loadCounter);
+        }
+    }
+
+    @Test
+    void setResettingFromLoadingUpdates() {
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mock(RepositoryConnection.class));
+            when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
+            when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+
+            controller.initialize();
+            controller.updateState(StatusController.State.LOADING_UPDATES, 100);
+            controller.setResetting();
+
+            assertEquals(StatusController.State.RESETTING, controller.getState().state);
+        }
+    }
+
+    @Test
+    void setResettingFromInvalidStatesThrows() {
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mock(RepositoryConnection.class));
+            when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
+            when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+
+            controller.initialize();
+
+            // LAUNCHING -> RESETTING should throw
+            assertThrows(IllegalStateException.class, controller::setResetting);
+
+            // LOADING_INITIAL -> RESETTING should throw
+            controller.updateState(StatusController.State.LOADING_INITIAL, 0);
+            assertThrows(IllegalStateException.class, controller::setResetting);
+        }
+    }
+
+    @Test
+    void setLoadingInitialFromResetting() {
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mock(RepositoryConnection.class));
+            when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
+            when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+
+            controller.initialize();
+            controller.updateState(StatusController.State.READY, 5000);
+            controller.setResetting();
+
+            // RESETTING -> LOADING_INITIAL with counter -1 should work
+            controller.setLoadingInitial(-1);
+            assertEquals(StatusController.State.LOADING_INITIAL, controller.getState().state);
+            assertEquals(-1, controller.getState().loadCounter);
+        }
+    }
+
+    @Test
+    void registrySetupIdPersistence() {
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mock(RepositoryConnection.class));
+            when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
+            when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+
+            controller.initialize();
+            assertNull(controller.getRegistrySetupId());
+
+            controller.setRegistrySetupId(12345L);
+            assertEquals(12345L, controller.getRegistrySetupId());
+        }
+    }
+
 }

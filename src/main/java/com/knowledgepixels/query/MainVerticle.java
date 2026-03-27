@@ -409,6 +409,23 @@ public class MainVerticle extends AbstractVerticle {
             try {
                 var status = StatusController.get().initialize();
                 log.info("Current state: {}, last committed counter: {}", status.state, status.loadCounter);
+                // Restore or fetch the registry setup ID
+                Long storedSetupId = StatusController.get().getRegistrySetupId();
+                if (storedSetupId != null) {
+                    JellyNanopubLoader.setLastKnownSetupId(storedSetupId);
+                    log.info("Restored registry setupId: {}", storedSetupId);
+                } else {
+                    try {
+                        var metadata = JellyNanopubLoader.fetchRegistryMetadata();
+                        JellyNanopubLoader.setLastKnownSetupId(metadata.setupId());
+                        if (metadata.setupId() != null) {
+                            StatusController.get().setRegistrySetupId(metadata.setupId());
+                            log.info("Fetched initial registry setupId: {}", metadata.setupId());
+                        }
+                    } catch (Exception e) {
+                        log.warn("Could not fetch initial registry setupId", e);
+                    }
+                }
                 if (status.state == StatusController.State.LAUNCHING || status.state == StatusController.State.LOADING_INITIAL) {
                     // Do the initial nanopublication loading
                     StatusController.get().setLoadingInitial(status.loadCounter);

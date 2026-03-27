@@ -1,5 +1,6 @@
 package com.knowledgepixels.query;
 
+import com.knowledgepixels.query.vocabulary.KPXL_GRLC;
 import io.vertx.core.MultiMap;
 import net.trustyuri.TrustyUriUtils;
 import org.eclipse.rdf4j.model.IRI;
@@ -9,6 +10,8 @@ import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.query.MalformedQueryException;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.query.algebra.Var;
 import org.eclipse.rdf4j.query.algebra.helpers.AbstractSimpleQueryModelVisitor;
 import org.eclipse.rdf4j.query.parser.ParsedGraphQuery;
@@ -16,13 +19,11 @@ import org.eclipse.rdf4j.query.parser.ParsedQuery;
 import org.eclipse.rdf4j.query.parser.sparql.SPARQLParser;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.extra.server.GetNanopub;
-import org.eclipse.rdf4j.query.QueryLanguage;
-import org.eclipse.rdf4j.query.TupleQueryResult;
-import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.vocabulary.NPA;
 import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
@@ -58,16 +59,6 @@ public class GrlcSpec {
         }
 
     }
-
-    /**
-     * IRI for relation to link a grlc query instance to its SPARQL template.
-     */
-    public static final IRI HAS_SPARQL = vf.createIRI("https://w3id.org/kpxl/grlc/sparql");
-
-    /**
-     * IRI for relation to link a grlc query instance to its SPARQL endpoint URL.
-     */
-    public static final IRI HAS_ENDPOINT = vf.createIRI("https://w3id.org/kpxl/grlc/endpoint");
 
     /**
      * URL for the given Nanopub Query instance, needed for internal coordination.
@@ -128,7 +119,9 @@ public class GrlcSpec {
             artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
         }
         for (Statement st : np.getAssertion()) {
-            if (!st.getSubject().stringValue().startsWith(np.getUri().stringValue())) continue;
+            if (!st.getSubject().stringValue().startsWith(np.getUri().stringValue())) {
+                continue;
+            }
             String qn = st.getSubject().stringValue().replaceFirst("^.*[#/](.*)$", "$1");
             if (queryName != null && !qn.equals(queryName)) {
                 throw new InvalidGrlcSpecException("Subject suffixes don't match: " + queryName);
@@ -140,10 +133,10 @@ public class GrlcSpec {
                 desc = st.getObject().stringValue();
             } else if (st.getPredicate().equals(DCTERMS.LICENSE) && st.getObject() instanceof IRI) {
                 license = st.getObject().stringValue();
-            } else if (st.getPredicate().equals(HAS_SPARQL)) {
+            } else if (st.getPredicate().equals(KPXL_GRLC.SPARQL)) {
                 // TODO Improve this:
                 queryContent = st.getObject().stringValue().replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
-            } else if (st.getPredicate().equals(HAS_ENDPOINT) && st.getObject() instanceof IRI) {
+            } else if (st.getPredicate().equals(KPXL_GRLC.ENDPOINT) && st.getObject() instanceof IRI) {
                 endpoint = st.getObject().stringValue();
                 if (endpoint.startsWith(NANOPUB_QUERY_REPO_URL)) {
                     endpoint = endpoint.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
@@ -200,9 +193,13 @@ public class GrlcSpec {
             for (IRI userIri : creators) {
                 userName.append(", ").append(userIri);
             }
-            if (!userName.isEmpty()) userName = new StringBuilder(userName.substring(2));
+            if (!userName.isEmpty()) {
+                userName = new StringBuilder(userName.substring(2));
+            }
             String url = "";
-            if (!creators.isEmpty()) url = creators.iterator().next().stringValue();
+            if (!creators.isEmpty()) {
+                url = creators.iterator().next().stringValue();
+            }
             s += "contact:\n";
             s += "  name: \"" + escapeLiteral(userName.toString()) + "\"\n";
             s += "  url: " + url + "\n";
@@ -353,7 +350,9 @@ public class GrlcSpec {
                 if (!isOptionalPlaceholder(ph) && val == null) {
                     throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
                 }
-                if (val == null) continue;
+                if (val == null) {
+                    continue;
+                }
                 if (isIriPlaceholder(ph)) {
                     expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, escapeSlashes(serializeIri(val)));
                 } else {
@@ -459,18 +458,18 @@ public class GrlcSpec {
             RepositoryConnection conn = TripleStore.get().getRepoConnection("meta");
             try (conn) {
                 String query =
-                    "SELECT ?latest ?date WHERE { " +
-                    "GRAPH <" + NPA.GRAPH + "> { " +
+                        "SELECT ?latest ?date WHERE { " +
+                        "GRAPH <" + NPA.GRAPH + "> { " +
                         "<" + nanopubUri + "> <" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . " +
                         "?latest <" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . " +
                         "FILTER NOT EXISTS { ?npx <" + NPX.INVALIDATES + "> ?latest ; " +
-                            "<" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . } " +
+                        "<" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY + "> ?pubkey . } " +
                         "?latest <" + DCTERMS.CREATED + "> ?date . " +
-                    "} " +
-                    "GRAPH <" + NPA.NETWORK_GRAPH + "> { " +
+                        "} " +
+                        "GRAPH <" + NPA.NETWORK_GRAPH + "> { " +
                         "?latest (<" + NPX.SUPERSEDES + ">)* <" + nanopubUri + "> . " +
-                    "} " +
-                    "} ORDER BY DESC(?date) LIMIT 1";
+                        "} " +
+                        "} ORDER BY DESC(?date) LIMIT 1";
                 TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate();
                 try (r) {
                     if (r.hasNext()) {

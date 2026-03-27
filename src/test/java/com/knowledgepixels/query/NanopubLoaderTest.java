@@ -11,13 +11,12 @@ import org.nanopub.NanopubImpl;
 import org.nanopub.extra.security.NanopubSignatureElement;
 import org.nanopub.extra.security.SignatureUtils;
 import org.nanopub.extra.server.GetNanopub;
+import org.nanopub.testsuite.NanopubTestSuite;
 
-import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -44,7 +43,7 @@ class NanopubLoaderTest {
             mockedUtils.when(Utils::getHashToObjectMap).thenReturn(hashToObjectMap);
             when(hashToObjectMap.containsKey(anyString())).thenReturn(true);
 
-            Nanopub nanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA.trig")).getPath()));
+            Nanopub nanopub = new NanopubImpl(NanopubTestSuite.getLatest().getByArtifactCode("RA6T-YLqLnYd5XfnqR9PaGUjCzudvHdYjcG4GvOc7fdpA").getFirst().toFile());
 
             mockedLoader.when(() -> NanopubLoader.isNanopubLoaded(anyString())).thenReturn(false);
             mockedLoader.when(NanopubLoader::getHttpClient).thenReturn(mock(HttpClient.class));
@@ -67,7 +66,7 @@ class NanopubLoaderTest {
             mockedUtils.when(Utils::getHashToObjectMap).thenReturn(hashToObjectMap);
             when(hashToObjectMap.containsKey(anyString())).thenReturn(true);
 
-            Nanopub nanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/valid/signed/RATq2i1SMq-Ci6-1MAFALTELRRSL7xAsI4iQOC3cgMldE.trig")).getPath()));
+            Nanopub nanopub = new NanopubImpl(NanopubTestSuite.getLatest().getByArtifactCode("RATq2i1SMq-Ci6-1MAFALTELRRSL7xAsI4iQOC3cgMldE").getFirst().toFile());
 
             mockedLoader.when(() -> NanopubLoader.isNanopubLoaded(anyString())).thenReturn(false);
             mockedLoader.when(NanopubLoader::getHttpClient).thenReturn(mock(HttpClient.class));
@@ -85,7 +84,7 @@ class NanopubLoaderTest {
         try (MockedStatic<NanopubLoader> mockedLoader = mockStatic(NanopubLoader.class, CALLS_REAL_METHODS);
              MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
 
-            Nanopub nanopub = new NanopubImpl(new File(Objects.requireNonNull(this.getClass().getResource("/testsuite/invalid/signed/simple1-invalid-rsa.trig")).getPath()));
+            Nanopub nanopub = new NanopubImpl(NanopubTestSuite.getLatest().getByNanopubUri("http://example.org/nanopub-validator-example/RAeUPiCKlke8Pw9wYbqIESyBqFJM5UDSkx4uF9kkRfCh0").getFirst().toFile());
 
             mockedLoader.when(() -> NanopubLoader.isNanopubLoaded(anyString())).thenReturn(false);
             mockedLoader.when(NanopubLoader::getHttpClient).thenReturn(mock(HttpClient.class));

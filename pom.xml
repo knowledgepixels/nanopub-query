@@ -13,7 +13,7 @@
   <licenses>
     <license>
       <name>MIT license</name>
-      <url>http://www.opensource.org/licenses/mit-license</url>
+      <url>https://opensource.org/license/mit</url>
     </license>
   </licenses>
   <developers>
@@ -106,7 +106,7 @@
     <dependency>
       <groupId>org.nanopub</groupId>
       <artifactId>nanopub</artifactId>
-      <version>1.83</version>
+      <version>1.86.1</version>
     </dependency>
     <!-- Temporary: dependency on Jitpack for snapshot builds -->
     <!-- <dependency>
@@ -146,6 +146,12 @@
       <artifactId>slf4j-simple</artifactId>
       <version>2.0.17</version>
       <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.nanopub</groupId>
+      <artifactId>nanopub-testsuite-connector</artifactId>
+      <version>1.0.0</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
@@ -219,23 +225,6 @@
             <goals>
               <goal>exec</goal>
             </goals>
-          </execution>
-          <execution>
-            <id>git-submodule-update</id>
-            <phase>generate-test-resources</phase>
-            <goals>
-              <goal>exec</goal>
-            </goals>
-            <configuration>
-              <skip>${maven.test.skip}</skip>
-              <executable>git</executable>
-              <arguments>
-                <argument>submodule</argument>
-                <argument>update</argument>
-                <argument>--init</argument>
-                <argument>--recursive</argument>
-              </arguments>
-            </configuration>
           </execution>
         </executions>
       </plugin>

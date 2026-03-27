@@ -1,6 +1,7 @@
 package com.knowledgepixels.query;
 
 import com.knowledgepixels.query.JellyNanopubLoader.LoadingType;
+import com.knowledgepixels.query.JellyNanopubLoader.RegistryMetadata;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
@@ -11,7 +12,7 @@ class JellyNanopubLoaderTest {
     @Test
     void loadInitialWithAfterGreater() {
         try (MockedStatic<JellyNanopubLoader> mockedJellyLoader = mockStatic(JellyNanopubLoader.class, CALLS_REAL_METHODS)) {
-            mockedJellyLoader.when(JellyNanopubLoader::fetchRegistryLoadCounter).thenReturn(5L);
+            mockedJellyLoader.when(JellyNanopubLoader::fetchRegistryMetadata).thenReturn(new RegistryMetadata(5L, null));
             JellyNanopubLoader.loadInitial(10L);
             mockedJellyLoader.verify(() -> JellyNanopubLoader.loadBatch(anyLong(), any(LoadingType.class)), never());
         }
@@ -21,7 +22,7 @@ class JellyNanopubLoaderTest {
     @Test
     void loadInitialWithException() {
         try (MockedStatic<JellyNanopubLoader> mockedJellyLoader = mockStatic(JellyNanopubLoader.class, CALLS_REAL_METHODS)) {
-            mockedJellyLoader.when(JellyNanopubLoader::fetchRegistryLoadCounter).thenReturn(10L);
+            mockedJellyLoader.when(JellyNanopubLoader::fetchRegistryMetadata).thenReturn(new RegistryMetadata(10L, null));
             // if loadBatch is mocked then the lastCommittedCounter is never increased therefore there is an infinite loop
             mockedJellyLoader.when(() -> JellyNanopubLoader.loadBatch(anyLong(), any(LoadingType.class))).thenThrow(new RuntimeException("This is just an example exception"));
 

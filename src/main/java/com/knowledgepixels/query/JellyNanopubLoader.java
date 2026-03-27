@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 public class JellyNanopubLoader {
     private static final String registryUrl;
     private static long lastCommittedCounter = -1;
+    private static Long lastKnownSetupId = null;
     private static final CloseableHttpClient metadataClient;
     private static final CloseableHttpClient jellyStreamClient;
 
@@ -28,6 +29,11 @@ public class JellyNanopubLoader {
     private static final int RETRY_DELAY_JELLY = 5000;
 
     private static final Logger log = LoggerFactory.getLogger(JellyNanopubLoader.class);
+
+    /**
+     * Registry metadata returned by a HEAD request.
+     */
+    record RegistryMetadata(long loadCounter, Long setupId) {}
 
     /**
      * The interval in milliseconds at which the updates loader should poll for new nanopubs.
@@ -58,8 +64,14 @@ public class JellyNanopubLoader {
      * @param afterCounter which counter to start from (-1 for the beginning)
      */
     public static void loadInitial(long afterCounter) {
-        long targetCounter = fetchRegistryLoadCounter();
+        RegistryMetadata metadata = fetchRegistryMetadata();
+        long targetCounter = metadata.loadCounter();
         log.info("Fetched Registry load counter: {}", targetCounter);
+        // Store setupId on initial load
+        if (metadata.setupId() != null && lastKnownSetupId == null) {
+            lastKnownSetupId = metadata.setupId();
+            StatusController.get().setRegistrySetupId(metadata.setupId());
+        }
         lastCommittedCounter = afterCounter;
         while (lastCommittedCounter < targetCounter) {
             try {
@@ -87,11 +99,35 @@ public class JellyNanopubLoader {
         try {
             final var status = StatusController.get().getState();
             lastCommittedCounter = status.loadCounter;
+            RegistryMetadata metadata = fetchRegistryMetadata();
+            long targetCounter = metadata.loadCounter();
+            Long currentSetupId = metadata.setupId();
+
+            // Detect reset via setupId change
+            if (lastKnownSetupId != null && currentSetupId != null
+                    && !lastKnownSetupId.equals(currentSetupId)) {
+                log.warn("Registry reset detected: setupId {} -> {}", lastKnownSetupId, currentSetupId);
+                performResync(currentSetupId);
+                return;
+            }
+            // Detect reset via counter decrease (also covers first run after upgrade
+            // where no setupId was persisted yet but the registry has already been reset)
+            if (lastCommittedCounter > 0 && targetCounter >= 0
+                    && targetCounter < lastCommittedCounter) {
+                log.warn("Registry counter decreased {} -> {}, triggering resync",
+                        lastCommittedCounter, targetCounter);
+                performResync(currentSetupId);
+                return;
+            }
+
+            // Update lastKnownSetupId on first successful poll
+            if (currentSetupId != null && lastKnownSetupId == null) {
+                lastKnownSetupId = currentSetupId;
+                StatusController.get().setRegistrySetupId(currentSetupId);
+            }
+
             StatusController.get().setLoadingUpdates(status.loadCounter);
-            long targetCounter = fetchRegistryLoadCounter();
             if (lastCommittedCounter >= targetCounter) {
-                // Keep quiet so as not to spam the log every second
-                // log.info("No updates to load.");
                 StatusController.get().setReady();
                 return;
             }
@@ -114,6 +150,25 @@ public class JellyNanopubLoader {
                 log.info("Failure Reason: ", e);
             }
         }
+    }
+
+    /**
+     * Re-stream all nanopubs from the registry after a reset is detected.
+     * Existing nanopubs are skipped by NanopubLoader's per-repo dedup.
+     *
+     * @param newSetupId the new setup ID from the registry, or null if unknown
+     */
+    private static void performResync(Long newSetupId) {
+        log.warn("Starting resync with registry. New setupId: {}", newSetupId);
+        StatusController.get().setResetting();
+        lastKnownSetupId = newSetupId;
+        if (newSetupId != null) {
+            StatusController.get().setRegistrySetupId(newSetupId);
+        }
+        StatusController.get().setLoadingInitial(-1);
+        loadInitial(-1);
+        StatusController.get().setReady();
+        log.warn("Resync complete. Counter: {}", lastCommittedCounter);
     }
 
     /**
@@ -212,49 +267,58 @@ public class JellyNanopubLoader {
     }
 
     /**
-     * Run a HEAD request to the Registry to fetch its current load counter.
+     * Set the last known setup ID. Called from MainVerticle on startup to restore persisted state.
      *
-     * @return the current load counter
+     * @param setupId the setup ID to set, or null if not known
      */
-    static long fetchRegistryLoadCounter() {
+    static void setLastKnownSetupId(Long setupId) {
+        lastKnownSetupId = setupId;
+    }
+
+    /**
+     * Run a HEAD request to the Registry to fetch its current metadata (load counter and setup ID).
+     *
+     * @return the registry metadata
+     */
+    static RegistryMetadata fetchRegistryMetadata() {
         int tries = 0;
-        long counter = -1;
-        while (counter == -1 && tries < MAX_RETRIES_METADATA) {
+        RegistryMetadata metadata = null;
+        while (metadata == null && tries < MAX_RETRIES_METADATA) {
             try {
-                counter = fetchRegistryLoadCounterInner();
+                metadata = fetchRegistryMetadataInner();
             } catch (Exception e) {
                 tries++;
-                log.info("Failed to fetch registry load counter, try " + tries +
+                log.info("Failed to fetch registry metadata, try " + tries +
                         ". Retrying in {}ms...", RETRY_DELAY_METADATA);
                 log.info("Failure Reason: ", e);
                 try {
                     Thread.sleep(RETRY_DELAY_METADATA);
                 } catch (InterruptedException e2) {
                     throw new RuntimeException(
-                            "Interrupted while waiting to retry fetching registry load counter.");
+                            "Interrupted while waiting to retry fetching registry metadata.");
                 }
             }
         }
-        if (counter == -1) {
-            throw new RuntimeException("Failed to fetch registry load counter after " +
+        if (metadata == null) {
+            throw new RuntimeException("Failed to fetch registry metadata after " +
                     MAX_RETRIES_METADATA + " retries.");
         }
-        return counter;
+        return metadata;
     }
 
     /**
-     * Inner logic for fetching the registry load counter.
+     * Inner logic for fetching the registry metadata via HEAD request.
      *
-     * @return the current load counter
+     * @return the registry metadata (load counter and setup ID)
      * @throws IOException if the HTTP request fails
      */
-    private static long fetchRegistryLoadCounterInner() throws IOException {
+    private static RegistryMetadata fetchRegistryMetadataInner() throws IOException {
         var request = new HttpHead(registryUrl);
         try (var response = metadataClient.execute(request)) {
             int status = response.getStatusLine().getStatusCode();
             EntityUtils.consumeQuietly(response.getEntity());
             if (status < 200 || status >= 300) {
-                throw new RuntimeException("Registry load counter HTTP status is not 2xx: " +
+                throw new RuntimeException("Registry metadata HTTP status is not 2xx: " +
                         status + ".");
             }
 
@@ -267,12 +331,25 @@ public class JellyNanopubLoader {
                 throw new RuntimeException("Registry is not in ready state.");
             }
 
-            // Get the actual load counter
+            // Get the load counter
             var hCounter = response.getHeaders("Nanopub-Registry-Load-Counter");
             if (hCounter.length == 0) {
                 throw new RuntimeException("Registry did not return a Nanopub-Registry-Load-Counter header.");
             }
-            return Long.parseLong(hCounter[0].getValue());
+            long loadCounter = Long.parseLong(hCounter[0].getValue());
+
+            // Get the setup ID (optional — older registries may not have it)
+            Long setupId = null;
+            var hSetupId = response.getHeaders("Nanopub-Registry-Setup-Id");
+            if (hSetupId.length > 0) {
+                try {
+                    setupId = Long.parseLong(hSetupId[0].getValue());
+                } catch (NumberFormatException e) {
+                    log.info("Could not parse Nanopub-Registry-Setup-Id header: {}", hSetupId[0].getValue());
+                }
+            }
+
+            return new RegistryMetadata(loadCounter, setupId);
         }
     }
 
