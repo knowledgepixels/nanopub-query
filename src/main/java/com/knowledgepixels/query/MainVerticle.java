@@ -420,7 +420,9 @@ public class MainVerticle extends AbstractVerticle {
                 if (storedSetupId != null) {
                     JellyNanopubLoader.setLastKnownSetupId(storedSetupId);
                     log.info("Restored registry setupId: {}", storedSetupId);
-                } else {
+                } else if (status.state == StatusController.State.LAUNCHING
+                        || status.state == StatusController.State.LOADING_INITIAL) {
+                    // Fresh start or crashed during initial load – safe to adopt the current setupId
                     try {
                         var metadata = JellyNanopubLoader.fetchRegistryMetadata();
                         JellyNanopubLoader.setLastKnownSetupId(metadata.setupId());
@@ -431,8 +433,28 @@ public class MainVerticle extends AbstractVerticle {
                     } catch (Exception e) {
                         log.warn("Could not fetch initial registry setupId", e);
                     }
+                } else {
+                    // Upgrade from a version without setupId tracking. The DB has data but
+                    // we can't verify it matches the current registry state. Leave lastKnownSetupId
+                    // as null so that loadUpdates() will trigger a resync.
+                    log.warn("No stored registry setupId but DB has data (state: {}, counter: {}). "
+                            + "A resync will be triggered on the first update poll.",
+                            status.state, status.loadCounter);
                 }
-                if (status.state == StatusController.State.LAUNCHING || status.state == StatusController.State.LOADING_INITIAL) {
+                boolean forceResync = "true".equalsIgnoreCase(
+                        Utils.getEnvString("FORCE_RESYNC", "false"));
+                if (forceResync && status.state != StatusController.State.LAUNCHING) {
+                    log.warn("FORCE_RESYNC is set. Forcing full re-load from registry.");
+                    var metadata = JellyNanopubLoader.fetchRegistryMetadata();
+                    JellyNanopubLoader.setLastKnownSetupId(metadata.setupId());
+                    if (metadata.setupId() != null) {
+                        StatusController.get().setRegistrySetupId(metadata.setupId());
+                    }
+                    StatusController.get().setResetting();
+                    StatusController.get().setLoadingInitial(-1);
+                    JellyNanopubLoader.loadInitial(-1);
+                    StatusController.get().setReady();
+                } else if (status.state == StatusController.State.LAUNCHING || status.state == StatusController.State.LOADING_INITIAL) {
                     // Do the initial nanopublication loading
                     StatusController.get().setLoadingInitial(status.loadCounter);
                     // Fall back to local nanopub loading if the local files are present

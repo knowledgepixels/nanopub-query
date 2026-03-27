@@ -122,6 +122,14 @@ public class JellyNanopubLoader {
 
             // Update lastKnownSetupId on first successful poll
             if (currentSetupId != null && lastKnownSetupId == null) {
+                if (lastCommittedCounter > 0) {
+                    // Upgrade from a version without setupId tracking. The DB has data but
+                    // we can't verify it matches the current registry. Force a resync.
+                    log.warn("No stored setupId but DB has data (counter: {}). "
+                            + "Forcing resync to ensure data consistency.", lastCommittedCounter);
+                    performResync(currentSetupId);
+                    return;
+                }
                 lastKnownSetupId = currentSetupId;
                 StatusController.get().setRegistrySetupId(currentSetupId);
             }
