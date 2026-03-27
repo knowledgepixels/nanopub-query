@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
  */
 public class JellyNanopubLoader {
-    private static final String registryUrl;
+    static final String registryUrl;
     private static long lastCommittedCounter = -1;
     private static Long lastKnownSetupId = null;
     private static final CloseableHttpClient metadataClient;

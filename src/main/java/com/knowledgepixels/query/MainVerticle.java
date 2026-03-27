@@ -395,6 +395,12 @@ public class MainVerticle extends AbstractVerticle {
         });
         proxyRouter.route(HttpMethod.GET, "/api/*").handler(ProxyHandler.create(grlcxProxy));
 
+        // Handle HEAD requests for all paths not already covered (e.g. /repo/* has its own HEAD handler).
+        // Global headers are applied before routing, so we just end the response with no body.
+        proxyRouter.route(HttpMethod.HEAD, "/*").handler(req -> {
+            req.response().setStatusCode(200).end();
+        });
+
         proxyServer.requestHandler(req -> {
             applyGlobalHeaders(req.response());
             proxyRouter.handle(req);
@@ -500,7 +506,12 @@ public class MainVerticle extends AbstractVerticle {
      *
      * @param response The response to which the headers should be applied.
      */
-    private static void applyGlobalHeaders(HttpServerResponse response) {
-        response.putHeader("Nanopub-Query-Status", StatusController.get().getState().state.toString());
+    static void applyGlobalHeaders(HttpServerResponse response) {
+        var state = StatusController.get().getState();
+        response.putHeader("Nanopub-Query-Status", state.state.toString());
+        response.putHeader("Nanopub-Query-Registry-Url", JellyNanopubLoader.registryUrl);
+        Long setupId = StatusController.get().getRegistrySetupId();
+        response.putHeader("Nanopub-Query-Registry-Setup-Id", setupId == null ? "" : setupId.toString());
+        response.putHeader("Nanopub-Query-Load-Counter", String.valueOf(state.loadCounter));
     }
 }
