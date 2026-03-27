@@ -1,3 +1,18 @@
+## [1.6.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.5.0...nanopub-query-1.6.0) (2026-03-27)
+
+### Features
+
+* add informational HTTP headers and HEAD request support ([04fe4bb](https://github.com/knowledgepixels/nanopub-query/commit/04fe4bb5ae53addef093c7163ee701d2eed3202d))
+
+### Bug Fixes
+
+* detect registry reset on upgrade and add FORCE_RESYNC env var ([6a317cd](https://github.com/knowledgepixels/nanopub-query/commit/6a317cdb196181679751a2520074b37ffb6a41d6))
+
+### General maintenance
+
+* copy only the fat JAR in local.Dockerfile ([60f4836](https://github.com/knowledgepixels/nanopub-query/commit/60f4836c490a3a07bd1c4cfbef64177faeb490e3))
+* setting next snapshot version [skip ci] ([8d95118](https://github.com/knowledgepixels/nanopub-query/commit/8d95118987e3db996d0b02ee1ef22cfdbb08916e))
+
 ## [1.5.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.4.1...nanopub-query-1.5.0) (2026-03-27)
 
 ### Features
