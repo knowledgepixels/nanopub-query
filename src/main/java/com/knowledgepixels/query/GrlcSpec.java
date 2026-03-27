@@ -17,8 +17,11 @@ import org.eclipse.rdf4j.query.algebra.helpers.AbstractSimpleQueryModelVisitor;
 import org.eclipse.rdf4j.query.parser.ParsedGraphQuery;
 import org.eclipse.rdf4j.query.parser.ParsedQuery;
 import org.eclipse.rdf4j.query.parser.sparql.SPARQLParser;
+import org.eclipse.rdf4j.rio.RDFFormat;
+import org.nanopub.MalformedNanopubException;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
+import org.nanopub.NanopubImpl;
 import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.extra.server.GetNanopub;
 import org.nanopub.vocabulary.NPA;
@@ -26,6 +29,8 @@ import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.*;
 
 //TODO merge this class with GrlcQuery of Nanodash and move to a library like nanopub-java
@@ -94,8 +99,18 @@ public class GrlcSpec {
         queryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
         queryPart = queryPart.replaceFirst(".rq$", "");
 
-        // TODO Get the nanopub from the local store:
-        np = GetNanopub.get(artifactCode);
+        String nanopubParam = parameters.get("_nanopub_trig");
+        if (nanopubParam != null && !nanopubParam.isEmpty()) {
+            try {
+                byte[] trig = Base64.getUrlDecoder().decode(nanopubParam);
+                np = new NanopubImpl(new ByteArrayInputStream(trig), RDFFormat.TRIG);
+            } catch (MalformedNanopubException | IOException | IllegalArgumentException ex) {
+                throw new InvalidGrlcSpecException("Failed to parse nanopub from 'nanopub' parameter", ex);
+            }
+        } else {
+            np = GetNanopub.get(artifactCode);
+        }
+        // TODO rename "api-version" to "_api_version" for consistency
         if (parameters.get("api-version") != null && parameters.get("api-version").equals("latest")) {
             String latestUri = getLatestVersionIdLocally(np.getUri().stringValue());
             if (!latestUri.equals(np.getUri().stringValue())) {
