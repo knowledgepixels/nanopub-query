@@ -547,5 +547,16 @@ public class MainVerticle extends AbstractVerticle {
         Long setupId = StatusController.get().getRegistrySetupId();
         response.putHeader("Nanopub-Query-Registry-Setup-Id", setupId == null ? "" : setupId.toString());
         response.putHeader("Nanopub-Query-Load-Counter", String.valueOf(state.loadCounter));
+        // Forward registry metadata headers
+        String coverageTypes = JellyNanopubLoader.lastCoverageTypes;
+        response.putHeader("Nanopub-Query-Registry-Coverage-Types", coverageTypes != null ? coverageTypes : "all");
+        String testInstance = JellyNanopubLoader.lastTestInstance;
+        if (testInstance != null) {
+            response.putHeader("Nanopub-Query-Registry-Test-Instance", testInstance);
+        }
+        String nanopubCount = JellyNanopubLoader.lastNanopubCount;
+        if (nanopubCount != null) {
+            response.putHeader("Nanopub-Query-Registry-Nanopub-Count", nanopubCount);
+        }
     }
 }

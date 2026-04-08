@@ -117,4 +117,67 @@ class MainVerticleGlobalHeadersTest {
             verify(response).putHeader("Nanopub-Query-Load-Counter", "500");
         }
     }
+
+    @Test
+    void forwardsCoverageTypesWhenPresent() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            JellyNanopubLoader.lastCoverageTypes = "hash1,hash2";
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Registry-Coverage-Types", "hash1,hash2");
+            JellyNanopubLoader.lastCoverageTypes = null;
+        }
+    }
+
+    @Test
+    void defaultsCoverageTypesToAllWhenNull() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            JellyNanopubLoader.lastCoverageTypes = null;
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Registry-Coverage-Types", "all");
+        }
+    }
+
+    @Test
+    void forwardsTestInstanceWhenPresent() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            JellyNanopubLoader.lastTestInstance = "true";
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Registry-Test-Instance", "true");
+            JellyNanopubLoader.lastTestInstance = null;
+        }
+    }
+
+    @Test
+    void forwardsNanopubCountWhenPresent() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            JellyNanopubLoader.lastNanopubCount = "50000";
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Registry-Nanopub-Count", "50000");
+            JellyNanopubLoader.lastNanopubCount = null;
+        }
+    }
 }
