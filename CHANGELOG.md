@@ -1,3 +1,17 @@
+## [1.8.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.7.0...nanopub-query-1.8.0) (2026-04-08)
+
+### Features
+
+* forward registry coverage agents header ([b89d5c6](https://github.com/knowledgepixels/nanopub-query/commit/b89d5c6ae37b6bbf9845d7b2263a7b6638996787))
+
+### Bug Fixes
+
+* revert to Load-Counter header and afterCounter param ([9d44660](https://github.com/knowledgepixels/nanopub-query/commit/9d44660ade0001533cb77700aea1a403686732c4))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([b0fd218](https://github.com/knowledgepixels/nanopub-query/commit/b0fd218cba695f1e1d15f4cf74b66347ae150ace))
+
 ## [1.7.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.6.0...nanopub-query-1.7.0) (2026-04-08)
 
 ### Features
