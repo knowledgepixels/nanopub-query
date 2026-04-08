@@ -150,6 +150,37 @@ class MainVerticleGlobalHeadersTest {
     }
 
     @Test
+    void forwardsCoverageAgentsWhenPresent() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            JellyNanopubLoader.lastCoverageAgents = "viaSetting abc123:5000";
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Registry-Coverage-Agents", "viaSetting abc123:5000");
+            JellyNanopubLoader.lastCoverageAgents = null;
+        }
+    }
+
+    @Test
+    void defaultsCoverageAgentsToViaSettingWhenNull() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            JellyNanopubLoader.lastCoverageAgents = null;
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Registry-Coverage-Agents", "viaSetting");
+        }
+    }
+
+    @Test
     void forwardsTestInstanceWhenPresent() {
         try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
             initializeStatusController(mockedTripleStore);

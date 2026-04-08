@@ -23,6 +23,7 @@ public class JellyNanopubLoader {
     private static Long lastKnownSetupId = null;
     // Latest registry metadata fields, updated on each metadata fetch and forwarded to clients
     static volatile String lastCoverageTypes = null;
+    static volatile String lastCoverageAgents = null;
     static volatile String lastTestInstance = null;
     static volatile String lastNanopubCount = null;
     private static final CloseableHttpClient metadataClient;
@@ -38,7 +39,7 @@ public class JellyNanopubLoader {
      * Registry metadata returned by a HEAD request.
      */
     record RegistryMetadata(long loadCounter, Long setupId, String coverageTypes,
-                            String testInstance, String nanopubCount) {}
+                            String coverageAgents, String testInstance, String nanopubCount) {}
 
     /**
      * The interval in milliseconds at which the updates loader should poll for new nanopubs.
@@ -295,6 +296,7 @@ public class JellyNanopubLoader {
      */
     private static void updateForwardingMetadata(RegistryMetadata metadata) {
         lastCoverageTypes = metadata.coverageTypes();
+        lastCoverageAgents = metadata.coverageAgents();
         lastTestInstance = metadata.testInstance();
         lastNanopubCount = metadata.nanopubCount();
     }
@@ -383,27 +385,19 @@ public class JellyNanopubLoader {
                 }
             }
 
-            // Read optional metadata headers for forwarding to clients
-            String coverageTypes = null;
-            var hCovTypes = response.getHeaders("Nanopub-Registry-Coverage-Types");
-            if (hCovTypes.length > 0) {
-                coverageTypes = hCovTypes[0].getValue();
-            }
+            // Read metadata headers for forwarding to clients
+            String coverageTypes = getHeaderValue(response, "Nanopub-Registry-Coverage-Types");
+            String coverageAgents = getHeaderValue(response, "Nanopub-Registry-Coverage-Agents");
+            String testInstance = getHeaderValue(response, "Nanopub-Registry-Test-Instance");
+            String nanopubCount = getHeaderValue(response, "Nanopub-Registry-Nanopub-Count");
 
-            String testInstance = null;
-            var hTestInstance = response.getHeaders("Nanopub-Registry-Test-Instance");
-            if (hTestInstance.length > 0) {
-                testInstance = hTestInstance[0].getValue();
-            }
-
-            String nanopubCount = null;
-            var hNpCount = response.getHeaders("Nanopub-Registry-Nanopub-Count");
-            if (hNpCount.length > 0) {
-                nanopubCount = hNpCount[0].getValue();
-            }
-
-            return new RegistryMetadata(seqNum, setupId, coverageTypes, testInstance, nanopubCount);
+            return new RegistryMetadata(seqNum, setupId, coverageTypes, coverageAgents, testInstance, nanopubCount);
         }
+    }
+
+    private static String getHeaderValue(CloseableHttpResponse response, String name) {
+        var headers = response.getHeaders(name);
+        return headers.length > 0 ? headers[0].getValue() : null;
     }
 
     /**

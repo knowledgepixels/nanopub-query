@@ -550,6 +550,8 @@ public class MainVerticle extends AbstractVerticle {
         // Forward registry metadata headers
         String coverageTypes = JellyNanopubLoader.lastCoverageTypes;
         response.putHeader("Nanopub-Query-Registry-Coverage-Types", coverageTypes != null ? coverageTypes : "all");
+        String coverageAgents = JellyNanopubLoader.lastCoverageAgents;
+        response.putHeader("Nanopub-Query-Registry-Coverage-Agents", coverageAgents != null ? coverageAgents : "viaSetting");
         String testInstance = JellyNanopubLoader.lastTestInstance;
         if (testInstance != null) {
             response.putHeader("Nanopub-Query-Registry-Test-Instance", testInstance);
