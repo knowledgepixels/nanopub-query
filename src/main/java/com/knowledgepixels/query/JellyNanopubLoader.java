@@ -73,7 +73,7 @@ public class JellyNanopubLoader {
         RegistryMetadata metadata = fetchRegistryMetadata();
         updateForwardingMetadata(metadata);
         long targetCounter = metadata.loadCounter();
-        log.info("Fetched Registry seqNum: {}", targetCounter);
+        log.info("Fetched Registry load counter: {}", targetCounter);
         // Store setupId on initial load
         if (metadata.setupId() != null && lastKnownSetupId == null) {
             lastKnownSetupId = metadata.setupId();
@@ -302,7 +302,7 @@ public class JellyNanopubLoader {
     }
 
     /**
-     * Run a HEAD request to the Registry to fetch its current metadata (seqNum and setup ID).
+     * Run a HEAD request to the Registry to fetch its current metadata (load counter and setup ID).
      *
      * @return the registry metadata
      */
@@ -357,22 +357,12 @@ public class JellyNanopubLoader {
                 throw new RuntimeException("Registry is not in ready state.");
             }
 
-            // Get the seqNum (preferred) or load counter (fallback for older registries)
-            // TODO(transition): Remove Load-Counter fallback after all registries upgraded
-            Long seqNum = null;
-            var hSeqNum = response.getHeaders("Nanopub-Registry-SeqNum");
-            if (hSeqNum.length > 0) {
-                seqNum = Long.parseLong(hSeqNum[0].getValue());
+            // Get the load counter
+            var hCounter = response.getHeaders("Nanopub-Registry-Load-Counter");
+            if (hCounter.length == 0) {
+                throw new RuntimeException("Registry did not return a Nanopub-Registry-Load-Counter header.");
             }
-            if (seqNum == null) {
-                var hCounter = response.getHeaders("Nanopub-Registry-Load-Counter");
-                if (hCounter.length > 0) {
-                    seqNum = Long.parseLong(hCounter[0].getValue());
-                }
-            }
-            if (seqNum == null) {
-                throw new RuntimeException("Registry did not return a Nanopub-Registry-SeqNum or Load-Counter header.");
-            }
+            long loadCounter = Long.parseLong(hCounter[0].getValue());
 
             // Get the setup ID (optional — older registries may not have it)
             Long setupId = null;
@@ -391,7 +381,7 @@ public class JellyNanopubLoader {
             String testInstance = getHeaderValue(response, "Nanopub-Registry-Test-Instance");
             String nanopubCount = getHeaderValue(response, "Nanopub-Registry-Nanopub-Count");
 
-            return new RegistryMetadata(seqNum, setupId, coverageTypes, coverageAgents, testInstance, nanopubCount);
+            return new RegistryMetadata(loadCounter, setupId, coverageTypes, coverageAgents, testInstance, nanopubCount);
         }
     }
 
@@ -403,11 +393,10 @@ public class JellyNanopubLoader {
     /**
      * Construct the URL for fetching the Jelly stream.
      *
-     * @param afterSeqNum the last known seqNum to have been committed in the DB
+     * @param afterCounter the last known counter to have been committed in the DB
      * @return the URL for fetching the Jelly stream
      */
-    private static String makeStreamFetchUrl(long afterSeqNum) {
-        // TODO(transition): Remove afterCounter param after all registries upgraded
-        return registryUrl + "nanopubs.jelly?afterSeqNum=" + afterSeqNum + "&afterCounter=" + afterSeqNum;
+    private static String makeStreamFetchUrl(long afterCounter) {
+        return registryUrl + "nanopubs.jelly?afterCounter=" + afterCounter;
     }
 }
