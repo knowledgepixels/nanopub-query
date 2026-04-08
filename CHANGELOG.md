@@ -1,3 +1,17 @@
+## [1.7.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.6.0...nanopub-query-1.7.0) (2026-04-08)
+
+### Features
+
+* align with registry seqNum API and forward registry metadata headers ([655245f](https://github.com/knowledgepixels/nanopub-query/commit/655245fe5a2c101c5516e3280e94dae83fff9eba))
+
+### Bug Fixes
+
+* prevent event loop blocking from network I/O and lock contention ([3209b71](https://github.com/knowledgepixels/nanopub-query/commit/3209b71f0a6a5812286adc645c6d2260a1efe1fb))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([d51d30f](https://github.com/knowledgepixels/nanopub-query/commit/d51d30fe3eb0610e224dba5aa9bb8e8d1b45d9af))
+
 ## [1.6.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.5.0...nanopub-query-1.6.0) (2026-03-27)
 
 ### Features
