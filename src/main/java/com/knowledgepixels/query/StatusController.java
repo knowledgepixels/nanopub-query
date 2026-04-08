@@ -55,8 +55,8 @@ public class StatusController {
             SimpleValueFactory.getInstance().createIRI(NPA.NAMESPACE, "hasRegistrySetupId");
 
     private boolean initialized = false;
-    private State state = null;
-    private long lastCommittedCounter = -1;
+    private volatile State state = null;
+    private volatile long lastCommittedCounter = -1;
     private Long registrySetupId = null;
     private RepositoryConnection adminRepoConn;
 
@@ -170,9 +170,7 @@ public class StatusController {
      * @return the current state and the last committed counter
      */
     public LoadingStatus getState() {
-        synchronized (this) {
-            return LoadingStatus.of(state, lastCommittedCounter);
-        }
+        return LoadingStatus.of(state, lastCommittedCounter);
     }
 
     /**
@@ -278,6 +276,9 @@ public class StatusController {
 
     void updateState(State newState, long loadCounter) {
         synchronized (this) {
+            // Update in-memory state first so getState() (called from the event loop) never blocks
+            state = newState;
+            lastCommittedCounter = loadCounter;
             try {
                 // Serializable, as the service state needs to be strictly consistent
                 adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
@@ -286,8 +287,6 @@ public class StatusController {
                 adminRepoConn.remove(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH);
                 adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(loadCounter), NPA.GRAPH);
                 adminRepoConn.commit();
-                state = newState;
-                lastCommittedCounter = loadCounter;
             } catch (Exception e) {
                 if (adminRepoConn.isActive()) {
                     try {

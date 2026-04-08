@@ -24,6 +24,8 @@ import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.extra.server.GetNanopub;
+
+import java.util.concurrent.ConcurrentHashMap;
 import org.nanopub.vocabulary.NPA;
 import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
@@ -44,6 +46,8 @@ public class GrlcSpec {
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
     private static final Logger logger = LoggerFactory.getLogger(GrlcSpec.class);
+
+    private static final ConcurrentHashMap<String, Nanopub> nanopubCache = new ConcurrentHashMap<>();
 
     /**
      * Exception for invalid grlc specifications.
@@ -108,13 +112,13 @@ public class GrlcSpec {
                 throw new InvalidGrlcSpecException("Failed to parse nanopub from 'nanopub' parameter", ex);
             }
         } else {
-            np = GetNanopub.get(artifactCode);
+            np = nanopubCache.computeIfAbsent(artifactCode, GetNanopub::get);
         }
         // TODO rename "api-version" to "_api_version" for consistency
         if (parameters.get("api-version") != null && parameters.get("api-version").equals("latest")) {
             String latestUri = getLatestVersionIdLocally(np.getUri().stringValue());
             if (!latestUri.equals(np.getUri().stringValue())) {
-                np = GetNanopub.get(TrustyUriUtils.getArtifactCode(latestUri));
+                np = nanopubCache.computeIfAbsent(TrustyUriUtils.getArtifactCode(latestUri), GetNanopub::get);
             }
             artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
         }

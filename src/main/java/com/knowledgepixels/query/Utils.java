@@ -222,9 +222,9 @@ public class Utils {
      */
     static RequestConfig getHttpRequestConfig() {
         return RequestConfig.custom()
-                .setConnectTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECT_TIMEOUT", 1000))
-                .setConnectionRequestTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECTION_REQUEST_TIMEOUT", 100))
-                .setSocketTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT", 1000))
+                .setConnectTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECT_TIMEOUT", 10000))
+                .setConnectionRequestTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECTION_REQUEST_TIMEOUT", 1000))
+                .setSocketTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT", 10000))
                 .setCookieSpec(CookieSpecs.IGNORE_COOKIES).build();
     }
 
