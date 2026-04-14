@@ -8,20 +8,20 @@
 
 ## Space Identity Model
 
-Every space is uniquely identified by a **space ID** of the form `NPID/SPACEIDHASH`, where:
+Every space is uniquely identified by a **space ref** of the form `NPID/SPACEIRIHASH`, where:
 
-- **NPID** is the artifact code (e.g. `RA...`) of the **origin nanopub** — the nanopub that founded the space. Since artifact codes are cryptographic hashes of content, they are globally unique and immutable.
-- **SPACEIDHASH** is `Utils.createHash(<Space IRI>)` — computed from the Space IRI declared in the origin nanopub's assertions, following the same hashing pattern already used for `type_<HASH>` repos (`Utils.createHash(typeIri)`). A single origin nanopub can define multiple spaces by declaring multiple Space IRIs.
+- **NPID** is the artifact code (e.g. `RA...`) of the **root nanopub** — the nanopub that founded the space. Since artifact codes are cryptographic hashes of content, they are globally unique and immutable.
+- **SPACEIRIHASH** is `Utils.createHash(<Space IRI>)` — computed from the Space IRI declared in the root nanopub's assertions, following the same hashing pattern already used for `type_<HASH>` repos (`Utils.createHash(typeIri)`). A single root nanopub can define multiple spaces by declaring multiple Space IRIs.
 
-This eliminates conflicts by construction: no two distinct origin nanopubs share an artifact code, so no two distinct spaces share a space ID. The `space_<HASH>` repository name is derived from hashing the full `NPID/SPACEIDHASH` string.
+This eliminates conflicts by construction: no two distinct root nanopubs share an artifact code, so no two distinct spaces share a space ref. The `space_<HASH>` repository name is derived from hashing the full `NPID/SPACEIRIHASH` string.
 
-**Authority** traces back to the origin nanopub: its assertions declare the initial admin set via `kpxl_terms:hasAdmin`. All subsequent admin delegations chain back to this immutable root. Currently admins are declared as agent IRIs; linking these to intro nanopubs/pubkeys for cryptographic verification is a straightforward future extension.
+**Authority** traces back to the root nanopub: its assertions declare the initial admin set via `kpxl_terms:hasAdmin`. All subsequent admin delegations chain back to this immutable root. Currently admins are declared as agent IRIs; linking these to intro nanopubs/pubkeys for cryptographic verification is a straightforward future extension.
 
 ## Key Design Decision: What Goes Into a Space Repo?
 
-**Space-referencing nanopubs** — nanopubs whose assertions reference a known space ID (`NPID/SPACEIDHASH`) via relevant predicates. Specifically:
+**Space-referencing nanopubs** — nanopubs whose assertions reference a known space ref (`NPID/SPACEIRIHASH`) via relevant predicates. Specifically:
 
-- `kpxl_terms:hasAdmin` — admin declarations (subject = space ID)
+- `kpxl_terms:hasAdmin` — admin declarations (subject = space ref)
 - **Dynamic role properties** — role assignment nanopubs using per-space role predicates (regularProperties: `<member> <role-prop> <space>`, inverseProperties: `<space> <role-prop> <member>`)
 - `kpxl_terms:isDisplayFor` — ViewDisplay nanopubs that link views to the space
 - Space-defining nanopubs themselves (root nanopubs with KPXL space types)
@@ -52,18 +52,18 @@ Proposed flow:
 
 Singleton maintaining:
 ```java
-Map<String, String> spaceIdToRepoHash           // NPID/SPACEIDHASH → SHA256 hash (for repo name)
-Map<String, String> spaceIdToOriginNanopubId    // NPID/SPACEIDHASH → origin nanopub NPID (RA...)
-Map<String, Set<IRI>> spaceIdToInitialAdmins    // NPID/SPACEIDHASH → initial admin IRIs (from origin nanopub)
-Map<String, Set<IRI>> spaceIdToRoleProperties   // NPID/SPACEIDHASH → role predicate IRIs (regular + inverse)
-Set<String> knownSpaceIds                       // all known space IDs (for assertion scanning)
+Map<String, String> spaceRefToRepoHash           // NPID/SPACEIRIHASH → SHA256 hash (for repo name)
+Map<String, String> spaceRefToRootNanopubId    // NPID/SPACEIRIHASH → root nanopub NPID (RA...)
+Map<String, Set<IRI>> spaceRefToInitialAdmins    // NPID/SPACEIRIHASH → initial admin IRIs (from root nanopub)
+Map<String, Set<IRI>> spaceRefToRoleProperties   // NPID/SPACEIRIHASH → role predicate IRIs (regular + inverse)
+Set<String> knownSpaceRefs                       // all known space refs (for assertion scanning)
 ```
 
 Persisted in admin repo using existing patterns:
-- `npa:hash+<hash> npa:isHashOf "<NPID/SPACEIDHASH>"` (existing hash pattern from Utils.createHash)
-- `"<NPID/SPACEIDHASH>" rdf:type npa:Space` (new triple to mark known spaces)
-- `"<NPID/SPACEIDHASH>" npa:originNanopub "<NPID>"` (origin nanopub reference)
-- `"<NPID/SPACEIDHASH>" npa:hasRoleProperty <rolePropertyIRI>` (new triple to track dynamic role properties per space)
+- `npa:hash+<hash> npa:isHashOf "<NPID/SPACEIRIHASH>"` (existing hash pattern from Utils.createHash)
+- `"<NPID/SPACEIRIHASH>" rdf:type npa:Space` (new triple to mark known spaces)
+- `"<NPID/SPACEIRIHASH>" npa:rootNanopub "<NPID>"` (root nanopub reference)
+- `"<NPID/SPACEIRIHASH>" npa:hasRoleProperty <rolePropertyIRI>` (new triple to track dynamic role properties per space)
 
 On startup, loads known spaces and their role properties from admin repo. During loading, discovers new spaces from space-defining nanopubs and learns role properties from role-definition nanopubs.
 
@@ -71,29 +71,29 @@ On startup, loads known spaces and their role properties from admin repo. During
 
 **File:** `src/main/java/com/knowledgepixels/query/NanopubLoader.java`
 
-In the constructor (where types are extracted ~line 232), add space ID detection. A nanopub is loaded into a space repo if any of these match:
+In the constructor (where types are extracted ~line 232), add space ref detection. A nanopub is loaded into a space repo if any of these match:
 
-**A. Space-defining (origin) nanopubs:** Nanopub type matches a KPXL space type (Alliance, Project, Consortium, Organization, Taskforce, Division, Taskunit, Group, Program, Initiative, Outlet, Campaign, Community, Event — all under `https://w3id.org/kpxl/gen/terms/`). The nanopub itself is the origin nanopub. When detected:
+**A. Space-defining (root) nanopubs:** Nanopub type matches a KPXL space type (Alliance, Project, Consortium, Organization, Taskforce, Division, Taskunit, Group, Program, Initiative, Outlet, Campaign, Community, Event — all under `https://w3id.org/kpxl/gen/terms/`). The nanopub itself is the root nanopub. When detected:
   - Extract Space IRI from assertion (the subject with `rdf:type` matching the KPXL space type, or the subject of `kpxl_terms:hasAdmin` triples)
-  - Compute SPACEIDHASH = `Utils.createHash(spaceIri)` (same pattern as `type_<HASH>`)
-  - Construct space ID = `<this-nanopub-NPID>/<SPACEIDHASH>`
+  - Compute SPACEIRIHASH = `Utils.createHash(spaceIri)` (same pattern as `type_<HASH>`)
+  - Construct space ref = `<this-nanopub-NPID>/<SPACEIRIHASH>`
   - Extract initial admin set from `kpxl_terms:hasAdmin` assertions in this nanopub
-  - Register in SpaceRegistry with origin nanopub NPID and initial admin set
+  - Register in SpaceRegistry with root nanopub NPID and initial admin set
   - Load into `space_<HASH>` repo
 
-**B. Admin declarations:** Assertion contains `kpxl_terms:hasAdmin` predicate where subject matches a known space ID in SpaceRegistry. Only trusted if publisher is in the admin set traceable from the origin nanopub.
+**B. Admin declarations:** Assertion contains `kpxl_terms:hasAdmin` predicate where subject matches a known space ref in SpaceRegistry. Only trusted if publisher is in the admin set traceable from the root nanopub.
 
-**C. Role-definition nanopubs:** Assertion defines roles for a known space (detected by referencing a known space ID). When detected:
+**C. Role-definition nanopubs:** Assertion defines roles for a known space (detected by referencing a known space ref). When detected:
   - Extract regularProperties and inverseProperties from the role definition
-  - Register them in SpaceRegistry's `spaceIdToRoleProperties` map
+  - Register them in SpaceRegistry's `spaceRefToRoleProperties` map
   - Persist to admin repo
   - Load into `space_<HASH>` repo
 
-**D. Role-assignment nanopubs (dynamic role properties):** Assertion uses a predicate that's registered in SpaceRegistry as a role property for a known space, AND the triple's subject or object matches the space ID. This requires SpaceRegistry to maintain the learned role properties.
+**D. Role-assignment nanopubs (dynamic role properties):** Assertion uses a predicate that's registered in SpaceRegistry as a role property for a known space, AND the triple's subject or object matches the space ref. This requires SpaceRegistry to maintain the learned role properties.
 
-**E. ViewDisplay nanopubs:** Assertion contains `kpxl_terms:isDisplayFor` predicate where object matches a known space ID.
+**E. ViewDisplay nanopubs:** Assertion contains `kpxl_terms:isDisplayFor` predicate where object matches a known space ref.
 
-**F. Catch-all:** Any nanopub whose assertion references a known space ID as subject or object (ensures we don't miss edge cases while the role property set is being learned).
+**F. Catch-all:** Any nanopub whose assertion references a known space ref as subject or object (ensures we don't miss edge cases while the role property set is being learned).
 
 ### Phase 3: Loading into Space Repos
 
@@ -102,8 +102,8 @@ In the constructor (where types are extracted ~line 232), add space ID detection
 After the existing type_ loading loop, add:
 
 ```java
-for (String spaceId : detectedSpaceIds) {  // spaceId = "NPID/SPACEIDHASH"
-    String spaceHash = SpaceRegistry.get().getOrRegister(spaceId);
+for (String spaceRef : detectedSpaceRefs) {  // spaceRef = "NPID/SPACEIRIHASH"
+    String spaceHash = SpaceRegistry.get().getOrRegister(spaceRef);
     runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "space_" + spaceHash));
 }
 ```
@@ -136,7 +136,7 @@ Consider using lighter indexes for space repos (3 instead of 6, like meta repos)
 
 **File:** `NanopubLoader.java`, `loadInvalidateStatements()` (~line 530)
 
-When a nanopub is invalidated, check if it was loaded into any space repos (by checking if the invalidated nanopub's assertions reference any known space IDs in SpaceRegistry) and propagate the invalidation statement to those space repos.
+When a nanopub is invalidated, check if it was loaded into any space repos (by checking if the invalidated nanopub's assertions reference any known space refs in SpaceRegistry) and propagate the invalidation statement to those space repos.
 
 ### Phase 7: Unloading Mechanism
 
@@ -149,7 +149,7 @@ Similar to the `last30d` hourly cleanup pattern, but event-driven:
    - A periodic maintenance task (e.g., hourly) removes all data from dissolved space repos
    - Pattern: similar to `loadNanopubToLatest()` cleanup at lines 397-414
 
-3. **Space root supersession:** When a space root nanopub is superseded (updated), the new version defines the current state. The invalidation of the old root propagates normally; the new root loads into the same space repo (same space ID = same hash).
+3. **Space root supersession:** When a space root nanopub is superseded (updated), the new version defines the current state. The invalidation of the old root propagates normally; the new root loads into the same space repo (same space ref = same hash).
 
 4. **Role property changes:** When a role-definition nanopub is superseded, SpaceRegistry updates its role property set. New role properties are learned; old ones remain (additive, no removal needed since the catch-all in Phase 2F covers edge cases).
 
@@ -177,10 +177,10 @@ Create new query nanopub IDs that target `space_<HASH>` repos. Existing queries 
 
 On first deployment with space repos enabled:
 
-1. Scan `meta` repo for nanopubs with KPXL space type IRIs → discover all origin nanopubs
-2. For each origin nanopub, derive space ID (`NPID/SPACEIDHASH`) and register in SpaceRegistry with initial admin set
-3. Scan `full` repo for role-definition nanopubs referencing discovered space IDs → learn role properties
-4. For each space, scan `full` repo for nanopubs referencing that space ID (via hasAdmin, role properties, isDisplayFor, etc.)
+1. Scan `meta` repo for nanopubs with KPXL space type IRIs → discover all root nanopubs
+2. For each root nanopub, derive space ref (`NPID/SPACEIRIHASH`) and register in SpaceRegistry with initial admin set
+3. Scan `full` repo for role-definition nanopubs referencing discovered space refs → learn role properties
+4. For each space, scan `full` repo for nanopubs referencing that space ref (via hasAdmin, role properties, isDisplayFor, etc.)
 5. Load matching nanopubs into corresponding `space_<HASH>` repos
 6. Track bootstrap progress in admin repo (restartable)
 
@@ -194,10 +194,10 @@ During the initial load from registry, nanopubs arrive in chronological order. T
 2. **Role-definition nanopub arrives** → role properties learned, loaded into space repo
 3. **Role-assignment nanopub arrives** → matched via learned role properties, loaded into space repo
 
-But what if a role-assignment nanopub arrives *before* the role-definition? The catch-all (Phase 2F: any nanopub referencing a known space ID) handles this — if the space is already known, the nanopub gets loaded even if the specific role property isn't yet learned.
+But what if a role-assignment nanopub arrives *before* the role-definition? The catch-all (Phase 2F: any nanopub referencing a known space ref) handles this — if the space is already known, the nanopub gets loaded even if the specific role property isn't yet learned.
 
-What if a nanopub references a space that isn't yet known? This can happen when management nanopubs (admin/role/viewdisplay) arrive before the space-defining origin nanopub. Mitigation:
-- After the initial load completes, run a **catch-up scan** of the `full` repo for any nanopubs referencing newly-discovered space IDs that were missed during streaming
+What if a nanopub references a space that isn't yet known? This can happen when management nanopubs (admin/role/viewdisplay) arrive before the space-defining root nanopub. Mitigation:
+- After the initial load completes, run a **catch-up scan** of the `full` repo for any nanopubs referencing newly-discovered space refs that were missed during streaming
 - Track which spaces were discovered during vs. after initial load to know which need catch-up
 
 ## Key Files to Modify
@@ -214,10 +214,10 @@ What if a nanopub references a space that isn't yet known? This can happen when 
 ## Risks & Mitigations
 
 1. **Repo proliferation:** Each space creates an LMDB repo. Use lighter indexes (3 instead of 6, like meta repos) since space repos are small.
-2. **Conflicting space declarations:** Not a risk — resolved by construction. Space IDs are `NPID/SPACEIDHASH` where NPID is the origin nanopub's content-addressed artifact code. Two distinct nanopubs cannot share an artifact code, so space IDs are globally unique without coordination.
+2. **Conflicting space declarations:** Not a risk — resolved by construction. Space Refs are `NPID/SPACEIRIHASH` where NPID is the root nanopub's content-addressed artifact code. Two distinct nanopubs cannot share an artifact code, so space refs are globally unique without coordination.
 3. **Role property learning order:** Role-definition nanopubs must be processed before role-assignment nanopubs for precise matching. Mitigated by catch-all (Phase 2F) + post-load catch-up scan.
 4. **Bootstrap time:** For existing deployments, scanning full repo for all space references could be slow. Make restartable and run as background task.
-5. **Ordering during initial load:** Space-defining nanopubs may arrive after referencing nanopubs. Handle via catch-all matching on known space IDs + post-initial-load catch-up scan.
+5. **Ordering during initial load:** Space-defining nanopubs may arrive after referencing nanopubs. Handle via catch-all matching on known space refs + post-initial-load catch-up scan.
 6. **SpaceRegistry persistence:** If admin repo state is lost, SpaceRegistry must be reconstructable. Ensure bootstrap can re-derive all state from the full repo.
 
 ## Verification
