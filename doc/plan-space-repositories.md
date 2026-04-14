@@ -11,7 +11,7 @@
 Every space is uniquely identified by a **space ID** of the form `NPID/SPACEIDHASH`, where:
 
 - **NPID** is the artifact code (e.g. `RA...`) of the **origin nanopub** — the nanopub that founded the space. Since artifact codes are cryptographic hashes of content, they are globally unique and immutable.
-- **SPACEIDHASH** is a hash identifying the specific space within that origin nanopub (a single origin nanopub can define multiple spaces).
+- **SPACEIDHASH** is `Utils.createHash(<Space IRI>)` — computed from the Space IRI declared in the origin nanopub's assertions, following the same hashing pattern already used for `type_<HASH>` repos (`Utils.createHash(typeIri)`). A single origin nanopub can define multiple spaces by declaring multiple Space IRIs.
 
 This eliminates conflicts by construction: no two distinct origin nanopubs share an artifact code, so no two distinct spaces share a space ID. The `space_<HASH>` repository name is derived from hashing the full `NPID/SPACEIDHASH` string.
 
@@ -74,7 +74,8 @@ On startup, loads known spaces and their role properties from admin repo. During
 In the constructor (where types are extracted ~line 232), add space ID detection. A nanopub is loaded into a space repo if any of these match:
 
 **A. Space-defining (origin) nanopubs:** Nanopub type matches a KPXL space type (Alliance, Project, Consortium, Organization, Taskforce, Division, Taskunit, Group, Program, Initiative, Outlet, Campaign, Community, Event — all under `https://w3id.org/kpxl/gen/terms/`). The nanopub itself is the origin nanopub. When detected:
-  - Extract SPACEIDHASH from the assertion (the local hash identifying this space within the origin nanopub)
+  - Extract Space IRI from assertion (the subject with `rdf:type` matching the KPXL space type, or the subject of `kpxl_terms:hasAdmin` triples)
+  - Compute SPACEIDHASH = `Utils.createHash(spaceIri)` (same pattern as `type_<HASH>`)
   - Construct space ID = `<this-nanopub-NPID>/<SPACEIDHASH>`
   - Extract initial admin set from `kpxl_terms:hasAdmin` assertions in this nanopub
   - Register in SpaceRegistry with origin nanopub NPID and initial admin set
