@@ -48,7 +48,7 @@ Proposed flow:
 
 ### Phase 1: SpaceRegistry (In-Memory + Admin Repo)
 
-**New file:** `src/main/java/com/knowledgepixels/nanopubquery/SpaceRegistry.java`
+**New file:** `src/main/java/com/knowledgepixels/query/SpaceRegistry.java`
 
 Singleton maintaining:
 ```java
@@ -69,7 +69,7 @@ On startup, loads known spaces and their role properties from admin repo. During
 
 ### Phase 2: Space Detection in NanopubLoader
 
-**File:** `src/main/java/com/knowledgepixels/nanopubquery/NanopubLoader.java`
+**File:** `src/main/java/com/knowledgepixels/query/NanopubLoader.java`
 
 In the constructor (where types are extracted ~line 232), add space ID detection. A nanopub is loaded into a space repo if any of these match:
 
@@ -111,7 +111,7 @@ This follows the exact same pattern as `type_` repo loading. `TripleStore.getRep
 
 ### Phase 4: TripleStore Changes
 
-**File:** `src/main/java/com/knowledgepixels/nanopubquery/TripleStore.java`
+**File:** `src/main/java/com/knowledgepixels/query/TripleStore.java`
 
 Add `space_` to the dynamic repo prefix handling in `initNewRepo()` (~line 361):
 
@@ -125,7 +125,7 @@ Consider using lighter indexes for space repos (3 instead of 6, like meta repos)
 
 ### Phase 5: MainVerticle Routes
 
-**File:** `src/main/java/com/knowledgepixels/nanopubquery/MainVerticle.java`
+**File:** `src/main/java/com/knowledgepixels/query/MainVerticle.java`
 
 1. Add `space_` to dynamic repo filter in main listing (~line 190)
 2. Add `/spaces` endpoint listing all space repos with labels (following `/types` pattern at ~line 265)
@@ -154,7 +154,7 @@ Similar to the `last30d` hourly cleanup pattern, but event-driven:
 
 ### Phase 8: Metrics
 
-**File:** `src/main/java/com/knowledgepixels/nanopubquery/MetricsCollector.java`
+**File:** `src/main/java/com/knowledgepixels/query/MetricsCollector.java`
 
 Add `spaceRepositoriesCounter` gauge following the `typeRepositoriesCounter` pattern.
 
