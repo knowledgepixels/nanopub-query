@@ -30,7 +30,7 @@ Every space-defining nanopub (original or update) declares its root via the pred
 
 This means **every space-defining nanopub self-describes its root** — no chain walking, no ordering dependency, no publisher-scoping needed. Updates arriving out of order still produce the correct space ref immediately.
 
-**Required predicate:** a nanopub with a KPXL space type is only recognized as a space-defining nanopub if it contains a `gen:hasRootDefinition` triple for its declared Space IRI. Nanopubs missing this triple are ignored by space detection. No transition fallback — the `gen:hasRootDefinition` convention is the only mechanism.
+**Required predicate:** a nanopub of type `gen:Space` is only recognized as a space-defining nanopub if it contains a `gen:hasRootDefinition` triple for its declared Space IRI. Nanopubs missing this triple are ignored by space detection. No transition fallback — the `gen:hasRootDefinition` convention is the only mechanism.
 
 **Authority** traces back to the root nanopub: its assertions declare the initial admin set via `gen:hasAdmin`. All subsequent admin delegations chain back to this immutable root. Currently admins are declared as agent IRIs; linking these to intro nanopubs/pubkeys for cryptographic verification is a straightforward future extension.
 
@@ -41,7 +41,7 @@ This means **every space-defining nanopub self-describes its root** — no chain
 - `gen:hasAdmin` — admin declarations (subject = space ref)
 - **Dynamic role properties** — role assignment nanopubs using per-space role predicates (regularProperties: `<member> <role-prop> <space>`, inverseProperties: `<space> <role-prop> <member>`)
 - `gen:isDisplayFor` — ViewDisplay nanopubs that link views to the space
-- Space-defining nanopubs themselves (root nanopubs with KPXL space types)
+- Space-defining nanopubs themselves (nanopubs of type `gen:Space`)
 - Role-definition nanopubs (those that define roles for the space)
 
 **Not included** (obsolete): ~~hasPinnedTemplate~~, ~~hasPinnedQuery~~
@@ -95,8 +95,8 @@ On startup, loads known spaces and their role properties from admin repo. During
 
 In the constructor (where types are extracted ~line 232), add space ref detection. A nanopub is loaded into a space repo if any of these match:
 
-**A. Space-defining nanopubs:** Nanopub type matches a KPXL space type (Alliance, Project, Consortium, Organization, Taskforce, Division, Taskunit, Group, Program, Initiative, Outlet, Campaign, Community, Event — all under `https://w3id.org/kpxl/gen/terms/`). When detected:
-  - Extract Space IRI from assertion (the subject with `rdf:type` matching the space type, or the subject of `gen:hasAdmin` triples)
+**A. Space-defining nanopubs:** Nanopub is of type `gen:Space` (= `<https://w3id.org/kpxl/gen/terms/Space>`). Space-declaring nanopubs are required to carry this type directly; specific space subtypes like `gen:Alliance`, `gen:Project`, etc. may also be present but are not what detection checks for. When a `gen:Space`-typed nanopub is detected:
+  - Extract Space IRI from assertion (the subject with `rdf:type gen:Space`, or the subject of `gen:hasAdmin` triples)
   - Resolve root nanopub URI: look for `<spaceIri> gen:hasRootDefinition ?root` in the assertion. If absent, **skip this nanopub** — it is not recognized as space-defining.
   - Derive root NPID from `?root`'s trusty URI (artifact code)
   - Compute SPACEIRIHASH = `Utils.createHash(spaceIri)` (same pattern as `type_<HASH>`)
@@ -214,8 +214,8 @@ Create new query nanopub IDs that target `space_<spaceRef>` repos. Existing quer
 
 On first deployment with space repos enabled:
 
-1. Scan `meta` repo for nanopubs with KPXL space type IRIs → discover all root nanopubs
-2. For each root nanopub, derive space ref (`NPID_SPACEIRIHASH`) and register in SpaceRegistry with initial admin set
+1. Scan `meta` repo for nanopubs of type `gen:Space` → discover all root nanopubs
+2. For each root nanopub, resolve its `gen:hasRootDefinition` target, derive space ref (`NPID_SPACEIRIHASH`), and register in SpaceRegistry
 3. Scan `full` repo for role-definition nanopubs referencing discovered space refs → learn role properties
 4. For each space, scan `full` repo for nanopubs referencing that space ref (via hasAdmin, role properties, isDisplayFor, etc.)
 5. Load matching nanopubs into corresponding `space_<spaceRef>` repos
@@ -260,7 +260,7 @@ What if a nanopub references a space that isn't yet known? This can happen when 
 ## Verification
 
 1. Write unit tests for SpaceRegistry (space registration, role property learning, persistence)
-2. Write integration tests with test nanopubs containing space types, role definitions, member assignments, and view displays
+2. Write integration tests with test nanopubs typed as `gen:Space`, plus role definitions, member assignments, and view displays
 3. Deploy locally with docker-compose, load test nanopubs, verify space repos are created with correct content
 4. Query space repos via SPARQL to confirm they contain: root nanopub, admin declarations, role definitions, member assignments, view displays
 5. Test invalidation: retract a membership nanopub, verify invalidation propagates to space repo
