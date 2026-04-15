@@ -61,6 +61,7 @@ public class NanopubLoader {
     private Statement pubkeyStatement, pubkeyStatementX;
     private List<String> notes = new ArrayList<>();
     private boolean aborted = false;
+    private Set<String> detectedSpaceRefs = Collections.emptySet();
     private static final Logger log = LoggerFactory.getLogger(NanopubLoader.class);
 
 
@@ -236,7 +237,7 @@ public class NanopubLoader {
             // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
             literalFilter += " _type_" + Utils.createHash(typeIri);
         }
-        detectAndRegisterSpaces(np);
+        detectedSpaceRefs = detectAndRegisterSpaces(np);
         String label = NanopubUtils.getLabel(np);
         if (label != null) {
             metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), NPA.GRAPH));
@@ -342,6 +343,9 @@ public class NanopubLoader {
                 if (!typeIri.stringValue().matches("https?://.*")) continue;
                 runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri)));
                 //			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
+            }
+            for (String spaceRef : detectedSpaceRefs) {
+                runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "space_" + spaceRef));
             }
             //		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
             //			// Exclude locally minted IRIs:
@@ -696,13 +700,12 @@ public class NanopubLoader {
      * {@link SpaceRegistry}. Nanopubs missing the {@code gen:hasRootDefinition}
      * triple are not recognized as space-defining — there is no transition fallback.
      *
-     * <p>This method only registers space refs in the in-memory registry; loading
-     * the nanopub into the corresponding {@code space_<spaceRef>} repository is
-     * handled in a later step.
-     *
      * @param np the nanopub to inspect
+     * @return the set of space refs registered from this nanopub (possibly empty);
+     *         the caller uses this to load the nanopub into the corresponding
+     *         {@code space_<spaceRef>} repositories
      */
-    static void detectAndRegisterSpaces(Nanopub np) {
+    static Set<String> detectAndRegisterSpaces(Nanopub np) {
         boolean isSpaceTyped = false;
         for (IRI typeIri : NanopubUtils.getTypes(np)) {
             if (typeIri.equals(GEN.SPACE)) {
@@ -710,7 +713,8 @@ public class NanopubLoader {
                 break;
             }
         }
-        if (!isSpaceTyped) return;
+        if (!isSpaceTyped) return Collections.emptySet();
+        Set<String> spaceRefs = new LinkedHashSet<>();
         for (Statement st : np.getAssertion()) {
             if (!st.getPredicate().equals(GEN.HAS_ROOT_DEFINITION)) continue;
             if (!(st.getSubject() instanceof IRI spaceIri)) continue;
@@ -720,8 +724,9 @@ public class NanopubLoader {
                 log.warn("Ignoring space {}: gen:hasRootDefinition target is not a trusty URI: {}", spaceIri, rootUri);
                 continue;
             }
-            SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri);
+            spaceRefs.add(SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri));
         }
+        return spaceRefs;
     }
 
     /**

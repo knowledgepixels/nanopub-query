@@ -363,6 +363,11 @@ public class TripleStore {
                     conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NPA.GRAPH);
                     conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_HASH, vf.createLiteral(h), NPA.GRAPH);
                     conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_FILTER, vf.createLiteral("_" + repoName), NPA.GRAPH);
+                } else if (repoName.startsWith("space_")) {
+                    // The space ref is the literal suffix of the repo name; no hash lookup needed.
+                    String spaceRef = repoName.substring("space_".length());
+                    conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_ITEM, vf.createLiteral(spaceRef), NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_FILTER, vf.createLiteral("_" + repoName), NPA.GRAPH);
                 }
                 conn.commit();
             }

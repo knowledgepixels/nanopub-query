@@ -79,10 +79,11 @@ class NanopubLoaderSpaceDetectionTest {
         assertion.add(triple(SPACE_A, GEN.HAS_ROOT_DEFINITION, ROOT_NP_URI));
         Nanopub np = mockNanopub(ROOT_NP_URI, Set.of(GEN.SPACE), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
-        assertEquals(Set.of(ROOT_NP_AC + "_H(" + SPACE_A + ")"),
-                SpaceRegistry.get().getKnownSpaceRefs());
+        Set<String> expected = Set.of(ROOT_NP_AC + "_H(" + SPACE_A + ")");
+        assertEquals(expected, returned);
+        assertEquals(expected, SpaceRegistry.get().getKnownSpaceRefs());
     }
 
     @Test
@@ -93,11 +94,12 @@ class NanopubLoaderSpaceDetectionTest {
         assertion.add(triple(SPACE_A, GEN.HAS_ROOT_DEFINITION, ROOT_NP_URI));
         Nanopub np = mockNanopub(OTHER_NP_URI, Set.of(GEN.SPACE), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
         // Space ref must use the root's NPID, not the update's own NPID.
-        assertEquals(Set.of(ROOT_NP_AC + "_H(" + SPACE_A + ")"),
-                SpaceRegistry.get().getKnownSpaceRefs());
+        Set<String> expected = Set.of(ROOT_NP_AC + "_H(" + SPACE_A + ")");
+        assertEquals(expected, returned);
+        assertEquals(expected, SpaceRegistry.get().getKnownSpaceRefs());
     }
 
     @Test
@@ -107,8 +109,9 @@ class NanopubLoaderSpaceDetectionTest {
         // No gen:hasRootDefinition triple.
         Nanopub np = mockNanopub(ROOT_NP_URI, Set.of(GEN.SPACE), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
+        assertTrue(returned.isEmpty());
         assertTrue(SpaceRegistry.get().getKnownSpaceRefs().isEmpty());
     }
 
@@ -119,8 +122,9 @@ class NanopubLoaderSpaceDetectionTest {
         assertion.add(triple(SPACE_A, GEN.HAS_ROOT_DEFINITION, ROOT_NP_URI));
         Nanopub np = mockNanopub(ROOT_NP_URI, Set.of(NOT_A_SPACE_TYPE), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
+        assertTrue(returned.isEmpty());
         assertTrue(SpaceRegistry.get().getKnownSpaceRefs().isEmpty());
     }
 
@@ -133,12 +137,13 @@ class NanopubLoaderSpaceDetectionTest {
         assertion.add(triple(SPACE_B, GEN.HAS_ROOT_DEFINITION, ROOT_NP_URI));
         Nanopub np = mockNanopub(ROOT_NP_URI, Set.of(GEN.SPACE), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
         Set<String> expected = Set.of(
                 ROOT_NP_AC + "_H(" + SPACE_A + ")",
                 ROOT_NP_AC + "_H(" + SPACE_B + ")"
         );
+        assertEquals(expected, returned);
         assertEquals(expected, SpaceRegistry.get().getKnownSpaceRefs());
     }
 
@@ -150,8 +155,9 @@ class NanopubLoaderSpaceDetectionTest {
         assertion.add(triple(SPACE_A, GEN.HAS_ROOT_DEFINITION, nonTrustyRoot));
         Nanopub np = mockNanopub(ROOT_NP_URI, Set.of(GEN.SPACE), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
+        assertTrue(returned.isEmpty());
         assertTrue(SpaceRegistry.get().getKnownSpaceRefs().isEmpty());
     }
 
@@ -163,10 +169,11 @@ class NanopubLoaderSpaceDetectionTest {
         // Nanopub has gen:Space alongside another type — should still be detected.
         Nanopub np = mockNanopub(ROOT_NP_URI, Set.of(NOT_A_SPACE_TYPE, GEN.SPACE), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
-        assertEquals(Set.of(ROOT_NP_AC + "_H(" + SPACE_A + ")"),
-                SpaceRegistry.get().getKnownSpaceRefs());
+        Set<String> expected = Set.of(ROOT_NP_AC + "_H(" + SPACE_A + ")");
+        assertEquals(expected, returned);
+        assertEquals(expected, SpaceRegistry.get().getKnownSpaceRefs());
     }
 
     @Test
@@ -175,8 +182,9 @@ class NanopubLoaderSpaceDetectionTest {
         assertion.add(triple(SPACE_A, GEN.HAS_ROOT_DEFINITION, ROOT_NP_URI));
         Nanopub np = mockNanopub(ROOT_NP_URI, Set.of(), assertion);
 
-        NanopubLoader.detectAndRegisterSpaces(np);
+        Set<String> returned = NanopubLoader.detectAndRegisterSpaces(np);
 
+        assertTrue(returned.isEmpty());
         assertTrue(SpaceRegistry.get().getKnownSpaceRefs().isEmpty());
     }
 
