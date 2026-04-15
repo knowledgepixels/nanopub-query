@@ -67,18 +67,24 @@ Proposed flow:
 
 **New file:** `src/main/java/com/knowledgepixels/query/SpaceRegistry.java`
 
-Singleton maintaining:
+Singleton. Initial state — minimal, just what's needed to recognize space refs during detection:
 ```java
-Map<String, Set<IRI>> spaceRefToInitialAdmins    // space ref → initial admin IRIs (from root nanopub)
-Map<String, Set<IRI>> spaceRefToRoleProperties   // space ref → role predicate IRIs (regular + inverse)
 Map<IRI, Set<String>> spaceIriToSpaceRefs        // reverse index: Space IRI → space refs using that IRI
 Set<String> knownSpaceRefs                       // all known space refs (for assertion scanning)
+```
+
+Added in later steps when they have a consumer:
+```java
+Map<String, Set<IRI>> spaceRefToRoleProperties   // added when Phase 2C/D is implemented (role learning)
+// Initial admins are NOT cached in SpaceRegistry — they live in the space repo itself
+// (in the root nanopub's gen:hasAdmin triples) and can be queried from there when
+// authority checking (Phase 2B) is implemented.
 ```
 
 The root nanopub NPID is derivable from the space ref (substring before the first `_`), so no dedicated map is needed.
 
 Persisted in admin repo (details pinned down at the persistence step; sketch only here):
-- A triple set recording each known space ref with its initial admin set and learned role properties
+- A triple set recording each known space ref with its learned role properties
 - No `Utils.createHash` entry for the space ref itself — the ref is not hashed
 
 On startup, loads known spaces and their role properties from admin repo. During loading, discovers new spaces from space-defining nanopubs and learns role properties from role-definition nanopubs.
@@ -95,7 +101,7 @@ In the constructor (where types are extracted ~line 232), add space ref detectio
   - Derive root NPID from `?root`'s trusty URI (artifact code)
   - Compute SPACEIRIHASH = `Utils.createHash(spaceIri)` (same pattern as `type_<HASH>`)
   - Construct space ref = `<rootNanopubId> + "_" + <SPACEIRIHASH>`
-  - **Only when this nanopub is itself the root** (i.e., `gen:hasRootDefinition` points at self): extract initial admin set from `gen:hasAdmin` assertions and register in SpaceRegistry. Updates (where the root points elsewhere) do *not* overwrite the initial admin set — membership changes flow through role-assignment/delegation nanopubs detected in Phase 2B–D.
+  - Register the space ref in SpaceRegistry (adds to `knownSpaceRefs` and the `spaceIriToSpaceRefs` reverse index). Initial admins are not cached — they're in the root nanopub's `gen:hasAdmin` assertions inside the space repo itself, queryable when authority checking is implemented.
   - Load into `space_<spaceRef>` repo
 
 **B. Admin declarations:** Assertion contains `gen:hasAdmin` predicate where subject matches a known space ref in SpaceRegistry. Only trusted if publisher is in the admin set traceable from the root nanopub.
