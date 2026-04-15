@@ -8,22 +8,39 @@
 
 ## Space Identity Model
 
+Prefix used in this document: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`.
+
 Every space is uniquely identified by a **space ref** of the form `NPID_SPACEIRIHASH`, where:
 
-- **NPID** is the artifact code (e.g. `RA...`) of the **root nanopub** — the nanopub that founded the space. Since artifact codes are cryptographic hashes of content, they are globally unique and immutable.
-- **SPACEIRIHASH** is `Utils.createHash(<Space IRI>)` — computed from the Space IRI declared in the root nanopub's assertions, following the same hashing pattern already used for `type_<HASH>` repos (`Utils.createHash(typeIri)`). A single root nanopub can define multiple spaces by declaring multiple Space IRIs.
+- **NPID** is the artifact code (e.g. `RA...`) of the **root nanopub** — the foundational nanopub for the space. Since artifact codes are cryptographic hashes of content, they are globally unique and immutable.
+- **SPACEIRIHASH** is `Utils.createHash(<Space IRI>)` — computed from the Space IRI, following the same hashing pattern already used for `type_<HASH>` repos (`Utils.createHash(typeIri)`). A single root nanopub can define multiple spaces by declaring multiple Space IRIs.
 
-This eliminates conflicts by construction: no two distinct root nanopubs share an artifact code, so no two distinct spaces share a space ref. The space ref is used directly as the repo name suffix: `space_<spaceRef>` = `space_<NPID>_<SPACEIRIHASH>`. No additional hashing — the space ref is short enough (~108 chars) to serve as the repo name directly, and human-decodable (you can recover the NPID by splitting on `_` after the `space_` prefix).
+Conflicts are eliminated by construction: no two distinct root nanopubs share an artifact code, so no two distinct spaces share a space ref. The space ref is used directly as the repo name suffix: `space_<spaceRef>` = `space_<NPID>_<SPACEIRIHASH>`. No additional hashing — the space ref is short enough (~108 chars) to serve as the repo name directly, and human-decodable (you can recover the NPID by splitting on `_` after the `space_` prefix).
 
-**Authority** traces back to the root nanopub: its assertions declare the initial admin set via `kpxl_terms:hasAdmin`. All subsequent admin delegations chain back to this immutable root. Currently admins are declared as agent IRIs; linking these to intro nanopubs/pubkeys for cryptographic verification is a straightforward future extension.
+### Root Nanopub Resolution
+
+Every space-defining nanopub (original or update) declares its root via the predicate `gen:hasRootDefinition` in the assertion graph:
+
+```turtle
+<spaceIRI> gen:hasRootDefinition <rootNanopubURI> .
+```
+
+- For the root nanopub itself, this is self-referential: `<spaceIRI> gen:hasRootDefinition <thisNanopubURI>` (resolved at trusty-URI minting time).
+- For any update (whether linked via `np:supersedes` or a "just overriding" republish), the same triple points back at the original root's URI.
+
+This means **every space-defining nanopub self-describes its root** — no chain walking, no ordering dependency, no publisher-scoping needed. Updates arriving out of order still produce the correct space ref immediately.
+
+**Required predicate:** a nanopub with a KPXL space type is only recognized as a space-defining nanopub if it contains a `gen:hasRootDefinition` triple for its declared Space IRI. Nanopubs missing this triple are ignored by space detection. No transition fallback — the `gen:hasRootDefinition` convention is the only mechanism.
+
+**Authority** traces back to the root nanopub: its assertions declare the initial admin set via `gen:hasAdmin`. All subsequent admin delegations chain back to this immutable root. Currently admins are declared as agent IRIs; linking these to intro nanopubs/pubkeys for cryptographic verification is a straightforward future extension.
 
 ## Key Design Decision: What Goes Into a Space Repo?
 
 **Space-referencing nanopubs** — nanopubs whose assertions reference a known space ref (`NPID_SPACEIRIHASH`) via relevant predicates. Specifically:
 
-- `kpxl_terms:hasAdmin` — admin declarations (subject = space ref)
+- `gen:hasAdmin` — admin declarations (subject = space ref)
 - **Dynamic role properties** — role assignment nanopubs using per-space role predicates (regularProperties: `<member> <role-prop> <space>`, inverseProperties: `<space> <role-prop> <member>`)
-- `kpxl_terms:isDisplayFor` — ViewDisplay nanopubs that link views to the space
+- `gen:isDisplayFor` — ViewDisplay nanopubs that link views to the space
 - Space-defining nanopubs themselves (root nanopubs with KPXL space types)
 - Role-definition nanopubs (those that define roles for the space)
 
@@ -72,15 +89,16 @@ On startup, loads known spaces and their role properties from admin repo. During
 
 In the constructor (where types are extracted ~line 232), add space ref detection. A nanopub is loaded into a space repo if any of these match:
 
-**A. Space-defining (root) nanopubs:** Nanopub type matches a KPXL space type (Alliance, Project, Consortium, Organization, Taskforce, Division, Taskunit, Group, Program, Initiative, Outlet, Campaign, Community, Event — all under `https://w3id.org/kpxl/gen/terms/`). The nanopub itself is the root nanopub. When detected:
-  - Extract Space IRI from assertion (the subject with `rdf:type` matching the KPXL space type, or the subject of `kpxl_terms:hasAdmin` triples)
+**A. Space-defining nanopubs:** Nanopub type matches a KPXL space type (Alliance, Project, Consortium, Organization, Taskforce, Division, Taskunit, Group, Program, Initiative, Outlet, Campaign, Community, Event — all under `https://w3id.org/kpxl/gen/terms/`). When detected:
+  - Extract Space IRI from assertion (the subject with `rdf:type` matching the space type, or the subject of `gen:hasAdmin` triples)
+  - Resolve root nanopub URI: look for `<spaceIri> gen:hasRootDefinition ?root` in the assertion. If absent, **skip this nanopub** — it is not recognized as space-defining.
+  - Derive root NPID from `?root`'s trusty URI (artifact code)
   - Compute SPACEIRIHASH = `Utils.createHash(spaceIri)` (same pattern as `type_<HASH>`)
-  - Construct space ref = `<this-nanopub-NPID> + "_" + <SPACEIRIHASH>`
-  - Extract initial admin set from `kpxl_terms:hasAdmin` assertions in this nanopub
-  - Register in SpaceRegistry with root nanopub NPID and initial admin set
+  - Construct space ref = `<rootNanopubId> + "_" + <SPACEIRIHASH>`
+  - **Only when this nanopub is itself the root** (i.e., `gen:hasRootDefinition` points at self): extract initial admin set from `gen:hasAdmin` assertions and register in SpaceRegistry. Updates (where the root points elsewhere) do *not* overwrite the initial admin set — membership changes flow through role-assignment/delegation nanopubs detected in Phase 2B–D.
   - Load into `space_<spaceRef>` repo
 
-**B. Admin declarations:** Assertion contains `kpxl_terms:hasAdmin` predicate where subject matches a known space ref in SpaceRegistry. Only trusted if publisher is in the admin set traceable from the root nanopub.
+**B. Admin declarations:** Assertion contains `gen:hasAdmin` predicate where subject matches a known space ref in SpaceRegistry. Only trusted if publisher is in the admin set traceable from the root nanopub.
 
 **C. Role-definition nanopubs:** Assertion defines roles for a known space (detected by referencing a known space ref). When detected:
   - Extract regularProperties and inverseProperties from the role definition
@@ -90,7 +108,7 @@ In the constructor (where types are extracted ~line 232), add space ref detectio
 
 **D. Role-assignment nanopubs (dynamic role properties):** Assertion uses a predicate that's registered in SpaceRegistry as a role property for a known space, AND the triple's subject or object matches the space ref. This requires SpaceRegistry to maintain the learned role properties.
 
-**E. ViewDisplay nanopubs:** Assertion contains `kpxl_terms:isDisplayFor` predicate where object matches a known space ref.
+**E. ViewDisplay nanopubs:** Assertion contains `gen:isDisplayFor` predicate where object matches a known space ref.
 
 **F. Catch-all:** Any nanopub whose assertion references a known space ref as subject or object (ensures we don't miss edge cases while the role property set is being learned).
 
@@ -156,7 +174,7 @@ Similar to the `last30d` hourly cleanup pattern, but event-driven:
    - A periodic maintenance task (e.g., hourly) removes all data from dissolved space repos
    - Pattern: similar to `loadNanopubToLatest()` cleanup at lines 397-414
 
-3. **Space root supersession:** When a space root nanopub is superseded (updated), the new version defines the current state. The invalidation of the old root propagates normally; the new root loads into the same space repo (same space ref = same hash).
+3. **Space root supersession:** When a root nanopub is superseded (updated), the new version declares `<spaceIRI> gen:hasRootDefinition <originalRoot>` in its assertion, so it resolves to the same space ref and loads into the same space repo. The invalidation of the old root propagates normally.
 
 4. **Role property changes:** When a role-definition nanopub is superseded, SpaceRegistry updates its role property set. New role properties are learned; old ones remain (additive, no removal needed since the catch-all in Phase 2F covers edge cases).
 
@@ -167,6 +185,12 @@ Similar to the `last30d` hourly cleanup pattern, but event-driven:
 Add `spaceRepositoriesCounter` gauge following the `typeRepositoriesCounter` pattern.
 
 ### Phase 9: Nanodash Changes (Downstream)
+
+**Space-defining nanopub template:** Nanodash must include `<spaceIRI> gen:hasRootDefinition <rootNanopubURI>` in the assertion when publishing space-defining nanopubs:
+- For a new space: the root URI is self-referential (resolved via trusty-URI placeholder minting)
+- For an update: the root URI points back at the original root nanopub's URI
+
+This predicate is required — a space nanopub without it will not be picked up by the space detection in nanopub-query. Any pre-existing space nanopubs that lack the predicate will need to be republished with the predicate included before they are recognized.
 
 **File:** `/home/tk/Code/nanodash/src/main/java/com/knowledgepixels/nanodash/domain/Space.java`
 
