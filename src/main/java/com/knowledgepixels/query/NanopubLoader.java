@@ -31,6 +31,8 @@ import org.nanopub.vocabulary.PAV;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.knowledgepixels.query.vocabulary.GEN;
+
 import java.security.GeneralSecurityException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -234,6 +236,7 @@ public class NanopubLoader {
             // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
             literalFilter += " _type_" + Utils.createHash(typeIri);
         }
+        detectAndRegisterSpaces(np);
         String label = NanopubUtils.getLabel(np);
         if (label != null) {
             metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), NPA.GRAPH));
@@ -684,6 +687,41 @@ public class NanopubLoader {
             if (st.getPredicate().equals(NPX.DECLARED_BY)) return true;
         }
         return false;
+    }
+
+    /**
+     * Detects whether the given nanopub is a Space-defining nanopub (typed
+     * {@code gen:Space}) and, if so, registers each space it declares (one per
+     * {@code <spaceIri> gen:hasRootDefinition <rootUri>} triple) in
+     * {@link SpaceRegistry}. Nanopubs missing the {@code gen:hasRootDefinition}
+     * triple are not recognized as space-defining — there is no transition fallback.
+     *
+     * <p>This method only registers space refs in the in-memory registry; loading
+     * the nanopub into the corresponding {@code space_<spaceRef>} repository is
+     * handled in a later step.
+     *
+     * @param np the nanopub to inspect
+     */
+    static void detectAndRegisterSpaces(Nanopub np) {
+        boolean isSpaceTyped = false;
+        for (IRI typeIri : NanopubUtils.getTypes(np)) {
+            if (typeIri.equals(GEN.SPACE)) {
+                isSpaceTyped = true;
+                break;
+            }
+        }
+        if (!isSpaceTyped) return;
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(GEN.HAS_ROOT_DEFINITION)) continue;
+            if (!(st.getSubject() instanceof IRI spaceIri)) continue;
+            if (!(st.getObject() instanceof IRI rootUri)) continue;
+            String rootNanopubId = TrustyUriUtils.getArtifactCode(rootUri.stringValue());
+            if (rootNanopubId == null || rootNanopubId.isEmpty()) {
+                log.warn("Ignoring space {}: gen:hasRootDefinition target is not a trusty URI: {}", spaceIri, rootUri);
+                continue;
+            }
+            SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri);
+        }
     }
 
     /**
