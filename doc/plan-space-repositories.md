@@ -34,12 +34,32 @@ This means **every space-defining nanopub self-describes its root** — no chain
 
 **Authority** traces back to the root nanopub: its assertions declare the initial admin set via `gen:hasAdmin`. All subsequent admin delegations chain back to this immutable root. Currently admins are declared as agent IRIs; linking these to intro nanopubs/pubkeys for cryptographic verification is a straightforward future extension.
 
+### Role Types
+
+Roles fall into one of four **role types** that form a hierarchy of assignment authority:
+
+| Type | Assignment rule |
+|------|-----------------|
+| `gen:Admin` | Fixed to the `gen:hasAdmin` predicate. No user-defined admin roles in the MVP (can be added later). |
+| `gen:Maintainer` | Assignable by existing admins or maintainers. The `gen:hasMaintainer` predicate is a built-in maintainer role; user-defined roles can also be of this type. |
+| `gen:Member` | Assignable by anyone at maintainer level or higher. |
+| `gen:Observer` | Self-assignable. Default for role definitions that don't declare a type. |
+
+User-defined role predicates declare their type via plain `rdf:type`:
+
+```turtle
+<speakerRolePredicate> rdf:type gen:Member .
+```
+
+For this iteration, Nanopub Query's job is to *index* role declarations and assignments into the space repo so Nanodash can query them. The privilege-level enforcement (`core`/`structure`/`content`/`comment`) is Nanodash's concern and not part of this plan.
+
 ## Key Design Decision: What Goes Into a Space Repo?
 
 **Space-referencing nanopubs** — nanopubs whose assertions reference a known space ref (`NPID_SPACEIRIHASH`) via relevant predicates. Specifically:
 
 - `gen:hasAdmin` — admin declarations (subject = space ref)
-- **Dynamic role properties** — role assignment nanopubs using per-space role predicates (regularProperties: `<member> <role-prop> <space>`, inverseProperties: `<space> <role-prop> <member>`)
+- `gen:hasMaintainer` — built-in maintainer declarations (subject = space ref)
+- **Dynamic role properties** — role assignment nanopubs using per-space role predicates (regularProperties: `<member> <role-prop> <space>`, inverseProperties: `<space> <role-prop> <member>`); each such predicate is declared `rdf:type` of one of `gen:Maintainer`/`gen:Member`/`gen:Observer` in its role-definition nanopub
 - `gen:isDisplayFor` — ViewDisplay nanopubs that link views to the space
 - Space-defining nanopubs themselves (nanopubs of type `gen:Space`)
 - Role-definition nanopubs (those that define roles for the space)
@@ -104,15 +124,21 @@ In the constructor (where types are extracted ~line 232), add space ref detectio
   - Register the space ref in SpaceRegistry (adds to `knownSpaceRefs` and the `spaceIriToSpaceRefs` reverse index). Initial admins are not cached — they're in the root nanopub's `gen:hasAdmin` assertions inside the space repo itself, queryable when authority checking is implemented.
   - Load into `space_<spaceRef>` repo
 
-**B. Admin declarations:** Assertion contains `gen:hasAdmin` predicate where subject matches a known space ref in SpaceRegistry. Only trusted if publisher is in the admin set traceable from the root nanopub.
+**B. Admin / maintainer declarations:** Assertion contains `gen:hasAdmin` or `gen:hasMaintainer` predicate where subject matches a known space ref in SpaceRegistry. For the MVP, `gen:hasAdmin` is the *only* admin mechanism (no user-defined admin roles). `gen:hasMaintainer` is a built-in shortcut for the maintainer role type. Authority validation: trusted if publisher is in the admin chain traceable from the root nanopub (maintainer declarations can be published by admins or existing maintainers).
 
-**C. Role-definition nanopubs:** Assertion defines roles for a known space (detected by referencing a known space ref). When detected:
+**C. Role-definition nanopubs:** Assertion defines a user-defined role for a known space. When detected:
+  - Extract the role predicate IRI and its `rdf:type` — one of `gen:Maintainer` / `gen:Member` / `gen:Observer`. If no type declared, default to `gen:Observer`. `gen:Admin` is not a valid type for user-defined roles in the MVP (skip with a warning if encountered).
   - Extract regularProperties and inverseProperties from the role definition
-  - Register them in SpaceRegistry's `spaceRefToRoleProperties` map
+  - Register them in SpaceRegistry's `spaceRefToRoleProperties` map (keyed by space ref, with role type metadata attached)
   - Persist to admin repo
   - Load into `space_<spaceRef>` repo
 
-**D. Role-assignment nanopubs (dynamic role properties):** Assertion uses a predicate that's registered in SpaceRegistry as a role property for a known space, AND the triple's subject or object matches the space ref. This requires SpaceRegistry to maintain the learned role properties.
+**D. Role-assignment nanopubs (dynamic role properties):** Assertion uses a predicate that's registered in SpaceRegistry as a role property for a known space, AND the triple's subject or object matches the space ref. Validity depends on the role type:
+  - `gen:Observer` assignments: self-assignment allowed (publisher = the assigned subject)
+  - `gen:Member` assignments: trusted only if publisher is at maintainer level or higher
+  - `gen:Maintainer` assignments: trusted only if publisher is at admin or maintainer level
+
+  This requires SpaceRegistry to maintain the learned role properties along with their types.
 
 **E. ViewDisplay nanopubs:** Assertion contains `gen:isDisplayFor` predicate where object matches a known space ref.
 
