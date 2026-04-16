@@ -39,7 +39,7 @@ Headers: `Cache-Control: public, immutable, max-age=31536000`. `404` if the hash
 
 Notes:
 - `trustStateCounter` arrives as BSON extended-JSON (`{"$numberLong": "..."}`); the parser needs to unwrap it.
-- `status` is not always `"loaded"` — `"toLoad"` and other states appear. The loader converts the string value into an IRI in the `npa:` namespace (e.g. `npa:loaded`, `npa:toLoad`) and stores it as an IRI on the account state, not as a literal. The plan doesn't filter by status at the loader; queries decide which IRIs count as "approved".
+- `status` ranges over the registry's `EntryStatus` enum. For the account-level data we mirror, observed values include `loaded`, `toLoad`, `seen`, `visited`, `expanded`, `skipped`, `processed`, `aggregated`, `approved`, `contested`, `capped`. The loader converts each value into an IRI in the `npa:` namespace (`npa:loaded`, `npa:toLoad`, `npa:skipped`, …) and stores it as an IRI on the account state, not as a literal. No enumeration is hardcoded — if the registry adds a new status, the loader mints the corresponding IRI without code changes. **Important for queries:** these statuses are not all equivalent. `loaded` and `toLoad` mean "trust-approved" (the latter just hasn't been downloaded yet); `skipped` means "explicitly rejected by trust calculation"; the rest are intermediate or transient. Authority-validation queries should match a specific approved set, not "anything that's not loaded".
 - The synthetic `$` pubkey ("all types" sentinel) is already excluded server-side.
 - `createdAt` uses Java `ZonedDateTime.toString()` format with the `[Etc/UTC]` zone bracket — needs careful conversion to `xsd:dateTime`.
 
@@ -296,6 +296,7 @@ Initial deployment (no pointer): `loadUpdates` discovers the registry's hash, fe
 4. **Pointer-update race:** `SERIALIZABLE` isolation in the `trust` repo, plus the in-memory registry only updating after commit, prevents inconsistent views across concurrent reads.
 5. **`createdAt` zone-bracket parsing:** Java's `ZonedDateTime.parse` accepts the bracket form natively, but `xsd:dateTime` doesn't. Strip-then-format. Test explicitly.
 6. **`status` value drift:** Don't filter at load time; surface all values as `npa:<status>` IRIs. If the registry adds new statuses later, queries can adapt without a loader change (the loader just mints whatever IRI the string maps to — no enumeration is hardcoded).
+7. **Status-semantics confusion:** The registry's status set is wider than just `loaded`/`toLoad`. `skipped` in particular means "explicitly rejected by trust calculation" — a query that treats it as approved silently lets rejected accounts through. Authority queries should always match a positive list (e.g. `?status IN (npa:loaded, npa:toLoad)`), never "not skipped".
 
 ## Verification
 
