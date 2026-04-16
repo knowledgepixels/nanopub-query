@@ -45,10 +45,16 @@ Notes:
 
 ## Identity Model
 
+Prefixes used in this document:
+
+- `npa:` = `http://purl.org/nanopub/admin/`
+- `npat:` = `http://purl.org/nanopub/admin/truststate/`
+- `npaa:` = `http://purl.org/nanopub/admin/accountstate/`
+
 A single `trust` repo holds every mirrored trust state. Each state occupies its own named graph, keyed by the registry's `trustStateHash`:
 
-- **Trust state IRI:** `http://purl.org/nanopub/admin/truststate/<trustStateHash>` — also used as the named-graph URI for that state's account-state triples.
-- **Account state IRI:** `http://purl.org/nanopub/admin/accountstate/<accountStateHash>` where `accountStateHash = SHA-256(trustStateHash + "|" + pubkey + "|" + agent)`. Stable within a snapshot; different across snapshots (since the trust hash is part of the input). Same `(pubkey, agent)` pair in two consecutive snapshots produces two different account-state IRIs — which is the right semantics: each snapshot is a self-contained immutable record.
+- **Trust state IRI:** `npat:<trustStateHash>` — also used as the named-graph URI for that state's account-state triples.
+- **Account state IRI:** `npaa:<accountStateHash>` where `accountStateHash = SHA-256(trustStateHash + "|" + pubkey + "|" + agent)`. Stable within a snapshot; different across snapshots (since the trust hash is part of the input). Same `(pubkey, agent)` pair in two consecutive snapshots produces two different account-state IRIs — which is the right semantics: each snapshot is a self-contained immutable record.
 - **Cross-state metadata** (one triple per trust state, plus the current pointer) lives in the existing `npa:graph` admin graph alongside other admin triples.
 
 ## Triple Schema
@@ -56,8 +62,8 @@ A single `trust` repo holds every mirrored trust state. Each state occupies its 
 ### Per-state account triples (in the trust-state's named graph)
 
 ```turtle
-GRAPH <http://purl.org/nanopub/admin/truststate/abc...> {
-    <http://purl.org/nanopub/admin/accountstate/XYZ...>
+GRAPH npat:abc... {
+    npaa:XYZ...
         a npa:AccountState ;
         npa:agent <agentIRI> ;
         npa:pubkey "<pubkeyHex>" ;
@@ -74,20 +80,19 @@ GRAPH <http://purl.org/nanopub/admin/truststate/abc...> {
 
 ```turtle
 GRAPH npa:graph {
-    <http://purl.org/nanopub/admin/truststate/abc...>
+    npat:abc...
         a npa:TrustState ;
         npa:hasTrustStateHash "abc..." ;
         npa:hasTrustStateCounter "18"^^xsd:long ;
         npa:hasCreatedAt "<iso8601>"^^xsd:dateTime .
 
-    <http://purl.org/nanopub/admin/truststate/def...>
+    npat:def...
         a npa:TrustState ;
         npa:hasTrustStateHash "def..." ;
         npa:hasTrustStateCounter "17"^^xsd:long ;
         npa:hasCreatedAt "<iso8601>"^^xsd:dateTime .
 
-    npa:thisRepo npa:hasCurrentTrustState
-        <http://purl.org/nanopub/admin/truststate/abc...> .
+    npa:thisRepo npa:hasCurrentTrustState npat:abc... .
 }
 ```
 
@@ -122,7 +127,7 @@ The two `GRAPH` clauses are joined by `?g` in a single query — no sequential r
 Skip the pointer; address the graph directly:
 
 ```sparql
-GRAPH <http://purl.org/nanopub/admin/truststate/abc...> {
+GRAPH npat:abc... {
   ?s npa:agent <agent> ; npa:pubkey "pk" ; npa:trustStatus ?status .
 }
 ```
@@ -225,15 +230,15 @@ Auto-init of the `trust` repo on first access works through the existing `initNe
 **In `TrustStateLoader`**, after parsing a snapshot, do the full materialization + swap in a single serializable transaction on the `trust` repo:
 
 ```java
-IRI trustStateIri = vf.createIRI("http://purl.org/nanopub/admin/truststate/" + hash);
+IRI trustStateIri = vf.createIRI(NPAT.NAMESPACE + hash);  // NPAT.NAMESPACE = "http://purl.org/nanopub/admin/truststate/"
 
 try (RepositoryConnection conn = TripleStore.get().getRepoConnection("trust")) {
     conn.begin(IsolationLevels.SERIALIZABLE);
 
     // 1. Populate the state's named graph with account-state triples
     for (AccountEntry a : snapshot.accounts()) {
-        IRI accountStateIri = vf.createIRI(
-            "http://purl.org/nanopub/admin/accountstate/" + accountStateHash(hash, a));
+        IRI accountStateIri = vf.createIRI(NPAA.NAMESPACE + accountStateHash(hash, a));
+            // NPAA.NAMESPACE = "http://purl.org/nanopub/admin/accountstate/"
         conn.add(accountStateIri, RDF.TYPE, NPA.ACCOUNT_STATE, trustStateIri);
         conn.add(accountStateIri, NPA.AGENT, vf.createIRI(a.agent()), trustStateIri);
         conn.add(accountStateIri, NPA.PUBKEY, vf.createLiteral(a.pubkey()), trustStateIri);
@@ -283,7 +288,7 @@ Retention = 1 is valid (keep only current). Retention = 0 would mean "no history
 In `MainVerticle` startup, after the existing nanopub-loader init:
 
 1. Read current pointer from the `trust` repo: `SELECT ?s { GRAPH npa:graph { npa:thisRepo npa:hasCurrentTrustState ?s } }`
-2. If a pointer exists → derive the hash from the IRI (strip the `http://purl.org/nanopub/admin/truststate/` prefix), seed `TrustStateRegistry` with that hash
+2. If a pointer exists → derive the hash from the IRI (strip the `npat:` prefix expansion), seed `TrustStateRegistry` with that hash
 3. The existing `loadUpdates` poll will discover any newer registry hash on its next cycle and fire a materialization
 
 Initial deployment (no pointer): `loadUpdates` discovers the registry's hash, fetches, materializes, and creates the first pointer.
@@ -302,7 +307,7 @@ Initial deployment (no pointer): `loadUpdates` discovers the registry's hash, fe
 
 1. Unit tests for `TrustStateRegistry` (Phase 1)
 2. Unit tests for envelope parsing (Phase 3): real fixture from `localhost:9292`, verify URL-hash vs body-hash equality check, BSON-extended-JSON counter unwrap, `[Etc/UTC]`-bracket timestamp conversion
-3. Local end-to-end (after Phase 4): point at `http://localhost:9292/`, watch logs for "Materialized trust state <hash>" within ~2 s of startup, inspect RDF4J workbench `trust` repo — named graph `<http://purl.org/nanopub/admin/truststate/<hash>>` should be populated, and `npa:graph` should contain the current-pointer triple
+3. Local end-to-end (after Phase 4): point at `http://localhost:9292/`, watch logs for "Materialized trust state <hash>" within ~2 s of startup, inspect RDF4J workbench `trust` repo — named graph `npat:<hash>` should be populated, and `npa:graph` should contain the current-pointer triple
 4. Trigger a registry-side rollover (or restart with new data), verify nanopub-query picks up the new hash on the next 2 s poll, adds the new graph, swaps the pointer, prunes any state beyond retention
 5. Kill the registry mid-operation: `loadUpdates` already handles this (exceptions in metadata fetch are logged and retried next cycle) — trust state loading inherits the same resilience
 
