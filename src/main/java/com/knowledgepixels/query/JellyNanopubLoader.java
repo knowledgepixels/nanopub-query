@@ -39,7 +39,8 @@ public class JellyNanopubLoader {
      * Registry metadata returned by a HEAD request.
      */
     record RegistryMetadata(long loadCounter, Long setupId, String coverageTypes,
-                            String coverageAgents, String testInstance, String nanopubCount) {}
+                            String coverageAgents, String testInstance, String nanopubCount,
+                            String trustStateHash) {}
 
     /**
      * The interval in milliseconds at which the updates loader should poll for new nanopubs.
@@ -72,6 +73,7 @@ public class JellyNanopubLoader {
     public static void loadInitial(long afterCounter) {
         RegistryMetadata metadata = fetchRegistryMetadata();
         updateForwardingMetadata(metadata);
+        TrustStateLoader.maybeUpdate(metadata.trustStateHash());
         long targetCounter = metadata.loadCounter();
         log.info("Fetched Registry load counter: {}", targetCounter);
         // Store setupId on initial load
@@ -108,6 +110,7 @@ public class JellyNanopubLoader {
             lastCommittedCounter = status.loadCounter;
             RegistryMetadata metadata = fetchRegistryMetadata();
             updateForwardingMetadata(metadata);
+            TrustStateLoader.maybeUpdate(metadata.trustStateHash());
             long targetCounter = metadata.loadCounter();
             Long currentSetupId = metadata.setupId();
 
@@ -380,8 +383,11 @@ public class JellyNanopubLoader {
             String coverageAgents = getHeaderValue(response, "Nanopub-Registry-Coverage-Agents");
             String testInstance = getHeaderValue(response, "Nanopub-Registry-Test-Instance");
             String nanopubCount = getHeaderValue(response, "Nanopub-Registry-Nanopub-Count");
+            // Optional — older registries (without trust calculation) won't set this header.
+            String trustStateHash = getHeaderValue(response, "Nanopub-Registry-Trust-State-Hash");
 
-            return new RegistryMetadata(loadCounter, setupId, coverageTypes, coverageAgents, testInstance, nanopubCount);
+            return new RegistryMetadata(loadCounter, setupId, coverageTypes, coverageAgents,
+                    testInstance, nanopubCount, trustStateHash);
         }
     }
 
