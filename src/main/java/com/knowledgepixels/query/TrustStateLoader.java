@@ -76,6 +76,53 @@ public class TrustStateLoader {
     }  // no instances
 
     /**
+     * Seeds {@link TrustStateRegistry} from the current-state pointer persisted
+     * in the {@code trust} repo. Intended to run once on startup, before the
+     * periodic poll begins — so if the pointer already matches the registry's
+     * advertised hash, the first poll is a no-op rather than a redundant
+     * re-materialization.
+     *
+     * <p>Safe to call on a fresh deployment (the trust repo may not even exist
+     * yet — auto-created, found empty, seeded nothing). Any failure is logged
+     * at INFO; bootstrap falls through and the first poll materializes from
+     * scratch.
+     */
+    public static void bootstrap() {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TRUST_REPO)) {
+            String query = String.format("""
+                    SELECT ?s WHERE {
+                      GRAPH <%s> {
+                        <%s> <%s> ?s .
+                      }
+                    } LIMIT 1
+                    """,
+                    NPA.GRAPH, NPA.THIS_REPO, NPA_HAS_CURRENT_TRUST_STATE);
+            try (TupleQueryResult result =
+                         conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+                if (!result.hasNext()) {
+                    log.info("Trust state bootstrap: no current-state pointer yet");
+                    return;
+                }
+                IRI ptr = (IRI) result.next().getValue("s");
+                String iri = ptr.stringValue();
+                if (!iri.startsWith(NPAT.NAMESPACE)) {
+                    log.warn("Trust state bootstrap: unexpected pointer IRI {}", iri);
+                    return;
+                }
+                String hash = iri.substring(NPAT.NAMESPACE.length());
+                if (hash.isEmpty()) {
+                    log.warn("Trust state bootstrap: pointer IRI has empty hash suffix");
+                    return;
+                }
+                TrustStateRegistry.get().setCurrentHash(hash);
+                log.info("Trust state bootstrap: seeded current hash {}", hash);
+            }
+        } catch (Exception ex) {
+            log.info("Trust state bootstrap: failed to read pointer: {}", ex.toString());
+        }
+    }
+
+    /**
      * Called when registry-poll metadata is fetched. Compares the hash to the
      * locally-tracked one and, if different, fetches the snapshot and
      * materializes it into the {@code trust} repo.

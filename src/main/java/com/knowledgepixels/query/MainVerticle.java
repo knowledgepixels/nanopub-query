@@ -485,6 +485,11 @@ public class MainVerticle extends AbstractVerticle {
                 Runtime.getRuntime().exit(1);
             }
 
+            // Seed the TrustStateRegistry from any persisted pointer before the
+            // periodic poll begins, so the first tick doesn't re-materialize state
+            // we already have.
+            TrustStateLoader.bootstrap();
+
             // Start periodic nanopub loading
             log.info("Starting periodic nanopub loading...");
             var executor = Executors.newSingleThreadScheduledExecutor();
