@@ -3,6 +3,8 @@ package com.knowledgepixels.query;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.http.client.methods.HttpGet;
@@ -15,6 +17,8 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.model.vocabulary.XSD;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.vocabulary.NPA;
 import org.slf4j.Logger;
@@ -42,6 +46,9 @@ public class TrustStateLoader {
 
     /** Local name of the repository that holds all mirrored trust states. */
     static final String TRUST_REPO = "trust";
+
+    /** Default number of historical trust states retained locally. Matches the registry's own snapshot retention. */
+    static final int DEFAULT_LOCAL_RETENTION = 100;
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
@@ -197,10 +204,61 @@ public class TrustStateLoader {
             conn.remove(NPA.THIS_REPO, NPA_HAS_CURRENT_TRUST_STATE, null, NPA.GRAPH);
             conn.add(NPA.THIS_REPO, NPA_HAS_CURRENT_TRUST_STATE, trustStateIri, NPA.GRAPH);
 
-            // 4. (Step 5) Retention pruning will go here.
+            // 4. Prune any historical trust states beyond the retention window
+            int pruned = pruneOldStates(conn);
+            if (pruned > 0) {
+                log.info("Pruned {} trust state(s) beyond retention", pruned);
+            }
 
             conn.commit();
         }
+    }
+
+    /**
+     * Removes trust states beyond the retention window: their named-graph
+     * contents are dropped and their metadata triples in {@code npa:graph}
+     * are removed. Must be called inside an open transaction on the
+     * {@code trust} repo. Returns the number of states pruned.
+     */
+    private static int pruneOldStates(RepositoryConnection conn) {
+        int retention = effectiveRetention();
+        // ORDER BY DESC counter, then OFFSET retention → those beyond the keep window.
+        String query = String.format("""
+                PREFIX npa: <%s>
+                SELECT ?s WHERE {
+                  GRAPH <%s> {
+                    ?s a <%s> ; <%s> ?c .
+                  }
+                } ORDER BY DESC(?c) OFFSET %d
+                """,
+                NPA.NAMESPACE, NPA.GRAPH, NPA_TRUST_STATE, NPA_HAS_TRUST_STATE_COUNTER, retention);
+
+        List<IRI> toPrune = new ArrayList<>();
+        try (TupleQueryResult result = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+            while (result.hasNext()) {
+                toPrune.add((IRI) result.next().getValue("s"));
+            }
+        }
+        for (IRI old : toPrune) {
+            conn.clear(old);                          // drop the named graph's triples
+            conn.remove(old, null, null, NPA.GRAPH);  // drop its metadata in npa:graph
+        }
+        return toPrune.size();
+    }
+
+    /**
+     * Reads {@code TRUST_STATE_LOCAL_RETENTION} from the environment, falling
+     * back to {@link #DEFAULT_LOCAL_RETENTION}. Values below 1 are coerced
+     * back to the default with a warning (the plan rejects retention=0).
+     */
+    static int effectiveRetention() {
+        int n = Utils.getEnvInt("TRUST_STATE_LOCAL_RETENTION", DEFAULT_LOCAL_RETENTION);
+        if (n < 1) {
+            log.warn("TRUST_STATE_LOCAL_RETENTION={} is invalid (must be >= 1); using default {}",
+                    n, DEFAULT_LOCAL_RETENTION);
+            return DEFAULT_LOCAL_RETENTION;
+        }
+        return n;
     }
 
     /**

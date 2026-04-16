@@ -83,6 +83,12 @@ class TrustStateLoaderTest {
     }
 
     @Test
+    void effectiveRetention_defaultsTo100() {
+        // No env var set → default.
+        assertEquals(100, TrustStateLoader.effectiveRetention());
+    }
+
+    @Test
     void accountStateHash_differsAcrossPubkeys() {
         TrustStateSnapshot.AccountEntry a1 = new TrustStateSnapshot.AccountEntry(
                 "pk1", "https://example.org/agent", "loaded", 1, 1, 0.5, 1000);
