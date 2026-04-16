@@ -216,7 +216,10 @@ public class TrustStateLoader {
                      TripleStore.get().getRepoConnection(TRUST_REPO)) {
             conn.begin(IsolationLevels.SERIALIZABLE);
 
-            // 1. Account-state triples in the trust state's named graph
+            // 1. Account-state triples in the trust state's named graph.
+            // depth / pathCount / ratio / quota may be null (e.g. for status=skipped
+            // accounts, which were rejected by trust calculation and so don't carry
+            // these stats). Only emit a triple when the field is present.
             for (TrustStateSnapshot.AccountEntry a : snapshot.accounts()) {
                 IRI accountStateIri =
                         NPAA.forHash(accountStateHash(snapshot.trustStateHash(), a));
@@ -227,14 +230,22 @@ public class TrustStateLoader {
                         vf.createLiteral(a.pubkey()), trustStateIri);
                 conn.add(accountStateIri, NPA_TRUST_STATUS,
                         vf.createIRI(NPA.NAMESPACE, a.status()), trustStateIri);
-                conn.add(accountStateIri, NPA_DEPTH,
-                        vf.createLiteral(a.depth()), trustStateIri);
-                conn.add(accountStateIri, NPA_PATH_COUNT,
-                        vf.createLiteral(a.pathCount()), trustStateIri);
-                conn.add(accountStateIri, NPA_RATIO,
-                        vf.createLiteral(a.ratio()), trustStateIri);
-                conn.add(accountStateIri, NPA_QUOTA,
-                        vf.createLiteral(a.quota()), trustStateIri);
+                if (a.depth() != null) {
+                    conn.add(accountStateIri, NPA_DEPTH,
+                            vf.createLiteral(a.depth()), trustStateIri);
+                }
+                if (a.pathCount() != null) {
+                    conn.add(accountStateIri, NPA_PATH_COUNT,
+                            vf.createLiteral(a.pathCount()), trustStateIri);
+                }
+                if (a.ratio() != null) {
+                    conn.add(accountStateIri, NPA_RATIO,
+                            vf.createLiteral(a.ratio()), trustStateIri);
+                }
+                if (a.quota() != null) {
+                    conn.add(accountStateIri, NPA_QUOTA,
+                            vf.createLiteral(a.quota()), trustStateIri);
+                }
             }
 
             // 2. Cross-state metadata in npa:graph

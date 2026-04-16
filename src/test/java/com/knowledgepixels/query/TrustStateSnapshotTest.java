@@ -1,6 +1,7 @@
 package com.knowledgepixels.query;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -143,6 +144,39 @@ class TrustStateSnapshotTest {
                 "\"pubkey\": \"edf7482308e4e59fc3f658fbd1fe2a2a9a538de3adce2ec7ad6c5f804461d310\",",
                 "");
         assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(json));
+    }
+
+    @Test
+    void parse_acceptsSkippedAccountWithNullStats() {
+        // Accounts rejected by trust calculation (status=skipped) have null
+        // pathCount / ratio / quota. The parser must accept this and pass
+        // the nulls through so materialization can choose to skip those
+        // triples rather than inventing zero values.
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": {"$numberLong": "1"},
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": [
+                    {
+                      "pubkey": "a5c5aa...",
+                      "agent": "https://orcid.org/0000-0001-8327-0142",
+                      "status": "skipped",
+                      "depth": 2,
+                      "pathCount": null,
+                      "ratio": null,
+                      "quota": null
+                    }
+                  ]
+                }
+                """;
+        TrustStateSnapshot s = TrustStateSnapshot.parse(json);
+        TrustStateSnapshot.AccountEntry a = s.accounts().get(0);
+        assertEquals("skipped", a.status());
+        assertEquals(2, a.depth());
+        assertNull(a.pathCount());
+        assertNull(a.ratio());
+        assertNull(a.quota());
     }
 
     @Test

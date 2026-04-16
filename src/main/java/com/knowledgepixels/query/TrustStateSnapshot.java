@@ -38,23 +38,27 @@ public record TrustStateSnapshot(
      * exposes; consumers (e.g. authority queries) decide which {@code status}
      * values count as "approved".
      *
+     * <p>{@code pathCount}, {@code ratio}, and {@code quota} can be {@code null}
+     * for accounts with {@code status == "skipped"} (trust calculation rejected
+     * them, so those stats aren't meaningful). Boxed types preserve that.
+     *
      * @param pubkey hex-encoded public key
      * @param agent agent IRI (typically an ORCID, but any IRI is allowed)
      * @param status one of the registry's {@code EntryStatus} values
      *               (e.g. {@code "loaded"}, {@code "toLoad"}, {@code "skipped"})
      * @param depth steps from the trust seed
-     * @param pathCount number of independent trust paths
-     * @param ratio aggregated trust score
-     * @param quota allocated upload quota
+     * @param pathCount number of independent trust paths, or {@code null} for skipped accounts
+     * @param ratio aggregated trust score, or {@code null} for skipped accounts
+     * @param quota allocated upload quota, or {@code null} for skipped accounts
      */
     public record AccountEntry(
             String pubkey,
             String agent,
             String status,
-            int depth,
-            int pathCount,
-            double ratio,
-            long quota
+            Integer depth,
+            Integer pathCount,
+            Double ratio,
+            Long quota
     ) {}
 
     /**
@@ -106,7 +110,7 @@ public record TrustStateSnapshot(
                     a.getInteger("depth"),
                     a.getInteger("pathCount"),
                     a.getDouble("ratio"),
-                    unwrapLong(a, "quota")
+                    unwrapLongNullable(a, "quota")
             ));
         }
 
@@ -123,14 +127,26 @@ public record TrustStateSnapshot(
     }
 
     /**
-     * Reads a long-typed field, transparently handling MongoDB extended JSON
-     * ({@code {"$numberLong": "..."}}) as well as plain numeric / string forms.
+     * Reads a required long-typed field, transparently handling MongoDB
+     * extended JSON ({@code {"$numberLong": "..."}}) as well as plain numeric
+     * or string forms. Throws if the field is missing or null.
      */
     private static long unwrapLong(JsonObject obj, String key) {
-        Object v = obj.getValue(key);
+        Long v = unwrapLongNullable(obj, key);
         if (v == null) {
             throw new IllegalArgumentException("Trust state envelope is missing required field: " + key);
         }
+        return v;
+    }
+
+    /**
+     * Reads an optional long-typed field, returning {@code null} if the field
+     * is absent or its value is JSON {@code null}. Same extended-JSON handling
+     * as {@link #unwrapLong(JsonObject, String)}.
+     */
+    private static Long unwrapLongNullable(JsonObject obj, String key) {
+        Object v = obj.getValue(key);
+        if (v == null) return null;
         if (v instanceof Number n) return n.longValue();
         if (v instanceof JsonObject j) {
             String s = j.getString("$numberLong");
