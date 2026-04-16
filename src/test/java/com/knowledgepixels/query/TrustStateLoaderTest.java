@@ -49,4 +49,48 @@ class TrustStateLoaderTest {
         assertEquals("abc123", TrustStateRegistry.get().getCurrentHash().orElseThrow());
     }
 
+    @Test
+    void accountStateHash_isDeterministicOverSameInputs() {
+        TrustStateSnapshot.AccountEntry a = new TrustStateSnapshot.AccountEntry(
+                "pk1", "https://orcid.org/0000-0001-5118-256X", "loaded",
+                1, 1, 0.008, 100000);
+        String h1 = TrustStateLoader.accountStateHash("trustA", a);
+        String h2 = TrustStateLoader.accountStateHash("trustA", a);
+        assertEquals(h1, h2);
+        // Known SHA-256 hex length
+        assertEquals(64, h1.length());
+    }
+
+    @Test
+    void accountStateHash_differsAcrossTrustStates() {
+        // Same (pubkey, agent) under different trust states → different IRIs (by design).
+        TrustStateSnapshot.AccountEntry a = new TrustStateSnapshot.AccountEntry(
+                "pk1", "https://example.org/agent", "loaded", 1, 1, 0.5, 1000);
+        String h1 = TrustStateLoader.accountStateHash("trustA", a);
+        String h2 = TrustStateLoader.accountStateHash("trustB", a);
+        org.junit.jupiter.api.Assertions.assertNotEquals(h1, h2);
+    }
+
+    @Test
+    void accountStateHash_differsAcrossAgents() {
+        TrustStateSnapshot.AccountEntry a1 = new TrustStateSnapshot.AccountEntry(
+                "pk1", "https://example.org/agentA", "loaded", 1, 1, 0.5, 1000);
+        TrustStateSnapshot.AccountEntry a2 = new TrustStateSnapshot.AccountEntry(
+                "pk1", "https://example.org/agentB", "loaded", 1, 1, 0.5, 1000);
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                TrustStateLoader.accountStateHash("trustA", a1),
+                TrustStateLoader.accountStateHash("trustA", a2));
+    }
+
+    @Test
+    void accountStateHash_differsAcrossPubkeys() {
+        TrustStateSnapshot.AccountEntry a1 = new TrustStateSnapshot.AccountEntry(
+                "pk1", "https://example.org/agent", "loaded", 1, 1, 0.5, 1000);
+        TrustStateSnapshot.AccountEntry a2 = new TrustStateSnapshot.AccountEntry(
+                "pk2", "https://example.org/agent", "loaded", 1, 1, 0.5, 1000);
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                TrustStateLoader.accountStateHash("trustA", a1),
+                TrustStateLoader.accountStateHash("trustA", a2));
+    }
+
 }
