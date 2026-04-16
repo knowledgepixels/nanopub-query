@@ -62,7 +62,7 @@ For this iteration, Nanopub Query's job is to *index* role declarations and assi
 - `gen:hasAdmin` — admin declarations (subject = space ref)
 - `gen:hasMaintainer` — built-in maintainer declarations (subject = space ref)
 - **Dynamic role properties** — role assignment nanopubs using per-space role predicates (regularProperties: `<member> <role-prop> <space>`, inverseProperties: `<space> <role-prop> <member>`); each such predicate is declared `rdf:type` of one of `gen:MaintainerRole`/`gen:MemberRole`/`gen:ObserverRole` in its role-definition nanopub
-- `gen:isDisplayFor` — ViewDisplay nanopubs that link views to the space
+- `gen:isDisplayFor` — ViewDisplay nanopubs that link views to the space (loaded permissively; query-time filter restricts to displays published by an admin or maintainer of the space — see Phase 2E)
 - Space-defining nanopubs themselves (nanopubs of type `gen:Space`)
 - Role-definition nanopubs (those that define roles for the space)
 
@@ -142,7 +142,19 @@ In the constructor (where types are extracted ~line 232), add space ref detectio
 
   This requires SpaceRegistry to maintain the learned role properties along with their types.
 
-**E. ViewDisplay nanopubs:** Assertion contains `gen:isDisplayFor` predicate where object matches a known space ref.
+**Phase 1 enforcement model (flat roles):** Initial implementation collapses (D) to two cases:
+  - `gen:AdminRole` (hardcoded, identified by the well-known `ADMIN_ROLE_IRI`): publisher pubkey must be approved (per trust state) for an agent that holds `gen:hasAdmin` for the space.
+  - **Every other role**, regardless of `rdf:type` declared on its role-definition nanopub: treated as `gen:ObserverRole` for enforcement — self-assignment only (publisher pubkey must resolve to the assigned-member agent).
+
+  Role-type metadata (`rdf:type gen:MaintainerRole` etc.) is still stored in the space repo so the UI can render labels and so the future tightening becomes a query swap rather than a re-load. Phase 1 ignores the type for *enforcement*, not for *storage*.
+
+  **Behavior change at switchover:** Nanodash today accepts any role-assignment nanopub matching a learned property (no publisher check). Self-assignment is stricter; a third-party-published assignment of someone else into a non-admin role will stop counting until reissued by the assigned member.
+
+  **Future tightening (Phase 2B/C onward):** When MaintainerRole / MemberRole rules ship, previously-valid self-assignments of what's *now* recognized as a MaintainerRole or MemberRole will retroactively fail (since both require publisher authority above self). Tightening should land with an admin-side workflow for republishing such assignments through an authorized maintainer.
+
+**E. ViewDisplay nanopubs:** Assertion contains `gen:isDisplayFor` predicate where object matches a known space ref. Loaded into the space repo regardless of publisher (catch-all behavior).
+
+**Authority filter (query-time, not load-time):** A ViewDisplay only counts when its publisher pubkey resolves (via the trust-state mirror) to an agent that holds `gen:hasAdmin` or `gen:hasMaintainer` for the space. Until maintainer detection ships (Phase 2B/C), the union degenerates to admins only. Filtering at query time rather than load time means the rule auto-corrects when admin/maintainer membership changes — a previously-rejected display becomes valid the moment its publisher is granted authority, with no reload needed. The canonical SPARQL for this filter belongs in Phase 9 alongside the other Nanodash queries.
 
 **F. Catch-all:** Any nanopub whose assertion references a known space ref as subject or object (ensures we don't miss edge cases while the role property set is being learned).
 
@@ -232,7 +244,37 @@ Simplify `triggerSpaceDataUpdate()` (lines 389-484) to query the `space_<spaceRe
 
 **File:** `/home/tk/Code/nanodash/src/main/java/com/knowledgepixels/nanodash/domain/AbstractResourceWithProfile.java`
 
-Update `triggerDataUpdate()` (lines 134-143) to target the space repo for GET_VIEW_DISPLAYS when the resource is a Space.
+Update `triggerDataUpdate()` (lines 134-143) to target the space repo for GET_VIEW_DISPLAYS when the resource is a Space, and replace the current admin-pubkey gate with a SPARQL filter that joins on the space's admin/maintainer set and the trust state. Sketch:
+
+```sparql
+PREFIX gen:  <https://w3id.org/kpxl/gen/terms/>
+PREFIX npa:  <http://purl.org/nanopub/admin/>
+PREFIX nptemp: <http://purl.org/nanopub/temp/>
+
+SELECT ?display WHERE {
+  # ViewDisplay nanopubs in this space repo
+  GRAPH ?np {
+    ?display gen:isDisplayFor <SPACE_REF_IRI> .
+    ?np nptemp:hasPubkey ?pubkey .
+  }
+  # Publisher must be admin or maintainer of the space (in same repo)
+  GRAPH ?defNp {
+    <SPACE_REF_IRI> ?roleProp ?agent .
+    FILTER(?roleProp = gen:hasAdmin || ?roleProp = gen:hasMaintainer)
+  }
+  # Pubkey must be approved for the agent (trust-state mirror in the trust repo)
+  SERVICE <…/repo/trust> {
+    GRAPH npa:graph { npa:thisRepo npa:hasCurrentTrustState ?ts }
+    GRAPH ?ts {
+      ?_ npa:agent ?agent ; npa:pubkey ?pubkey ;
+         npa:trustStatus ?status .
+      FILTER(?status IN (npa:loaded, npa:toLoad))
+    }
+  }
+}
+```
+
+Until Phase 2B/C lands, the `?roleProp = gen:hasMaintainer` branch yields no rows, so the filter degenerates to admins-only. Once maintainers are detected, the same query covers the union without changes.
 
 **File:** `/home/tk/Code/nanodash/src/main/java/com/knowledgepixels/nanodash/QueryApiAccess.java`
 
