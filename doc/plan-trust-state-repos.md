@@ -39,7 +39,7 @@ Headers: `Cache-Control: public, immutable, max-age=31536000`. `404` if the hash
 
 Notes:
 - `trustStateCounter` arrives as BSON extended-JSON (`{"$numberLong": "..."}`); the parser needs to unwrap it.
-- `status` is not always `"loaded"` — `"toLoad"` and other states appear. The plan doesn't filter by status at the loader; it stores all entries and lets queries decide what statuses count as "approved".
+- `status` is not always `"loaded"` — `"toLoad"` and other states appear. The loader converts the string value into an IRI in the `npa:` namespace (e.g. `npa:loaded`, `npa:toLoad`) and stores it as an IRI on the account state, not as a literal. The plan doesn't filter by status at the loader; queries decide which IRIs count as "approved".
 - The synthetic `$` pubkey ("all types" sentinel) is already excluded server-side.
 - `createdAt` uses Java `ZonedDateTime.toString()` format with the `[Etc/UTC]` zone bracket — needs careful conversion to `xsd:dateTime`.
 
@@ -61,7 +61,7 @@ GRAPH <http://purl.org/nanopub/admin/truststate/abc...> {
         a npa:AccountState ;
         npa:agent <agentIRI> ;
         npa:pubkey "<pubkeyHex>" ;
-        npa:trustStatus "toLoad" ;
+        npa:trustStatus npa:toLoad ;
         npa:depth 1 ;
         npa:pathCount 1 ;
         npa:ratio "0.008181818181818182"^^xsd:double ;
@@ -91,7 +91,7 @@ GRAPH npa:graph {
 }
 ```
 
-Predicate names (`npa:AccountState`, `npa:TrustState`, `npa:agent`, `npa:pubkey`, `npa:trustStatus`, `npa:depth`, `npa:pathCount`, `npa:ratio`, `npa:quota`, `npa:hasTrustStateHash`, `npa:hasTrustStateCounter`, `npa:hasCreatedAt`, `npa:hasCurrentTrustState`) are sketches — happy to revise before implementation.
+Predicate names (`npa:AccountState`, `npa:TrustState`, `npa:agent`, `npa:pubkey`, `npa:trustStatus`, `npa:depth`, `npa:pathCount`, `npa:ratio`, `npa:quota`, `npa:hasTrustStateHash`, `npa:hasTrustStateCounter`, `npa:hasCreatedAt`, `npa:hasCurrentTrustState`) and status IRI values (`npa:loaded`, `npa:toLoad`, plus any new ones the registry introduces) are sketches — happy to revise before implementation.
 
 ## Querying
 
@@ -110,7 +110,7 @@ ASK {
   GRAPH ?g {
     ?s npa:agent <https://orcid.org/...> ;
        npa:pubkey "abcd..." ;
-       npa:trustStatus "loaded" .
+       npa:trustStatus npa:loaded .
   }
 }
 ```
@@ -237,7 +237,8 @@ try (RepositoryConnection conn = TripleStore.get().getRepoConnection("trust")) {
         conn.add(accountStateIri, RDF.TYPE, NPA.ACCOUNT_STATE, trustStateIri);
         conn.add(accountStateIri, NPA.AGENT, vf.createIRI(a.agent()), trustStateIri);
         conn.add(accountStateIri, NPA.PUBKEY, vf.createLiteral(a.pubkey()), trustStateIri);
-        conn.add(accountStateIri, NPA.TRUST_STATUS, vf.createLiteral(a.status()), trustStateIri);
+        conn.add(accountStateIri, NPA.TRUST_STATUS,
+                 vf.createIRI(NPA.NAMESPACE + a.status()), trustStateIri);  // e.g. npa:loaded
         // ... depth, pathCount, ratio, quota
     }
 
@@ -294,7 +295,7 @@ Initial deployment (no pointer): `loadUpdates` discovers the registry's hash, fe
 3. **Hash returns 404 (snapshot pruned):** Skip; next poll will see a newer hash. Acceptable behavior — we lose visibility into one window of state changes but recover on the next valid hash.
 4. **Pointer-update race:** `SERIALIZABLE` isolation in the `trust` repo, plus the in-memory registry only updating after commit, prevents inconsistent views across concurrent reads.
 5. **`createdAt` zone-bracket parsing:** Java's `ZonedDateTime.parse` accepts the bracket form natively, but `xsd:dateTime` doesn't. Strip-then-format. Test explicitly.
-6. **`status` value drift:** Don't filter at load time; surface all values. If the registry adds new statuses later, queries can adapt without a loader change.
+6. **`status` value drift:** Don't filter at load time; surface all values as `npa:<status>` IRIs. If the registry adds new statuses later, queries can adapt without a loader change (the loader just mints whatever IRI the string maps to — no enumeration is hardcoded).
 
 ## Verification
 
