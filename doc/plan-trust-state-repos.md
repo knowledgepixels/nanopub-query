@@ -279,7 +279,7 @@ Inside the same materialization transaction, prune old trust-state graphs beyond
 // "Drop" = clear the state's graph + remove its metadata triples from npa:graph.
 ```
 
-Retention is configurable via env var `TRUST_STATE_LOCAL_RETENTION` (default e.g. 5). Small enough that disk cost is negligible; large enough to allow brief audit/debugging and to cushion any in-flight queries against the previous state.
+Retention is configurable via env var `TRUST_STATE_LOCAL_RETENTION` (default 100, matching the registry's own snapshot retention so consumer and producer agree on the audit window). Each snapshot is small (~700 entries × ~7 triples ≈ 5K triples ≈ tens of KB), so 100 snapshots is on the order of MBs — disk cost is negligible.
 
 Retention = 1 is valid (keep only current). Retention = 0 would mean "no history" — reject as a config error.
 
