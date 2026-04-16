@@ -83,6 +83,69 @@ Proposed flow:
   (all space-management nanopubs pre-indexed in one small repo)
 ```
 
+## Authority Chain Resolution
+
+The admin set of a space is not a flat triple match — it's the fixed-point closure of a delegation chain rooted in the space's root nanopub. Same shape for the maintainer set. Authority-sensitive queries (view-display filtering in Phase 9, role-assignment validation in Phase 2D, and any future "is X allowed to do Y") must consult the *closed* set, not raw `gen:hasAdmin` / `gen:hasMaintainer` triples.
+
+### Algorithm (admins)
+
+```
+# Seed: the root nanopub's hasAdmin triples are trusted by construction —
+# the root NPID is part of the space ref, so trusting the root is part of
+# trusting the space identity itself. No publisher check needed for the seed.
+admins := { agent : root_np asserts <spaceRef> gen:hasAdmin <agent> }
+
+repeat:
+  changed := false
+  for each (np, agent, pubkey) where:
+      - np in space repo asserts <spaceRef> gen:hasAdmin <agent>
+      - np's publisher pubkey is `pubkey`
+      - agent ∉ admins
+    publisher_agent := trustState.agentFor(pubkey)   # null if pubkey not approved
+    if publisher_agent ∈ admins:
+      admins.add(agent); changed := true
+until not changed
+
+return admins
+```
+
+In practice the loop runs O(chain-depth) iterations — typically 1–3.
+
+### Algorithm (maintainers)
+
+Identical shape, with two differences:
+- Seed = `<spaceRef> gen:hasMaintainer <agent>` triples in nanopubs whose publisher is in the closed *admin* set (no built-in seed; maintainers always require an admin grant somewhere upstream).
+- Subsequent grants accepted if publisher is in (admins ∪ current maintainers).
+
+The admin closure must be computed first; the maintainer closure consumes it as input.
+
+### Semantics decisions baked in
+
+1. **Closure-based, not time-ordered.** A `hasAdmin` nanopub published by A counts whenever A is *ever* established as admin, not only if A was already admin at publication time. The time-ordered version is more secure (resists post-hoc grants) but needs sortable timestamps and re-evaluation on every admin change. Closure-based is simpler and matches how most delegation models in the wild work. Revisit if a real attack scenario shows up.
+2. **Sticky adminship.** Once a chain validates, the new admin stays admin until explicitly revoked via supersession/invalidation (Phase 6). Revocation does not cascade — if A is revoked, B (whom A admin'd) survives. Cascading revocation is a recurring source of surprise; sticky is the safer default.
+3. **SPARQL alone can't express this.** SPARQL 1.1 has no fixed-point recursion, and property paths can't consume the trust-state lookup inside the recursion. The chain resolver must be a Java helper that the query layer calls.
+
+### Implementation: `AuthorityResolver`
+
+A new class (likely `src/main/java/com/knowledgepixels/query/AuthorityResolver.java`, or a method group on `SpaceRegistry`) exposes:
+
+```java
+public Set<IRI> getAdmins(String spaceRef);       // closed admin set
+public Set<IRI> getMaintainers(String spaceRef);  // closed maintainer set, includes admins implicitly? No — keep distinct.
+public boolean isAdmin(String spaceRef, IRI agent);
+public boolean isAdminOrMaintainer(String spaceRef, IRI agent);
+public boolean isPubkeyAdmin(String spaceRef, String pubkey);  // resolves pubkey via trust state, checks closure
+```
+
+Computes against the space repo + the trust-state mirror in the `trust` repo. Caches the closed set in memory keyed by `(spaceRef, trust-state-hash, space-repo-revision)`; invalidates the entry when either the trust-state pointer flips (already detected by the trust loader) or when a new `gen:hasAdmin` / `gen:hasMaintainer` nanopub lands in the space repo. Cold computation is one or a few small SPARQL queries — cheap; the cache exists to avoid repeating it on every query.
+
+### Edge cases
+
+- **Cycles** (A admins B, B admins A) — fixed-point converges regardless; both end up admin if either has a valid path back to the seed.
+- **Self-grant by root admin** — the seed already includes them; the iteration would no-op.
+- **Pubkey approved for multiple agents** — the trust state can map one pubkey to multiple agents; the resolver should treat publisher_agent ∈ admins as "*any* of the publisher's agents is in admins".
+- **Trust state changes mid-flight** — closure is computed against a snapshot. The cache key includes the trust-state hash, so a flip naturally invalidates and recomputes on next call.
+
 ## Implementation Plan
 
 ### Phase 1: SpaceRegistry (In-Memory + Admin Repo)
@@ -126,7 +189,7 @@ In the constructor (where types are extracted ~line 232), add space ref detectio
   - Register the space ref in SpaceRegistry (adds to `knownSpaceRefs` and the `spaceIriToSpaceRefs` reverse index). Initial admins are not cached — they're in the root nanopub's `gen:hasAdmin` assertions inside the space repo itself, queryable when authority checking is implemented.
   - Load into `space_<spaceRef>` repo
 
-**B. Admin / maintainer declarations:** Assertion contains `gen:hasAdmin` or `gen:hasMaintainer` predicate where subject matches a known space ref in SpaceRegistry. For the MVP, `gen:hasAdmin` is the *only* admin mechanism (no user-defined admin roles). `gen:hasMaintainer` is a built-in shortcut for the maintainer role type. Authority validation: trusted if publisher is in the admin chain traceable from the root nanopub (maintainer declarations can be published by admins or existing maintainers).
+**B. Admin / maintainer declarations:** Assertion contains `gen:hasAdmin` or `gen:hasMaintainer` predicate where subject matches a known space ref in SpaceRegistry. For the MVP, `gen:hasAdmin` is the *only* admin mechanism (no user-defined admin roles). `gen:hasMaintainer` is a built-in shortcut for the maintainer role type. Authority validation goes through `AuthorityResolver` (see "Authority Chain Resolution" above): a `gen:hasAdmin` declaration counts iff its publisher is in the closed admin set; a `gen:hasMaintainer` declaration counts iff its publisher is in (closed admins ∪ closed maintainers). The detection step here just *loads* such nanopubs into the space repo; the closure decides whether they participate in the admin/maintainer set.
 
 **C. Role-definition nanopubs:** Assertion defines a user-defined role for a known space. When detected:
   - Extract the role predicate IRI and its `rdf:type` — one of `gen:MaintainerRole` / `gen:MemberRole` / `gen:ObserverRole`. If no type declared, default to `gen:ObserverRole`. `gen:AdminRole` is not a valid type for user-defined roles in the MVP (skip with a warning if encountered).
@@ -143,7 +206,7 @@ In the constructor (where types are extracted ~line 232), add space ref detectio
   This requires SpaceRegistry to maintain the learned role properties along with their types.
 
 **Phase 1 enforcement model (flat roles):** Initial implementation collapses (D) to two cases:
-  - `gen:AdminRole` (hardcoded, identified by the well-known `ADMIN_ROLE_IRI`): publisher pubkey must be approved (per trust state) for an agent that holds `gen:hasAdmin` for the space.
+  - `gen:AdminRole` (hardcoded, identified by the well-known `ADMIN_ROLE_IRI`): publisher pubkey must resolve (via `AuthorityResolver.isPubkeyAdmin(spaceRef, pubkey)`) to an agent in the *closed* admin set — not just any direct `gen:hasAdmin` triple in the space repo. The closure (see "Authority Chain Resolution" above) prevents a malicious nanopub of the form `<spaceRef> gen:hasAdmin <evilAgent>` from creating a self-attesting admin.
   - **Every other role**, regardless of `rdf:type` declared on its role-definition nanopub: treated as `gen:ObserverRole` for enforcement — self-assignment only (publisher pubkey must resolve to the assigned-member agent).
 
   Role-type metadata (`rdf:type gen:MaintainerRole` etc.) is still stored in the space repo so the UI can render labels and so the future tightening becomes a query swap rather than a re-load. Phase 1 ignores the type for *enforcement*, not for *storage*.
@@ -244,37 +307,37 @@ Simplify `triggerSpaceDataUpdate()` (lines 389-484) to query the `space_<spaceRe
 
 **File:** `/home/tk/Code/nanodash/src/main/java/com/knowledgepixels/nanodash/domain/AbstractResourceWithProfile.java`
 
-Update `triggerDataUpdate()` (lines 134-143) to target the space repo for GET_VIEW_DISPLAYS when the resource is a Space, and replace the current admin-pubkey gate with a SPARQL filter that joins on the space's admin/maintainer set and the trust state. Sketch:
+Update `triggerDataUpdate()` (lines 134-143) to target the space repo for GET_VIEW_DISPLAYS when the resource is a Space, and replace the current admin-pubkey gate with a check against the closed admin/maintainer set returned by `AuthorityResolver` (see "Authority Chain Resolution" above).
+
+Pure SPARQL can't express the chain closure (no fixed-point recursion + the trust-state lookup must happen inside the recursion). Two viable shapes for the migrated Nanodash query:
+
+**Option A — pre-resolve in Java, parameterize SPARQL:**
+
+```java
+Set<String> approvedPubkeys = authorityResolver.getApprovedPubkeysForAdminsOrMaintainers(spaceRef);
+// Emit a SPARQL query that filters ?pubkey IN (…approvedPubkeys…)
+```
 
 ```sparql
-PREFIX gen:  <https://w3id.org/kpxl/gen/terms/>
-PREFIX npa:  <http://purl.org/nanopub/admin/>
+PREFIX gen:    <https://w3id.org/kpxl/gen/terms/>
 PREFIX nptemp: <http://purl.org/nanopub/temp/>
 
 SELECT ?display WHERE {
-  # ViewDisplay nanopubs in this space repo
   GRAPH ?np {
     ?display gen:isDisplayFor <SPACE_REF_IRI> .
+  }
+  GRAPH ?npPubinfo {
     ?np nptemp:hasPubkey ?pubkey .
   }
-  # Publisher must be admin or maintainer of the space (in same repo)
-  GRAPH ?defNp {
-    <SPACE_REF_IRI> ?roleProp ?agent .
-    FILTER(?roleProp = gen:hasAdmin || ?roleProp = gen:hasMaintainer)
-  }
-  # Pubkey must be approved for the agent (trust-state mirror in the trust repo)
-  SERVICE <…/repo/trust> {
-    GRAPH npa:graph { npa:thisRepo npa:hasCurrentTrustState ?ts }
-    GRAPH ?ts {
-      ?_ npa:agent ?agent ; npa:pubkey ?pubkey ;
-         npa:trustStatus ?status .
-      FILTER(?status IN (npa:loaded, npa:toLoad))
-    }
-  }
+  FILTER(?pubkey IN (<approved_pubkey_1>, <approved_pubkey_2>, …))
 }
 ```
 
-Until Phase 2B/C lands, the `?roleProp = gen:hasMaintainer` branch yields no rows, so the filter degenerates to admins-only. Once maintainers are detected, the same query covers the union without changes.
+The pubkey list is small (admins + maintainers ≪ all space members), so `IN` performs fine. Parameter list is regenerated whenever the resolver's cache invalidates (trust-state flip or new admin/maintainer nanopub).
+
+**Option B — materialize the closed admin/maintainer set into the space repo** as triples like `<spaceRef> npa:hasResolvedAdmin <agent>` / `<spaceRef> npa:hasResolvedMaintainer <agent>`, refreshed on the same triggers. Then the SPARQL becomes a plain join, no parameter substitution needed. More moving parts; defer unless query-side simplicity wins out.
+
+Phase 1 ships Option A. Until Phase 2B/C lands, the maintainer set is empty and the filter degenerates to admins-only.
 
 **File:** `/home/tk/Code/nanodash/src/main/java/com/knowledgepixels/nanodash/QueryApiAccess.java`
 
@@ -317,6 +380,7 @@ What if a nanopub references a space that isn't yet known? This can happen when 
 | `MetricsCollector.java` | Add space repo counter |
 | `Utils.java` | Reference only — reuse existing `createHash()` |
 | **New:** `SpaceRegistry.java` | Space IRI + role property tracking, admin repo persistence |
+| **New:** `AuthorityResolver.java` | Closed admin/maintainer set per space (fixed-point closure over `gen:hasAdmin`/`gen:hasMaintainer` + trust state); cached, invalidated on trust-state flip or new space-repo authority nanopub |
 
 ## Risks & Mitigations
 
