@@ -16,7 +16,7 @@ import java.util.Optional;
  * each tick without hitting RDF4J. The cache is updated only after a
  * successful materialization commits.
  *
- * <p>See {@code doc/plan-trust-state-repos.md} for the full design.
+ * <p>See {@code doc/design-trust-state-repos.md} for the full design.
  */
 public class TrustStateRegistry {
 

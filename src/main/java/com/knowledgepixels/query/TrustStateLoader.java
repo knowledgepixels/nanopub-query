@@ -38,7 +38,7 @@ import com.knowledgepixels.query.vocabulary.NPAT;
  * envelope, materialize the snapshot into a named graph, and swap the current
  * pointer — all in one serializable transaction.
  *
- * <p>See {@code doc/plan-trust-state-repos.md} for the full design.
+ * <p>See {@code doc/design-trust-state-repos.md} for the full design.
  */
 public class TrustStateLoader {
 

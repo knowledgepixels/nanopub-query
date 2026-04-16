@@ -1,4 +1,4 @@
-# Plan: Trust State Repositories in Nanopub Query
+# Design: Trust State Repositories in Nanopub Query
 
 ## Context
 
