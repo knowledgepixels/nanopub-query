@@ -121,49 +121,109 @@ Identical shape, with two differences:
 
 The admin closure must be computed first; the maintainer closure consumes it as input.
 
-### Algorithm (members, Phase 1 flat-role rules)
+### Two evidence kinds (authority vs. self)
+
+Every role-assignment nanopub matching a registered role property is classified into one or more **evidence kinds**:
+
+- **`npa:authorityEvidence`** — publisher's pubkey resolves (via trust state) to an agent in the appropriate authority closure for that role tier (admin closure for Admin/Maintainer/Member grants; admin-or-maintainer closure for grants below maintainer).
+- **`npa:selfEvidence`** — publisher's pubkey resolves to the assigned-member agent itself.
+
+A single nanopub can fire both classifications (e.g. an admin self-assigning a member role yields one nanopub that is both authority- and self-evidence). Each classification becomes a separate evidence record.
+
+Nanopubs that match neither kind (random third party publishing into a role property) are **not** materialized as evidence — they remain in the space repo as raw nanopubs but contribute no membership claim under any plausible policy.
+
+For the admin closure itself, the seed (root nanopub's `gen:hasAdmin` triples) is recorded as authority-evidence with `npa:viaNanopub` pointing at the root nanopub — by construction the root *is* the source of admin authority.
+
+### Algorithm (admin / maintainer closures, repeated for clarity)
+
+The admin closure must be computed first; it's the prerequisite for classifying any other nanopub as authority-evidence. The maintainer closure consumes the admin closure as its seed input. See the algorithms above.
+
+### Algorithm (member / role-assignment evidence collection)
 
 For every role-assignment nanopub in the space repo whose property is registered in `SpaceRegistry` as a role property of this space:
-- If the role is the hardcoded `gen:AdminRole` → already covered by the admin closure above (don't double-count).
-- Otherwise (Phase 1 treats all non-admin roles as Observer-equivalent): valid iff publisher pubkey resolves (via trust state) to the assigned-member agent itself (self-assignment).
+1. Resolve publisher pubkey to publisher agent(s) via the trust state.
+2. If publisher agent ∈ admin closure (or, for sub-maintainer roles, ∈ admin∪maintainer closure) → emit `authorityEvidence` record.
+3. If publisher agent == the assigned-member agent in the triple → emit `selfEvidence` record.
+4. If neither → emit nothing.
 
-When Phase 2C/D ships type-aware enforcement, this step splits per role type (Observer = self-assign; Member = maintainer+; Maintainer = admin+) — the materialization shape stays the same.
+For admin and maintainer assignments, "authority-evidence" reduces to the closure step above (any nanopub feeding the admin closure *is* authority-evidence for an admin grant; same for maintainer). The closure is just the transitive form of evidence collection.
 
 ### Materialized output (in `npa:graph` of the space repo)
 
+Each (agent, role, space) tuple gets one assignment object whose `npa:hasEvidence` set lists the classified evidence pieces. Policy (which kinds are required) is applied at *query* time — the materialization stores all valid evidence regardless of current policy.
+
 ```turtle
 GRAPH npa:graph {
-  # ---- Resolved admin set (closed) ----
-  _:a1 a npa:ResolvedRoleAssignment ;
-       npa:forSpace        <spaceRef> ;
-       npa:role            gen:AdminRole ;
-       npa:agent           <agent1> ;
-       npa:viaNanopub      <root_np> .              # for seed admins
-  _:a2 a npa:ResolvedRoleAssignment ;
-       npa:forSpace        <spaceRef> ;
-       npa:role            gen:AdminRole ;
-       npa:agent           <agent2> ;
-       npa:viaNanopub      <delegation_np> .        # for delegated admins
+  # ---- Admin assignments (closed) ----
+  _:a1 a npa:RoleAssignment ;
+       npa:forSpace <spaceRef> ;
+       npa:role     gen:AdminRole ;
+       npa:agent    <agent1> ;
+       npa:hasEvidence _:a1ev1 .
+  _:a1ev1 npa:evidenceKind  npa:authorityEvidence ;     # seed: root nanopub
+          npa:viaNanopub    <root_np> .
 
-  # ---- Resolved maintainer set (closed; empty in Phase 1) ----
-  _:m1 a npa:ResolvedRoleAssignment ;
-       npa:forSpace        <spaceRef> ;
-       npa:role            gen:MaintainerRole ;
-       npa:agent           <agent3> ;
-       npa:viaNanopub      <maintainer_grant_np> .
+  _:a2 a npa:RoleAssignment ;
+       npa:forSpace <spaceRef> ;
+       npa:role     gen:AdminRole ;
+       npa:agent    <agent2> ;
+       npa:hasEvidence _:a2ev1 , _:a2ev2 .
+  _:a2ev1 npa:evidenceKind  npa:authorityEvidence ;     # delegated by <agent1>
+          npa:viaNanopub    <delegation_np> .
+  _:a2ev2 npa:evidenceKind  npa:selfEvidence ;          # also self-confirmed
+          npa:viaNanopub    <self_confirm_np> .
 
-  # ---- Resolved member assignments (any non-admin, non-maintainer role) ----
-  _:r1 a npa:ResolvedRoleAssignment ;
-       npa:forSpace        <spaceRef> ;
-       npa:role            <user_defined_role_iri> ;
-       npa:agent           <agentX> ;
-       npa:viaNanopub      <assignment_np> .
+  # ---- Maintainer assignments (closed; empty in Phase 1) ----
+  _:m1 a npa:RoleAssignment ;
+       npa:forSpace <spaceRef> ;
+       npa:role     gen:MaintainerRole ;
+       npa:agent    <agent3> ;
+       npa:hasEvidence _:m1ev1 .
+  _:m1ev1 npa:evidenceKind  npa:authorityEvidence ;
+          npa:viaNanopub    <maintainer_grant_np> .
+
+  # ---- Other role assignments (Member, Observer, user-defined) ----
+  _:r1 a npa:RoleAssignment ;
+       npa:forSpace <spaceRef> ;
+       npa:role     <user_defined_role_iri> ;
+       npa:agent    <agentX> ;
+       npa:hasEvidence _:r1ev1 .
+  _:r1ev1 npa:evidenceKind  npa:selfEvidence ;          # observer-tier: self-assigned
+          npa:viaNanopub    <assignment_np> .
 }
 ```
 
-One uniform shape across all three layers (admin / maintainer / other-member) keeps queries simple — Nanodash can list "all members of this space" with one BGP, or filter by role IRI for a specific layer. The `npa:viaNanopub` provenance pointer answers "where did this membership come from?" for audit and supersession tracking.
+One uniform shape across all role tiers keeps queries simple. The `npa:viaNanopub` provenance pointer on each evidence object answers "where did this attestation come from?" for audit and supersession tracking.
 
-Convenience triples (e.g. `<spaceRef> npa:hasResolvedAdmin <agent>`) can be added later if query patterns make them worthwhile; for the MVP the single `ResolvedRoleAssignment` shape suffices.
+### Policy (which evidence is required for which tier)
+
+Phase 1 policy is a single rule per role tier, applied at query time:
+
+| Role tier | Required evidence (Phase 1) | Future tightening (example) |
+|-----------|---|---|
+| `gen:AdminRole`        | authority   | authority + self (dual confirmation) |
+| `gen:MaintainerRole`   | authority   | authority + self |
+| `gen:MemberRole`       | authority   | authority + self |
+| `gen:ObserverRole`     | self        | (unchanged) |
+| User-defined (defaults to Observer in role-definition parsing) | self | per role-definition's stated tier |
+
+A query for "is X a confirmed admin of space S?" filters the assignment object by required evidence kinds:
+
+```sparql
+ASK {
+  GRAPH npa:graph {
+    ?ra a npa:RoleAssignment ;
+        npa:forSpace <S> ;
+        npa:role     gen:AdminRole ;
+        npa:agent    <X> ;
+        npa:hasEvidence [ npa:evidenceKind npa:authorityEvidence ] .
+    # Future "dual" policy adds:
+    # ?ra npa:hasEvidence [ npa:evidenceKind npa:selfEvidence ] .
+  }
+}
+```
+
+Switching a tier from "authority" to "authority + self" is purely a policy change in the consuming queries — no re-materialization required, since both kinds of evidence have already been classified and stored.
 
 ### Re-materialization triggers
 
@@ -174,13 +234,13 @@ The resolved set must be recomputed when its inputs change. Triggers:
 - **Trust-state pointer flip** (already detected centrally by `TrustStateLoader`) → publisher → agent mapping may change globally; every space's resolved set may need recomputing.
 - **Supersession or invalidation** of any of the above → may shrink the resolved set.
 
-Recomputation happens inside a single transaction on the space repo: clear the `ResolvedRoleAssignment` triples in `npa:graph`, write the new closure. Atomic for queries; never half-updated.
+Recomputation happens inside a single transaction on the space repo: clear all `npa:RoleAssignment` objects in `npa:graph` (along with the evidence objects they reference via `npa:hasEvidence`), recompute closures, re-classify evidence, write the new state. Atomic for queries; never half-updated.
 
 ### Semantics decisions baked in
 
 1. **Closure-based, not time-ordered.** A `hasAdmin` nanopub published by A counts whenever A is *ever* established as admin, not only if A was already admin at publication time. The time-ordered version is more secure (resists post-hoc grants) but needs sortable timestamps and re-evaluation on every admin change. Closure-based is simpler and matches how most delegation models in the wild work. Revisit if a real attack scenario shows up.
 2. **Sticky adminship.** Once a chain validates, the new admin stays admin until explicitly revoked via supersession/invalidation (Phase 6). Revocation does not cascade — if A is revoked, B (whom A admin'd) survives. Cascading revocation is a recurring source of surprise; sticky is the safer default.
-3. **Materialization, not query-time computation.** SPARQL 1.1 has no fixed-point recursion and property paths can't consume the trust-state lookup inside the recursion, so any pure-SPARQL approach would punt to a Java helper at query time. Materializing the closure into `npa:graph` removes that wart: queries are plain joins, and the authority state is auditable from a single place.
+3. **Materialization of evidence, not of policy.** SPARQL 1.1 has no fixed-point recursion and property paths can't consume the trust-state lookup inside the recursion, so the closures are computed in Java. Their *output* — classified evidence per (agent, role, space) tuple — is materialized into `npa:graph` so queries are plain joins and the authority state is auditable from a single place. Crucially, what's materialized is the **evidence** (with its kind), not the resolved set under a specific policy: a future tightening to dual confirmation is a query-side filter change, not a re-materialization. This is what "we should keep and load all of these" buys us.
 
 ### Implementation: `AuthorityResolver`
 
@@ -268,15 +328,18 @@ In the constructor (where types are extracted ~line 232), add space ref detectio
 
   This requires SpaceRegistry to maintain the learned role properties along with their types.
 
-**Phase 1 enforcement model (flat roles):** Initial implementation collapses (D) to two cases:
-  - `gen:AdminRole` (hardcoded, identified by the well-known `ADMIN_ROLE_IRI`): publisher pubkey must resolve (via the trust state) to an agent that appears in the materialized `ResolvedRoleAssignment` set with `npa:role gen:AdminRole` — i.e. the *closed* admin set in `npa:graph`, not any direct `gen:hasAdmin` triple. The materialization (see "Authority Chain Resolution" above) prevents a malicious nanopub of the form `<spaceRef> gen:hasAdmin <evilAgent>` from creating a self-attesting admin.
-  - **Every other role**, regardless of `rdf:type` declared on its role-definition nanopub: treated as `gen:ObserverRole` for enforcement — self-assignment only (publisher pubkey must resolve to the assigned-member agent).
+**Phase 1 enforcement model (flat roles):** Initial implementation maps role tiers to required evidence kinds (per the policy table in "Authority Chain Resolution"):
+  - `gen:AdminRole` (hardcoded, identified by the well-known `ADMIN_ROLE_IRI`): require **authority-evidence**. The materialization writes a `RoleAssignment` only when at least one nanopub is classified as authority-evidence for this admin grant; that classification depends on the closed admin set, so a malicious nanopub of the form `<spaceRef> gen:hasAdmin <evilAgent>` from a non-admin publisher contributes nothing.
+  - `gen:MaintainerRole`, `gen:MemberRole`: same — require authority-evidence. (Both classes are empty in Phase 1 since maintainer detection ships in Phase 2C.)
+  - `gen:ObserverRole` and every other user-defined role (which default to ObserverRole in role-definition parsing): require **self-evidence** only.
 
-  Role-type metadata (`rdf:type gen:MaintainerRole` etc.) is still stored in the space repo so the UI can render labels and so the future tightening becomes a query swap rather than a re-load. Phase 1 ignores the type for *enforcement*, not for *storage*.
+  Both kinds are *collected and stored* regardless of which is currently required — so the future tightening to dual-confirmation (e.g. "MaintainerRole now needs authority + self") is a query-side policy change, not a re-load or even a re-materialization.
 
-  **Behavior change at switchover:** Nanodash today accepts any role-assignment nanopub matching a learned property (no publisher check). Self-assignment is stricter; a third-party-published assignment of someone else into a non-admin role will stop counting until reissued by the assigned member.
+  Role-type metadata (`rdf:type gen:MaintainerRole` etc.) is preserved on role-definition nanopubs so the UI can render labels and so the policy table can be tightened per-tier without affecting the materialized data.
 
-  **Future tightening (Phase 2B/C onward):** When MaintainerRole / MemberRole rules ship, previously-valid self-assignments of what's *now* recognized as a MaintainerRole or MemberRole will retroactively fail (since both require publisher authority above self). Tightening should land with an admin-side workflow for republishing such assignments through an authorized maintainer.
+  **Behavior change at switchover:** Nanodash today accepts any role-assignment nanopub matching a learned property (no publisher check). The Phase 1 model is stricter on both axes — non-admin roles require self-attestation; admin/maintainer/member tiers require authority. Third-party-published assignments without either form of evidence stop counting until reissued by an appropriate publisher.
+
+  **Future tightening (Phase 2B/C onward):** When MaintainerRole / MemberRole rules ship as type-aware enforcement, the materialization shape doesn't change — only the policy table does. Adding "and self-evidence" to a tier eliminates assignments that lack self-confirmation; consumers see the change instantly without a re-load.
 
 **E. ViewDisplay nanopubs:** Assertion contains `gen:isDisplayFor` predicate where object matches a known space ref. Loaded into the space repo regardless of publisher (catch-all behavior).
 
@@ -370,7 +433,7 @@ Simplify `triggerSpaceDataUpdate()` (lines 389-484) to query the `space_<spaceRe
 
 **File:** `/home/tk/Code/nanodash/src/main/java/com/knowledgepixels/nanodash/domain/AbstractResourceWithProfile.java`
 
-Update `triggerDataUpdate()` (lines 134-143) to target the space repo for GET_VIEW_DISPLAYS when the resource is a Space, and replace the current admin-pubkey gate with a SPARQL join against the materialized `ResolvedRoleAssignment` triples in `npa:graph` (see "Authority Chain Resolution" above):
+Update `triggerDataUpdate()` (lines 134-143) to target the space repo for GET_VIEW_DISPLAYS when the resource is a Space, and replace the current admin-pubkey gate with a SPARQL join against the materialized authority `RoleAssignment` triples in `npa:graph` (see "Authority Chain Resolution" above), filtered by the current view-display policy (Phase 1: admin or maintainer with authority-evidence):
 
 ```sparql
 PREFIX gen:    <https://w3id.org/kpxl/gen/terms/>
@@ -384,12 +447,14 @@ SELECT ?display WHERE {
   GRAPH ?npPubinfo {
     ?np nptemp:hasPubkey ?pubkey .
   }
-  # Pubkey must resolve (via trust state) to an admin or maintainer of the space.
+  # Pubkey must resolve (via trust state) to an admin or maintainer of the space,
+  # under the current evidence policy (Phase 1: authority-evidence).
   GRAPH npa:graph {
-    ?ra a npa:ResolvedRoleAssignment ;
+    ?ra a npa:RoleAssignment ;
         npa:forSpace <SPACE_REF_IRI> ;
         npa:role     ?role ;
-        npa:agent    ?publisherAgent .
+        npa:agent    ?publisherAgent ;
+        npa:hasEvidence [ npa:evidenceKind npa:authorityEvidence ] .
     FILTER(?role IN (gen:AdminRole, gen:MaintainerRole))
   }
   SERVICE <…/repo/trust> {
@@ -404,7 +469,7 @@ SELECT ?display WHERE {
 }
 ```
 
-Until Phase 2C lands, no `gen:MaintainerRole` rows exist in the materialized set, so the filter degenerates to admins-only. Once maintainers are detected and materialized, the same query covers the union without changes. The SERVICE join to the trust repo is what maps the publisher's pubkey to an agent for comparison against the admin/maintainer set; it's small and indexed.
+Until Phase 2C lands, no `gen:MaintainerRole` rows exist in the materialized set, so the filter degenerates to admins-only. Once maintainers are detected and materialized, the same query covers the union without changes. Switching to dual-confirmation later (require both authority and self evidence) just adds a second `npa:hasEvidence [ npa:evidenceKind npa:selfEvidence ]` triple to the BGP — no re-load. The SERVICE join to the trust repo is what maps the publisher's pubkey to an agent for comparison against the authority set; it's small and indexed.
 
 **File:** `/home/tk/Code/nanodash/src/main/java/com/knowledgepixels/nanodash/QueryApiAccess.java`
 
@@ -447,7 +512,7 @@ What if a nanopub references a space that isn't yet known? This can happen when 
 | `MetricsCollector.java` | Add space repo counter |
 | `Utils.java` | Reference only — reuse existing `createHash()` |
 | **New:** `SpaceRegistry.java` | Space IRI + role property tracking, admin repo persistence |
-| **New:** `AuthorityResolver.java` | Computes the closed admin / maintainer / member sets per space (fixed-point closure over `gen:hasAdmin` / `gen:hasMaintainer` / role-property triples + trust state) and **materializes** them as `npa:ResolvedRoleAssignment` triples in the space repo's `npa:graph`. Triggered on space-repo authority changes and on trust-state pointer flips. Pure writer — no query-time helper needed. |
+| **New:** `AuthorityResolver.java` | Computes the closed admin and maintainer sets per space (fixed-point closure over `gen:hasAdmin` / `gen:hasMaintainer` + trust state), classifies each role-assignment nanopub as authority-evidence and/or self-evidence, and **materializes** the result as `npa:RoleAssignment` triples (with `npa:hasEvidence` linking to `npa:RoleAssignmentEvidence` objects, each carrying `npa:evidenceKind` and `npa:viaNanopub`) in the space repo's `npa:graph`. Triggered on space-repo authority changes and on trust-state pointer flips. Materializes evidence; current policy lives in consumer queries so future tightening (e.g. dual confirmation) is a query change, not a re-materialization. |
 
 ## Risks & Mitigations
 
