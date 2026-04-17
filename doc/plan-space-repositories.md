@@ -136,12 +136,14 @@ Done in `NanopubLoader` + a new `SpaceRegistry` (in-memory, persisted to the adm
 
 A new `AuthorityResolver` owns closure computation, evidence classification, and the materialization write to `npa:graph`. Pure writer; consumers read with plain SPARQL.
 
-Triggered from:
-- The loader, after writing an authority/role-related nanopub into a space repo (covers most cases).
-- The trust-state subsystem, after a successful pointer swap (recompute every known space).
-- The invalidation flow (Phase 3) — a removed nanopub may shrink the materialized set.
+**Update flow.** Two paths cooperate:
 
-Implementation freedom: how the resolver schedules and batches recomputes (per-space queue, debouncing, etc.) is to be decided in code; the contract above is what matters.
+- **Fast path (in the loader, same transaction as the raw nanopub write).** When an authority-relevant nanopub lands, classify it against the *current* materialized state and trust state and emit any evidence triple it directly contributes. Covers all purely additive cases — admin-grants-maintainer, observer-self-assigns, admin-assigns-member, any self-evidence — so the new membership is visible inside the same load cycle.
+- **Slow path (worker thread, debounced).** The resolver maintains a `Set<spaceRef>` of dirty spaces. Loader writes (fast or otherwise) and invalidations call `markDirty(ref)`; trust-state pointer flips call `markAllDirty()`. A worker drains the set, running one full recompute per dirty space — clear all `RoleAssignment` + evidence triples in `npa:graph`, recompute closures, reclassify all evidence, rewrite. One serializable transaction per recompute; idempotent; re-emits whatever the fast path wrote plus any transitive unlocks. If a `markDirty` arrives mid-recompute, re-mark and let the next pass pick it up.
+
+The slow path is the source of truth — the fast path is an optimization that's allowed to be incomplete (e.g. it can't catch transitive admin-chain expansion or invalidation-driven shrinkage). Both write the same triple shape.
+
+**Materialization contract.** `RoleAssignment` and evidence IRIs are deterministic (e.g. derived from `space_ref + role + agent` and from `assignment + source_nanopub`) so fast-path and recompute writes are idempotent and don't produce duplicate objects between the two.
 
 ### Phase 3 — Routes, Metrics, Invalidation, Unloading
 
