@@ -4,7 +4,7 @@
 
 Today Nanodash computes Space membership client-side via a chain of API queries (`GET_ADMINS` → `GET_SPACE_MEMBER_ROLES` → `GET_SPACE_MEMBERS` → `GET_VIEW_DISPLAYS`) against `full`/`meta`. It's slow and puts the membership logic in the wrong place.
 
-This plan moves that calculation server-side: each space gets its own dynamic repo `space_<spaceRef>` (sibling to the existing `type_<HASH>` / `pubkey_<HASH>` repos) holding all space-management nanopubs. Validated authority is pre-computed and materialized into the repo's admin graph so consumers can answer "who's an admin of S? what views apply to S?" with one SPARQL query.
+This plan moves that calculation server-side. A single new repo `spaces` holds, per-space, a named graph of *derived* authority data: who's admin/maintainer, the resolved role assignments with evidence, the validated view displays, and the space's profile metadata. Source nanopubs continue to live in `full`/`meta`; the `spaces` repo is purely the projection. Consumers answer "who's an admin of S? what views apply to S?" with one SPARQL query against `spaces`, no `SERVICE` join needed.
 
 ## Space Identity
 
@@ -14,7 +14,9 @@ A space is identified by a **space ref** of the form `<NPID>_<SPACEIRIHASH>`:
 - **NPID** — the trusty-URI artifact code of the **root nanopub**.
 - **SPACEIRIHASH** — `Utils.createHash(<Space IRI>)`, same hashing pattern as `type_<HASH>`.
 
-The space ref is the repo-name suffix directly: `space_<NPID>_<SPACEIRIHASH>`. Globally unique by construction (artifact codes are content-addressed). Human-decodable by splitting on `_`. A single root nanopub can declare multiple Space IRIs.
+Globally unique by construction (artifact codes are content-addressed). Human-decodable by splitting on `_`. A single root nanopub can declare multiple Space IRIs.
+
+Within the `spaces` repo, each space has its own named graph. Sketch IRI: `<http://purl.org/nanopub/admin/space/<spaceRef>>` — pin the exact namespace at implementation time.
 
 ### Root nanopub resolution
 
@@ -24,7 +26,7 @@ Every space-defining nanopub (original or update) declares its root via `gen:has
 <spaceIRI> gen:hasRootDefinition <rootNanopubURI> .
 ```
 
-For the root itself this is self-referential (resolved at trusty-URI minting); for any update it points back at the original root. **A `gen:Space`-typed nanopub without this triple is ignored** — no transition fallback. This makes every space-defining nanopub self-describing: no chain walking, no ordering dependency.
+For the root itself this is self-referential (resolved at trusty-URI minting); for any update it points back at the original root. **A `gen:Space`-typed nanopub without this triple is ignored** — no transition fallback. Self-describing: no chain walking, no ordering dependency.
 
 ### Role types
 
@@ -39,59 +41,58 @@ Four predefined `gen:SpaceMemberRole` subclasses form the authority hierarchy:
 
 Per-tier privilege enforcement (`core`/`structure`/`content`/`comment`) is Nanodash's concern, out of scope here.
 
-## What Goes Into a Space Repo
+## What's In the `spaces` Repo
 
-Loaded permissively — anything in the assertion that references a known space ref:
+Per space, in its named graph, the projection holds **only what's derived or extracted** — never raw nanopubs. Each entry carries `npa:viaNanopub` provenance back to the source in `full`.
 
-- The space-defining nanopub itself (type `gen:Space`)
-- `gen:hasAdmin`, `gen:hasMaintainer` declarations
-- Role-definition nanopubs (declare a user-defined role predicate for the space)
-- Role-assignment nanopubs using a learned role property
-- `gen:isDisplayFor` view-display nanopubs
-- A catch-all for anything else mentioning the space ref (handles ordering/learning gaps)
+- **Space profile** — root NPID, Space IRI, description, dates, alt IDs, declared subtypes.
+- **Authority extracts** — the `gen:hasAdmin` / `gen:hasMaintainer` triples copied from source assertions, each tagged with the source nanopub and the publisher's resolved agent. These are the *inputs* the materializer iterates to compute closures.
+- **Role definitions** — for each user-defined role predicate registered for the space: predicate IRI, declared role type (defaulting to `gen:ObserverRole`), label, template URI, regular/inverse property metadata.
+- **`RoleAssignment` objects** — one per `(agent, role, space)` tuple, with one or more `npa:hasEvidence` links (see below).
+- **Validated view displays** — for each `gen:isDisplayFor` source whose publisher passes the view-display policy: display IRI, target resource, applies-to/namespace/instances rules, template URI, source nanopub.
 
-**Not included** (deprecated): `hasPinnedTemplate`, `hasPinnedQuery`. These will not be supported after the Nanodash migration.
-
-Why not "all nanopubs from all members"? Circular dependency (membership before populating), retroactive backfill on each join, data duplication, complex unloading.
+**Explicitly not in the `spaces` repo**:
+- Source nanopubs themselves (in `full`).
+- `hasPinnedTemplate` / `hasPinnedQuery` — deprecated, dropped after the Nanodash migration.
+- A catch-all "any nanopub mentioning the space ref" — the extraction set above is the contract; new Nanodash needs are met by extending the materializer, not by hoarding raw data.
 
 ## Authority: evidence + policy
 
-Membership is not a flat triple match — it's a closure over delegation chains, validated against the trust-state mirror in the `trust` repo. To keep consumer queries simple, the validated state is **materialized** into the space repo's `npa:graph`. Materialization writes *evidence* (with kind), not a policy verdict; the per-tier policy is a query-time filter that can change without re-loading.
+Membership is the fixed-point closure of a delegation chain, validated against the trust-state mirror in the `trust` repo. Validated state is materialized into the space's graph as evidence-bearing assignment objects so consumers query plain SPARQL — no `SERVICE` join needed at read time.
 
 ### Closures (admin, then maintainer)
 
-The **admin** closure starts from the root nanopub's `gen:hasAdmin` triples (trusted by construction — the root NPID is part of the space ref) and grows by accepting any further `gen:hasAdmin` declaration whose publisher pubkey resolves (via trust state) to an existing admin. Iterate to fixed point. The **maintainer** closure runs the same way over `gen:hasMaintainer`, seeded from grants by closed admins, accepting further grants from admins or existing maintainers.
-
-The closures are computed in Java (SPARQL 1.1 has no fixed-point recursion).
+The **admin** closure starts from the root nanopub's `gen:hasAdmin` triples (trusted by construction — the root NPID is part of the space ref) and grows by accepting any further `gen:hasAdmin` declaration whose publisher pubkey resolves (via trust state) to an existing admin. Iterate to fixed point. The **maintainer** closure runs the same way over `gen:hasMaintainer`, seeded from grants by closed admins, accepting further grants from admins or existing maintainers. Computed in Java (SPARQL 1.1 has no fixed-point recursion).
 
 ### Two evidence kinds
 
 Every nanopub matching a registered role property is classified into one or more:
-
 - **`npa:authorityEvidence`** — publisher resolves to an agent in the appropriate authority closure for that role tier.
 - **`npa:selfEvidence`** — publisher resolves to the assigned-member agent itself.
 
-Both can apply to the same nanopub. Nanopubs that match neither are not materialized as evidence (they remain in the repo as raw data and can be reclassified if policy ever changes).
+Both can apply to the same nanopub. Nanopubs that match neither are *not* materialized.
 
 ### Materialized shape
 
-In `npa:graph` of each space repo: one `npa:RoleAssignment` per `(agent, role, space)` tuple, linking to one or more evidence objects:
+In the space's graph: one `npa:RoleAssignment` per `(agent, role, space)` tuple, linking to one or more evidence objects. Each evidence object records both the source nanopub *and* the resolved publisher agent — so consumer queries don't need to touch the trust repo.
 
 ```turtle
-GRAPH npa:graph {
+GRAPH <npa:space/spaceRef> {
   _:r1 a npa:RoleAssignment ;
-       npa:forSpace    <spaceRef> ;
-       npa:role        <roleIri> ;       # gen:AdminRole, gen:MaintainerRole, or a user-defined role IRI
-       npa:agent       <agent> ;
-       npa:hasEvidence _:e1, _:e2 .
-  _:e1 npa:evidenceKind npa:authorityEvidence ;
-       npa:viaNanopub   <granting_np> .
-  _:e2 npa:evidenceKind npa:selfEvidence ;
-       npa:viaNanopub   <self_confirm_np> .
+       npa:forSpace          <spaceRef> ;
+       npa:role              <roleIri> ;       # gen:AdminRole, gen:MaintainerRole, or a user-defined role IRI
+       npa:agent             <agent> ;
+       npa:hasEvidence       _:e1, _:e2 .
+  _:e1 npa:evidenceKind      npa:authorityEvidence ;
+       npa:viaNanopub        <granting_np> ;
+       npa:viaPublisherAgent <publisherAgent> .  # resolved at materialization time
+  _:e2 npa:evidenceKind      npa:selfEvidence ;
+       npa:viaNanopub        <self_confirm_np> ;
+       npa:viaPublisherAgent <agent> .            # same as the assignee, by definition
 }
 ```
 
-Predicate names are working titles — pin them at implementation time.
+Predicate names are working titles — pin at implementation time. `RoleAssignment` and evidence IRIs are deterministic (e.g. derived from `space_ref + role + agent` and from `assignment + source_nanopub`) so fast-path and recompute writes are idempotent.
 
 ### Policy table
 
@@ -104,95 +105,69 @@ Applied at query time:
 | `gen:MemberRole`     | authority   | authority + self |
 | `gen:ObserverRole`   | self        | (unchanged) |
 
-Phase 1 is single-evidence per tier. Switching a tier to dual confirmation later is a SPARQL change in consumer queries — no re-materialization, since both kinds are already collected.
-
-### Re-materialization
-
-Recompute the closures, reclassify evidence, and rewrite `npa:graph`'s authority triples (one transaction per space repo) when:
-
-- A new authority/role-related nanopub lands in the space repo (admin/maintainer grant, role definition, role assignment).
-- The trust-state pointer flips (publisher → agent mapping may have changed → recompute every space).
-- Supersession or invalidation removes a nanopub from the inputs.
-
-Atomic per space repo. Eventual-consistency semantics — queries between trigger and recompute see the previous state.
+Switching a tier to dual confirmation later is a SPARQL change in consumer queries — both kinds are already collected.
 
 ### Decisions worth flagging
 
 - **Closure-based, not time-ordered.** A grant counts whenever the granter is *ever* established as admin, not only at publication time. Simpler; revisit if attacks appear.
 - **Sticky, non-cascading revocation.** Revoking A doesn't auto-revoke B (whom A admin'd). Cascading is a recurring source of surprise.
+- **Trust repo stays separate.** Different lifecycle (registry-mirrored, snapshotted) and different update cadence; merging would muddy the model. The materializer is the only piece that joins trust + spaces, in Java where the closure logic lives.
 
 ## Implementation Phases
 
-### Phase 1 — Detection & Loading
+### Phase 1 — Detection & Extraction
 
 Done in `NanopubLoader` + a new `SpaceRegistry` (in-memory, persisted to the admin repo).
 
-- `SpaceRegistry`: tracks known space refs and the role properties learned per space; reverse index Space IRI → space refs. Loaded from admin repo on startup, updated as new nanopubs arrive.
-- Detection in the loader (constructor / type-extraction site): match the categories listed in [What Goes Into a Space Repo](#what-goes-into-a-space-repo). For `gen:Space`-typed nanopubs, validate `gen:hasRootDefinition` and derive the space ref before registering.
-- Loading in `executeLoading`: same shape as the existing `type_` loop, except the space ref goes directly into the repo name (no `Utils.createHash` indirection).
-- `TripleStore.initNewRepo`: add a `space_` branch that records `npa:hasCoverageItem` (the space ref as a literal) and `npa:hasCoverageFilter`. No coverage-hash entry — the ref isn't hashed. Consider lighter indexes (3 instead of 6, like meta repos) — space repos are small.
+- `SpaceRegistry`: tracks known space refs and the role properties learned per space; reverse index Space IRI → space refs. Loaded from admin repo on startup.
+- Detection in the loader (constructor / type-extraction site): identify nanopubs that contribute to a known space — `gen:Space` (with required `gen:hasRootDefinition`), `gen:hasAdmin`/`gen:hasMaintainer`, role definitions for known spaces, role-assignments matching learned role properties, `gen:isDisplayFor` referencing a known space ref, root-nanopub profile data.
+- For each detected nanopub, **extract** the relevant triples (not the whole nanopub) into the corresponding space graph in the `spaces` repo, tagged with `npa:viaNanopub` provenance. The extraction set is the schema in [What's In the `spaces` Repo](#whats-in-the-spaces-repo).
+- `TripleStore`: one-time `spaces` repo init (not a per-prefix branch). Lighter indexes are fine — the repo is small.
 
 ### Phase 2 — Authority Materialization
 
-A new `AuthorityResolver` owns closure computation, evidence classification, and the materialization write to `npa:graph`. Pure writer; consumers read with plain SPARQL.
+A new `AuthorityResolver` owns closure computation, evidence classification (including resolving publisher pubkey → agent via the trust repo), view-display validation, and the materialization write to the space's graph in `spaces`. Pure writer; consumers read with plain SPARQL.
 
 **Update flow.** Two paths cooperate:
 
-- **Fast path (in the loader, same transaction as the raw nanopub write).** When an authority-relevant nanopub lands, classify it against the *current* materialized state and trust state and emit any evidence triple it directly contributes. Covers all purely additive cases — admin-grants-maintainer, observer-self-assigns, admin-assigns-member, any self-evidence — so the new membership is visible inside the same load cycle.
-- **Slow path (worker thread, debounced).** The resolver maintains a `Set<spaceRef>` of dirty spaces. Loader writes (fast or otherwise) and invalidations call `markDirty(ref)`; trust-state pointer flips call `markAllDirty()`. A worker drains the set, running one full recompute per dirty space — clear all `RoleAssignment` + evidence triples in `npa:graph`, recompute closures, reclassify all evidence, rewrite. One serializable transaction per recompute; idempotent; re-emits whatever the fast path wrote plus any transitive unlocks. If a `markDirty` arrives mid-recompute, re-mark and let the next pass pick it up.
+- **Fast path (in the loader, same transaction as the extraction write).** When an authority-relevant extract lands, classify it against the *current* materialized state and trust state and emit any evidence triple (with resolved publisher agent) it directly contributes. Covers all purely additive cases — admin-grants-maintainer, observer-self-assigns, admin-assigns-member, any self-evidence — so the new membership is visible inside the same load cycle.
+- **Slow path (worker thread, debounced).** The resolver maintains a `Set<spaceRef>` of dirty spaces. Loader writes (fast or otherwise) and invalidations call `markDirty(ref)`; trust-state pointer flips call `markAllDirty()`. A worker drains the set, running one full recompute per dirty space — clear all `RoleAssignment` + evidence + validated-view-display triples in the space graph, recompute closures, reclassify all evidence and re-validate displays, rewrite. One serializable transaction per recompute; idempotent; re-emits whatever the fast path wrote plus any transitive unlocks. If `markDirty` arrives mid-recompute, re-mark.
 
 The slow path is the source of truth — the fast path is an optimization that's allowed to be incomplete (e.g. it can't catch transitive admin-chain expansion or invalidation-driven shrinkage). Both write the same triple shape.
 
-**Materialization contract.** `RoleAssignment` and evidence IRIs are deterministic (e.g. derived from `space_ref + role + agent` and from `assignment + source_nanopub`) so fast-path and recompute writes are idempotent and don't produce duplicate objects between the two.
-
 ### Phase 3 — Routes, Metrics, Invalidation, Unloading
 
-Wiring around the new repo type, all in existing files (`MainVerticle`, `MetricsCollector`, `NanopubLoader`):
-
-- `/spaces` listing endpoint (mirrors `/types`); `for-space` redirect parameter; include `space_` repos in the dynamic-repo filter on the main listing.
-- A space-repo gauge in `MetricsCollector`.
-- Invalidation propagation: when a nanopub is invalidated, mirror the invalidation into any space repos it had been loaded into. Triggers a re-materialization for those spaces.
+- `/spaces` listing endpoint: enumerates known spaces from `SpaceRegistry`. `for-space?ref=<spaceRef>` redirects to a query against the `spaces` repo, scoped to that space's named graph.
+- A `MetricsCollector` gauge for `#known spaces`.
+- Invalidation propagation: when a source nanopub is invalidated, look up its affected spaces in `SpaceRegistry`'s reverse index, remove its extracted triples from those space graphs, and `markDirty(ref)` for each. The slow-path recompute does the rest.
 - Unloading:
   - **Member removal** — handled by standard invalidation; no extra logic.
-  - **Root supersession** — the new root carries `gen:hasRootDefinition` pointing back at the original, so it resolves to the same space ref and lands in the same repo.
-  - **Space dissolution** — when a root is retracted with no superseder, mark the space dissolved in `SpaceRegistry`; a periodic job clears dissolved space repos (pattern similar to `last30d` cleanup).
+  - **Root supersession** — the new root carries `gen:hasRootDefinition` pointing back at the original, so it resolves to the same space ref. Same graph.
+  - **Space dissolution** — when a root is retracted with no superseder, mark the space dissolved in `SpaceRegistry`; a periodic job drops the space's graph (pattern similar to `last30d` cleanup).
 
 ### Phase 4 — Nanodash Migration
 
 Two contracts to honor on Nanodash's side, then a query rewrite:
 
 - **Publishing:** space-defining nanopub templates must include `<spaceIRI> gen:hasRootDefinition <rootNanopubURI>` (self-referential for new spaces, original-root for updates). Pre-existing space nanopubs without this triple need to be republished to be picked up.
-- **Querying:** replace `Space.triggerSpaceDataUpdate()`'s 4-query chain with SPARQL against the `space_<spaceRef>` repo. Replace `AbstractResourceWithProfile.GET_VIEW_DISPLAYS` admin-pubkey gate with a join against the materialized `npa:RoleAssignment` triples + a SERVICE join to the trust repo to map publisher pubkeys to agents. The view-display query shape (sketch — refine at implementation):
+- **Querying:** replace `Space.triggerSpaceDataUpdate()`'s 4-query chain with a single SPARQL query against `spaces`, scoped to the space's named graph. Replace `AbstractResourceWithProfile.GET_VIEW_DISPLAYS` with a query against the materialized validated-display triples — no admin-pubkey gate, no `SERVICE` join. Sketch:
 
   ```sparql
-  SELECT ?display WHERE {
-    GRAPH ?np { ?display gen:isDisplayFor <SPACE_REF> . }
-    GRAPH ?npPubinfo { ?np nptemp:hasPubkey ?pubkey . }
-    GRAPH npa:graph {
-      ?ra a npa:RoleAssignment ;
-          npa:forSpace <SPACE_REF> ;
-          npa:role     ?role ;
-          npa:agent    ?publisherAgent ;
-          npa:hasEvidence [ npa:evidenceKind npa:authorityEvidence ] .
-      FILTER(?role IN (gen:AdminRole, gen:MaintainerRole))
-    }
-    SERVICE <…/repo/trust> {
-      GRAPH npa:graph { npa:thisRepo npa:hasCurrentTrustState ?ts }
-      GRAPH ?ts {
-        ?_ npa:agent ?publisherAgent ; npa:pubkey ?pubkey ;
-           npa:trustStatus ?status .
-        FILTER(?status IN (npa:loaded, npa:toLoad))
-      }
+  SELECT ?display ?template WHERE {
+    GRAPH <npa:space/SPACE_REF> {
+      ?vd a npa:ValidatedViewDisplay ;
+          npa:displayIri ?display ;
+          npa:templateUri ?template .
     }
   }
   ```
 
-  Until maintainer detection is fully wired, the maintainer set is empty and the filter degenerates to admins-only. Switching any tier to dual confirmation later just adds a second `npa:hasEvidence` triple.
-- Drop the pinned-templates / pinned-queries calls; those features are deprecated.
+  Switching to dual confirmation later just adds a second `npa:hasEvidence` BGP triple in the relevant authority queries.
+- Drop the pinned-templates / pinned-queries calls; deprecated.
 
 ## Bootstrap (existing deployments)
 
-On first deployment with space repos enabled, scan `meta` for `gen:Space`-typed nanopubs to discover roots, then scan `full` for nanopubs referencing each discovered space ref, and load into the corresponding `space_` repo. Re-run authority materialization for each. Restartable; tracked in the admin repo.
+On first deployment with the `spaces` repo enabled, scan `meta` for `gen:Space`-typed nanopubs to discover roots, then scan `full` for nanopubs whose assertions contribute to each discovered space (the same detection logic as the loader uses). For each, extract into the corresponding space graph and run the materializer. Restartable; tracked in the admin repo.
 
 The same catch-up pattern handles the in-stream ordering case where a referencing nanopub arrives before the space-defining one: re-scan after each new space is discovered.
 
@@ -200,12 +175,12 @@ The same catch-up pattern handles the in-stream ordering case where a referencin
 
 | File | Role |
 |------|------|
-| `NanopubLoader.java`     | Detection + space-repo loading + invalidation propagation |
-| `TripleStore.java`       | `space_` branch in `initNewRepo` |
-| `MainVerticle.java`      | `/spaces` route, `for-space` redirect, dynamic-repo filter |
-| `MetricsCollector.java`  | Space-repo gauge |
-| **New:** `SpaceRegistry.java`     | Known spaces + learned role properties; admin-repo persistence |
-| **New:** `AuthorityResolver.java` | Closure computation, evidence classification, materialization write |
+| `NanopubLoader.java`     | Detection + triple extraction into the `spaces` repo + invalidation propagation |
+| `TripleStore.java`       | One-time `spaces` repo init |
+| `MainVerticle.java`      | `/spaces` route, `for-space` redirect (graph-addressed) |
+| `MetricsCollector.java`  | Known-spaces gauge |
+| **New:** `SpaceRegistry.java`     | Known spaces + learned role properties + per-nanopub reverse index; admin-repo persistence |
+| **New:** `AuthorityResolver.java` | Closure computation, evidence classification (incl. publisher-agent resolution), view-display validation, materialization write |
 
 ## Open / deferred
 
@@ -214,10 +189,11 @@ The same catch-up pattern handles the in-stream ordering case where a referencin
 - **Cryptographic linking** of admin agents to intro nanopubs / pubkeys (currently agent IRIs are taken at face value; the trust-state mirror only validates the *publisher* of authority nanopubs).
 - **Dual-confirmation policies** per tier (the materialization already supports this; just flip the policy table and update consumer queries).
 - **Multi-registry support** — single registry source assumed.
+- **New consumer data needs** — extend the materializer's extraction set rather than reintroducing catch-all raw-nanopub loading. If the extraction set proves chronically incomplete, revisit the choice.
 
 ## Verification
 
-- Unit tests for `SpaceRegistry` and `AuthorityResolver` (closures, evidence classification, idempotence of rematerialize).
-- Integration tests with fixture nanopubs covering: space definition with hasRootDefinition, admin chain depth ≥ 2, role definition + matching role assignment, ViewDisplay published by an admin vs. a non-admin, supersession of an admin grant, trust-state pointer flip, root retraction + space dissolution.
-- End-to-end against a local `nanopub-registry` instance: confirm the `space_<ref>` repo is populated and `npa:graph` carries the expected `RoleAssignment` triples.
-- Nanodash side: a Space page renders correctly using only the new space-repo queries.
+- Unit tests for `SpaceRegistry` and `AuthorityResolver` (closures, evidence classification, view-display validation, idempotence of rematerialize, fast-path correctness under concurrent extracts).
+- Integration tests with fixture nanopubs covering: space definition with `gen:hasRootDefinition`, admin chain depth ≥ 2, role definition + matching role assignment, ViewDisplay published by an admin vs. a non-admin (only the former materialized), supersession of an admin grant, trust-state pointer flip, root retraction + space dissolution.
+- End-to-end against a local `nanopub-registry`: confirm the `spaces` repo's space graph holds the expected `RoleAssignment` and `ValidatedViewDisplay` triples, with `npa:viaNanopub` and `npa:viaPublisherAgent` populated.
+- Nanodash side: a Space page renders correctly using only the new `spaces`-repo queries, with no `SERVICE` join to `trust`.
