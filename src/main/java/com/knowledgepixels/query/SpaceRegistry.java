@@ -13,12 +13,13 @@ import org.slf4j.LoggerFactory;
 /**
  * In-memory registry of known spaces. A <b>space ref</b> uniquely identifies a space
  * as the concatenation of its root nanopub's artifact code and the hash of its Space
- * IRI: {@code <rootNanopubId>_<SPACEIRIHASH>}. The space ref is used directly as the
- * suffix of the {@code space_<spaceRef>} RDF4J repository name.
+ * IRI: {@code <rootNanopubId>_<SPACEIRIHASH>}. Each space gets its own named graph
+ * {@code npas:<spaceRef>} in the shared {@code spaces} repo (see
+ * {@link com.knowledgepixels.query.vocabulary.NPAS}).
  *
  * <p>This skeleton only tracks what is needed to recognize space refs during nanopub
- * detection. Initial admin sets, role properties, and admin-repo persistence will be
- * added in later steps when they have a consumer. See
+ * detection. Role-property tracking, per-source-nanopub reverse index, and admin-repo
+ * persistence are added in later steps when they have a consumer. See
  * {@code doc/plan-space-repositories.md} for the full roadmap.
  */
 public class SpaceRegistry {
