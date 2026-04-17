@@ -11,7 +11,10 @@ import org.nanopub.vocabulary.NPA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.knowledgepixels.query.vocabulary.GEN;
 import com.knowledgepixels.query.vocabulary.NPAS;
+
+import net.trustyuri.TrustyUriUtils;
 
 /**
  * Admin-repo persistence for {@link SpaceRegistry}'s known {@code (spaceRef, spaceIri)}
@@ -88,6 +91,77 @@ public class SpacesAdminStore {
             }
         } catch (Exception ex) {
             log.info("Spaces bootstrap: failed to read persisted spaces: {}", ex.toString());
+        }
+    }
+
+    /**
+     * Re-derives the known-spaces set by scanning the existing {@code type_<HASH>}
+     * repo for {@link GEN#SPACE}. For each {@code <spaceIri> gen:hasRootDefinition
+     * <rootUri>} triple found in any nanopub assertion there, registers the space
+     * in {@link SpaceRegistry} and persists it via {@link #persistSpace} (so the
+     * admin-repo state catches up).
+     *
+     * <p>Intended to run once at startup, after {@link #bootstrap}. Idempotent:
+     * spaces already known to the registry are detected via the {@code wasNew}
+     * signal and skipped. Lets existing deployments pick up space-defining
+     * nanopubs that were loaded before this code shipped, without a fresh DB.
+     *
+     * <p>If the type repo doesn't exist (no {@code gen:Space}-typed nanopub has
+     * ever been loaded), this is a no-op. Failures are logged at INFO and don't
+     * propagate; the loader will eventually re-derive state as new nanopubs flow.
+     *
+     * @param registry the registry to seed
+     */
+    public static void scanExistingSpaces(SpaceRegistry registry) {
+        String typeRepo = "type_" + Utils.createHash(GEN.SPACE);
+        if (!TripleStore.get().getRepositoryNames().contains(typeRepo)) {
+            log.info("Spaces scan: no {} repo yet — skipping", typeRepo);
+            return;
+        }
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(typeRepo)) {
+            // The type_<hash(gen:Space)> repo holds only gen:Space-typed nanopubs,
+            // so any hasRootDefinition triple in any assertion graph here belongs
+            // to a Space-defining nanopub. Walking np -> assertion graph keeps the
+            // result tied to its source nanopub for logging and provenance.
+            String query = """
+                    PREFIX np:  <http://www.nanopub.org/nschema#>
+                    PREFIX gen: <https://w3id.org/kpxl/gen/terms/>
+                    SELECT ?np ?spaceIri ?rootUri WHERE {
+                      GRAPH ?head {
+                        ?np a np:Nanopublication ;
+                            np:hasAssertion ?assertion .
+                      }
+                      GRAPH ?assertion {
+                        ?spaceIri gen:hasRootDefinition ?rootUri .
+                      }
+                    }
+                    """;
+            int seen = 0;
+            int registered = 0;
+            try (TupleQueryResult result =
+                         conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+                while (result.hasNext()) {
+                    seen++;
+                    var binding = result.next();
+                    if (!(binding.getValue("spaceIri") instanceof IRI spaceIri)) continue;
+                    if (!(binding.getValue("rootUri") instanceof IRI rootUri)) continue;
+                    String rootNanopubId = TrustyUriUtils.getArtifactCode(rootUri.stringValue());
+                    if (rootNanopubId == null || rootNanopubId.isEmpty()) {
+                        log.warn("Spaces scan: ignoring {} — gen:hasRootDefinition target is not a trusty URI: {}",
+                                spaceIri, rootUri);
+                        continue;
+                    }
+                    SpaceRegistry.Registration reg = registry.registerSpace(rootNanopubId, spaceIri);
+                    if (reg.wasNew()) {
+                        persistSpace(rootNanopubId, spaceIri);
+                        registered++;
+                    }
+                }
+            }
+            log.info("Spaces scan: examined {} hasRootDefinition triple(s); newly registered {} space(s)",
+                    seen, registered);
+        } catch (Exception ex) {
+            log.info("Spaces scan: failed to scan {}: {}", typeRepo, ex.toString());
         }
     }
 
