@@ -724,7 +724,11 @@ public class NanopubLoader {
                 log.warn("Ignoring space {}: gen:hasRootDefinition target is not a trusty URI: {}", spaceIri, rootUri);
                 continue;
             }
-            spaceRefs.add(SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri));
+            SpaceRegistry.Registration registration = SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri);
+            spaceRefs.add(registration.spaceRef());
+            if (registration.wasNew()) {
+                SpacesAdminStore.persistSpace(rootNanopubId, spaceIri);
+            }
         }
         return spaceRefs;
     }

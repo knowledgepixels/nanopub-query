@@ -490,6 +490,10 @@ public class MainVerticle extends AbstractVerticle {
             // we already have.
             TrustStateLoader.bootstrap();
 
+            // Seed the SpaceRegistry from any persisted (spaceRef, spaceIri) pairs
+            // so previously-known spaces survive a restart.
+            SpacesAdminStore.bootstrap(SpaceRegistry.get());
+
             // Start periodic nanopub loading
             log.info("Starting periodic nanopub loading...");
             var executor = Executors.newSingleThreadScheduledExecutor();

@@ -42,9 +42,21 @@ public class SpaceRegistry {
 
     private final Set<String> knownSpaceRefs = new LinkedHashSet<>();
     private final Map<IRI, Set<String>> spaceIriToSpaceRefs = new HashMap<>();
+    private final Map<String, Set<RoleProperty>> roleProperties = new HashMap<>();
+    private final Map<IRI, Set<String>> sourceNanopubsToSpaceRefs = new HashMap<>();
 
     private SpaceRegistry() {
     }
+
+    /**
+     * Result of a {@link #registerSpace(String, IRI)} call: the resolved space ref
+     * and whether the call newly added it to the registry.
+     *
+     * @param spaceRef the space ref of the form {@code <rootNanopubId>_<SPACEIRIHASH>}
+     * @param wasNew   {@code true} if this call added a new space, {@code false} if
+     *                 it was already known
+     */
+    public record Registration(String spaceRef, boolean wasNew) { }
 
     /**
      * Registers a space defined by the given root nanopub and Space IRI. Idempotent:
@@ -54,16 +66,16 @@ public class SpaceRegistry {
      * @param rootNanopubId artifact code (e.g. {@code RA...}) of the root nanopub, as
      *                      resolved by the caller via {@code gen:hasRootDefinition}
      * @param spaceIri      the Space IRI declared in the root nanopub's assertion
-     * @return the space ref, of the form {@code <rootNanopubId>_<SPACEIRIHASH>}
+     * @return the registration result: the space ref and whether it was newly added
      */
-    public String registerSpace(String rootNanopubId, IRI spaceIri) {
+    public Registration registerSpace(String rootNanopubId, IRI spaceIri) {
         String spaceRef = rootNanopubId + "_" + Utils.createHash(spaceIri);
         boolean added = knownSpaceRefs.add(spaceRef);
         spaceIriToSpaceRefs.computeIfAbsent(spaceIri, k -> new LinkedHashSet<>()).add(spaceRef);
         if (added) {
             log.info("Registered space ref: {}", spaceRef);
         }
-        return spaceRef;
+        return new Registration(spaceRef, added);
     }
 
     /**
@@ -109,6 +121,72 @@ public class SpaceRegistry {
      */
     public Set<String> findSpaceRefsBySpaceIri(IRI spaceIri) {
         Set<String> refs = spaceIriToSpaceRefs.get(spaceIri);
+        return refs == null ? Collections.emptySet() : Collections.unmodifiableSet(refs);
+    }
+
+    /**
+     * Registers a role property learned for the given space (typically from a
+     * role-definition nanopub). Idempotent: re-registering the same property is a
+     * no-op.
+     *
+     * @param spaceRef     the space the property belongs to
+     * @param roleProperty the property to register
+     * @return {@code true} if newly added, {@code false} if already known
+     * @throws IllegalArgumentException if the space ref is not registered
+     */
+    public boolean registerRoleProperty(String spaceRef, RoleProperty roleProperty) {
+        if (!knownSpaceRefs.contains(spaceRef)) {
+            throw new IllegalArgumentException("Unknown space ref: " + spaceRef);
+        }
+        return roleProperties.computeIfAbsent(spaceRef, k -> new LinkedHashSet<>()).add(roleProperty);
+    }
+
+    /**
+     * Returns the role properties learned for the given space.
+     *
+     * @param spaceRef the space ref to look up
+     * @return an unmodifiable set of registered role properties (empty if the space
+     *         has none, or if the space ref isn't registered)
+     */
+    public Set<RoleProperty> getRoleProperties(String spaceRef) {
+        Set<RoleProperty> props = roleProperties.get(spaceRef);
+        return props == null ? Collections.emptySet() : Collections.unmodifiableSet(props);
+    }
+
+    /**
+     * Records that the given source nanopub contributed extracted triples to the
+     * given space. Used at invalidation time to find which spaces need re-materializing
+     * when a source nanopub is invalidated.
+     *
+     * @param sourceNanopubUri the URI of the source nanopub
+     * @param spaceRef         the space ref the nanopub contributed to
+     */
+    public void recordSourceNanopub(IRI sourceNanopubUri, String spaceRef) {
+        sourceNanopubsToSpaceRefs.computeIfAbsent(sourceNanopubUri, k -> new LinkedHashSet<>()).add(spaceRef);
+    }
+
+    /**
+     * Returns the set of space refs the given source nanopub contributed to.
+     *
+     * @param sourceNanopubUri the URI of the source nanopub
+     * @return an unmodifiable set (empty if the nanopub contributed to no spaces)
+     */
+    public Set<String> getSpaceRefsForSource(IRI sourceNanopubUri) {
+        Set<String> refs = sourceNanopubsToSpaceRefs.get(sourceNanopubUri);
+        return refs == null ? Collections.emptySet() : Collections.unmodifiableSet(refs);
+    }
+
+    /**
+     * Removes the source-nanopub → space-refs mapping for the given source. Called
+     * after an invalidation has been propagated and the affected spaces have been
+     * marked dirty.
+     *
+     * @param sourceNanopubUri the URI of the source nanopub
+     * @return the set of space refs the source had contributed to before removal
+     *         (empty if it wasn't tracked)
+     */
+    public Set<String> removeSourceNanopub(IRI sourceNanopubUri) {
+        Set<String> refs = sourceNanopubsToSpaceRefs.remove(sourceNanopubUri);
         return refs == null ? Collections.emptySet() : Collections.unmodifiableSet(refs);
     }
 
