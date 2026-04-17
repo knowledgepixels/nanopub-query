@@ -356,8 +356,10 @@ public class TripleStore {
                 // Full isolation, just in case.
                 conn.begin(IsolationLevels.SERIALIZABLE);
                 conn.add(NPA.THIS_REPO, NPA.HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NPA.GRAPH);
-                conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(0L), NPA.GRAPH);
-                conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NPA.GRAPH);
+                if (tracksNanopubCountAndChecksum(repoName)) {
+                    conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(0L), NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, vf.createLiteral(NanopubUtils.INIT_CHECKSUM), NPA.GRAPH);
+                }
                 if (repoName.startsWith("pubkey_") || repoName.startsWith("type_")) {
                     String h = repoName.replaceFirst("^[^_]+_", "");
                     conn.add(NPA.THIS_REPO, NPA.HAS_COVERAGE_ITEM, Utils.getObjectForHash(h), NPA.GRAPH);
@@ -369,6 +371,19 @@ public class TripleStore {
             // Refresh repository names cache
             invalidateRepositoryNamesCache();
         }
+    }
+
+    /**
+     * Whether the given repo participates in the cumulative nanopub-count / XOR-checksum
+     * tracking. Repos that maintain ad-hoc content (last30d expires entries; trust and
+     * spaces hold derived state, not raw nanopubs) skip the {@code npa:hasNanopubCount}
+     * and {@code npa:hasNanopubChecksum} initial triples — leaving them at {@code 0} and
+     * the empty-XOR placeholder forever would just be misleading.
+     */
+    private static boolean tracksNanopubCountAndChecksum(String repoName) {
+        return !repoName.equals("last30d")
+                && !repoName.equals("trust")
+                && !repoName.equals("spaces");
     }
 
 }
