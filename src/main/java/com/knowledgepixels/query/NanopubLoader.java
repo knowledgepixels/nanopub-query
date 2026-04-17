@@ -61,7 +61,6 @@ public class NanopubLoader {
     private Statement pubkeyStatement, pubkeyStatementX;
     private List<String> notes = new ArrayList<>();
     private boolean aborted = false;
-    private Set<String> detectedSpaceRefs = Collections.emptySet();
     private static final Logger log = LoggerFactory.getLogger(NanopubLoader.class);
 
 
@@ -237,7 +236,9 @@ public class NanopubLoader {
             // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
             literalFilter += " _type_" + Utils.createHash(typeIri);
         }
-        detectedSpaceRefs = detectAndRegisterSpaces(np);
+        // Side-effecting call: populates SpaceRegistry as gen:Space-typed nanopubs flow through.
+        // Consumers of the registry (extraction, materialization) land in later steps of #62.
+        detectAndRegisterSpaces(np);
         String label = NanopubUtils.getLabel(np);
         if (label != null) {
             metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), NPA.GRAPH));
@@ -343,9 +344,6 @@ public class NanopubLoader {
                 if (!typeIri.stringValue().matches("https?://.*")) continue;
                 runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri)));
                 //			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
-            }
-            for (String spaceRef : detectedSpaceRefs) {
-                runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "space_" + spaceRef));
             }
             //		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
             //			// Exclude locally minted IRIs:
@@ -455,29 +453,17 @@ public class NanopubLoader {
                 if (repoStatus.isLoaded) {
                     log.info("Already loaded: {}", npId);
                 } else {
-                    // Space repos can have nanopubs removed (via invalidation/unloading), so a
-                    // cumulative XOR checksum and count would drift after the first removal.
-                    // Mirror the last30d approach: skip checksum/count maintenance for these
-                    // repos. HAS_LOAD_NUMBER is still added as a presence marker so the
-                    // isLoaded check above remains effective on re-runs.
-                    boolean trackChecksum = !repoName.startsWith("space_");
-                    if (trackChecksum) {
-                        String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
-                        conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, null, NPA.GRAPH);
-                        conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, null, NPA.GRAPH);
-                        conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(repoStatus.count + 1), NPA.GRAPH);
-                        // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded
-                        conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
-                        // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
-                        conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(repoStatus.count), NPA.GRAPH);
-                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadNumber, LOAD_NUMBER, npa:graph, admin, the sequential number at which this NANOPUB was loaded
-                        conn.add(npId, NPA.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
-                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
-                    } else {
-                        // Presence marker only — the numeric value is not meaningful for
-                        // repos that skip checksum/count tracking.
-                        conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(0L), NPA.GRAPH);
-                    }
+                    String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
+                    conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, null, NPA.GRAPH);
+                    conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, null, NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(repoStatus.count + 1), NPA.GRAPH);
+                    // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded
+                    conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
+                    // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
+                    conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(repoStatus.count), NPA.GRAPH);
+                    // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadNumber, LOAD_NUMBER, npa:graph, admin, the sequential number at which this NANOPUB was loaded
+                    conn.add(npId, NPA.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
+                    // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
                     conn.add(npId, NPA.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), NPA.GRAPH);
                     // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
                     conn.add(statements);
@@ -714,8 +700,10 @@ public class NanopubLoader {
      *
      * @param np the nanopub to inspect
      * @return the set of space refs registered from this nanopub (possibly empty);
-     *         the caller uses this to load the nanopub into the corresponding
-     *         {@code space_<spaceRef>} repositories
+     *         currently used by tests to assert detection behavior. Production
+     *         callers invoke this for its side effect on {@link SpaceRegistry};
+     *         downstream consumers (extraction, materialization) follow in later
+     *         steps of #62.
      */
     static Set<String> detectAndRegisterSpaces(Nanopub np) {
         boolean isSpaceTyped = false;
