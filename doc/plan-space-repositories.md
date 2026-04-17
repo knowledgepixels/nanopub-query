@@ -49,7 +49,7 @@ Per space, in its named graph, the projection holds **only what's derived or ext
 - **Authority extracts** — the `gen:hasAdmin` / `gen:hasMaintainer` triples copied from source assertions, each tagged with the source nanopub and the publisher's resolved agent. These are the *inputs* the materializer iterates to compute closures.
 - **Role definitions** — for each user-defined role predicate registered for the space: predicate IRI, declared role type (defaulting to `gen:ObserverRole`), label, template URI, regular/inverse property metadata.
 - **`RoleAssignment` objects** — one per `(agent, role, space)` tuple, with one or more `npa:hasEvidence` links (see below).
-- **Validated view displays** — for each `gen:isDisplayFor` source whose publisher passes the view-display policy: display IRI, target resource, applies-to/namespace/instances rules, template URI, source nanopub.
+- **Validated view displays** — for each `gen:isDisplayFor` source whose publisher passes the view-display policy: display IRI, target resource, linked view (`gen:isDisplayOfView`), title, applies-to / applies-to-namespace / applies-to-instances-of rules, deactivation status (`gen:DeactivatedViewDisplay`), presentation hints (page size, display width, structural position), template URI, source nanopub. Defaults that fall through from the linked view are not duplicated — Nanodash already merges them.
 
 **Explicitly not in the `spaces` repo**:
 - Source nanopubs themselves (in `full`).
@@ -164,6 +164,7 @@ Two contracts to honor on Nanodash's side, then a query rewrite:
 
   Switching to dual confirmation later just adds a second `npa:hasEvidence` BGP triple in the relevant authority queries.
 - Drop the pinned-templates / pinned-queries calls; deprecated.
+- The `space.isAdminPubkey(pubkey)` gate goes away — query results from the `spaces` repo are pre-validated, so post-hoc filtering is unnecessary. For UI permission checks ("is the current user an admin of this space?"), Nanodash maps the logged-in user's pubkey → agent via the `trust` repo (cacheable per session) and matches against the space's admin set in `spaces`. Two cheap lookups, no `SERVICE` join required.
 
 ## Bootstrap (existing deployments)
 
@@ -190,6 +191,7 @@ The same catch-up pattern handles the in-stream ordering case where a referencin
 - **Dual-confirmation policies** per tier (the materialization already supports this; just flip the policy table and update consumer queries).
 - **Multi-registry support** — single registry source assumed.
 - **New consumer data needs** — extend the materializer's extraction set rather than reintroducing catch-all raw-nanopub loading. If the extraction set proves chronically incomplete, revisit the choice.
+- **Audit/history metadata on assignments** — assignment timestamps and grant-chain history aren't materialized today (Nanodash doesn't surface them). Add to evidence objects later if audit views become a need.
 
 ## Verification
 
