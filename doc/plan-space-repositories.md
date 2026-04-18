@@ -94,6 +94,16 @@ GRAPH <npa:space/spaceRef> {
 
 Predicate names are working titles — pin at implementation time. `RoleAssignment` and evidence IRIs are deterministic (e.g. derived from `space_ref + role + agent` and from `assignment + source_nanopub`) so fast-path and recompute writes are idempotent.
 
+Each per-space materialization also records which trust state it was computed against, in the `npa:graph` admin graph of the spaces repo:
+
+```turtle
+GRAPH npa:graph {
+  npas:<spaceRef> npa:basedOnTrustState npat:<trustStateHash> .
+}
+```
+
+Updated atomically with each rematerialization. Consumers can compare it to the trust repo's `npa:thisRepo npa:hasCurrentTrustState …` pointer to detect a stale view (e.g. between a trust-state flip and the slow-path drain catching up). Normal queries don't need this — they read the materialized `viaPublisherAgent` directly — but it makes the eventual-consistency window observable.
+
 ### Policy table
 
 Applied at query time:
