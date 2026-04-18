@@ -521,8 +521,8 @@ public class MainVerticle extends AbstractVerticle {
             // so previously-known spaces survive a restart, then catch up on any
             // gen:Space-typed nanopubs that were already loaded before persistence
             // was wired up (so existing deployments don't need a fresh DB).
-            SpacesAdminStore.bootstrap(SpaceRegistry.get());
-            SpacesAdminStore.scanExistingSpaces(SpaceRegistry.get());
+            SpacesStateStore.bootstrap(SpaceRegistry.get());
+            SpacesStateStore.scanExistingSpaces(SpaceRegistry.get());
 
             // Start periodic nanopub loading
             log.info("Starting periodic nanopub loading...");
