@@ -30,4 +30,10 @@ public class GEN {
      */
     public static final IRI HAS_ROOT_DEFINITION = VocabUtils.createIRI(NAMESPACE, "hasRootDefinition");
 
+    /**
+     * Predicate granting admin role for a space: {@code <spaceIri> gen:hasAdmin <agent>}.
+     * In the MVP this is the only admin-granting mechanism (no user-defined admin roles).
+     */
+    public static final IRI HAS_ADMIN = VocabUtils.createIRI(NAMESPACE, "hasAdmin");
+
 }
