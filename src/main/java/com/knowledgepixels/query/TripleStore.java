@@ -375,13 +375,19 @@ public class TripleStore {
 
     /**
      * Whether the given repo participates in the cumulative nanopub-count / XOR-checksum
-     * tracking. Repos that maintain ad-hoc content (last30d expires entries; trust and
-     * spaces hold derived state, not raw nanopubs) skip the {@code npa:hasNanopubCount}
-     * and {@code npa:hasNanopubChecksum} initial triples — leaving them at {@code 0} and
-     * the empty-XOR placeholder forever would just be misleading.
+     * tracking. Repos that don't hold raw nanopubs skip the
+     * {@code npa:hasNanopubCount} and {@code npa:hasNanopubChecksum} initial triples —
+     * leaving them at {@code 0} and the empty-XOR placeholder forever would just be
+     * misleading. Currently excluded:
+     * <ul>
+     *   <li>{@code admin} — holds metadata only.</li>
+     *   <li>{@code last30d} — content expires on a periodic cleanup.</li>
+     *   <li>{@code trust} and {@code spaces} — hold derived state, not raw nanopubs.</li>
+     * </ul>
      */
     private static boolean tracksNanopubCountAndChecksum(String repoName) {
-        return !repoName.equals("last30d")
+        return !repoName.equals(ADMIN_REPO)
+                && !repoName.equals("last30d")
                 && !repoName.equals("trust")
                 && !repoName.equals("spaces");
     }
