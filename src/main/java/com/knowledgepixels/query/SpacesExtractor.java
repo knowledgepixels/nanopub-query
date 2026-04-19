@@ -86,15 +86,17 @@ public class SpacesExtractor {
 
         // (1) Role-assertion extracts: any <spaceIri> gen:hasAdmin <agent> where
         // spaceIri is currently registered in SpaceRegistry. The triple is in
-        // inverse direction (subject = space, object = agent). The publisher
-        // check (is the publisher actually entitled to grant?) happens at
-        // materialization time, not here.
+        // inverse direction (subject = space, object = agent). gen:hasAdmin is
+        // a built-in predicate hardcoded to gen:AdminRole. The publisher check
+        // (is the publisher actually entitled to grant?) happens at materialization
+        // time, not here.
         for (Statement st : np.getAssertion()) {
             if (!GEN.HAS_ADMIN.equals(st.getPredicate())) continue;
             if (!(st.getSubject() instanceof IRI spaceIri)) continue;
             if (!(st.getObject() instanceof IRI grantedAgent)) continue;
             for (String spaceRef : registry.findSpaceRefsBySpaceIri(spaceIri)) {
-                emitRoleAssertion(out, spaceRef, np.getUri(), GEN.HAS_ADMIN, SpaceExtract.INVERSE, grantedAgent);
+                emitRoleAssertion(out, spaceRef, np.getUri(),
+                        GEN.HAS_ADMIN, SpaceExtract.INVERSE, GEN.ADMIN_ROLE, grantedAgent);
                 contributedSpaces.add(spaceRef);
             }
         }
@@ -144,13 +146,18 @@ public class SpacesExtractor {
     }
 
     private static void emitRoleAssertion(List<Statement> out, String spaceRef, IRI sourceNp,
-                                          IRI rolePredicate, IRI direction, IRI assignedAgent) {
+                                          IRI rolePredicate, IRI direction, IRI role, IRI assignedAgent) {
         IRI graph = NPAS.forSpaceRef(spaceRef);
+        // role is intentionally not in the hash — it's a function of the
+        // predicate (multiple predicates may map to the same role) so adding
+        // it would not increase discrimination, and keeping it out means a
+        // future change to the role binding doesn't churn extract IRIs.
         String payload = rolePredicate.stringValue() + "|" + direction.stringValue() + "|" + assignedAgent.stringValue();
         IRI extract = NPAX.forHash(extractHash(spaceRef, sourceNp, SpaceExtract.ROLE_ASSERTION, payload));
         out.add(vf.createStatement(extract, RDF.TYPE, SpaceExtract.ROLE_ASSERTION, graph));
         out.add(vf.createStatement(extract, SpaceExtract.ROLE_PREDICATE, rolePredicate, graph));
         out.add(vf.createStatement(extract, SpaceExtract.ROLE_DIRECTION, direction, graph));
+        out.add(vf.createStatement(extract, SpaceAuthority.ROLE, role, graph));
         out.add(vf.createStatement(extract, SpaceAuthority.AGENT, assignedAgent, graph));
         out.add(vf.createStatement(extract, SpaceAuthority.VIA_NANOPUB, sourceNp, graph));
     }

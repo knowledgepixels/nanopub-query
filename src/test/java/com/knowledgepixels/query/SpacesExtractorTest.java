@@ -147,10 +147,11 @@ class SpacesExtractorTest {
                 extractIri.stringValue().substring(0, NPAX.NAMESPACE.length()),
                 "extract IRI must use the npax: namespace");
 
-        // Expect the five shape triples, all in the per-space graph context.
+        // Expect the six shape triples, all in the per-space graph context.
         assertEquals(SpaceExtract.ROLE_ASSERTION, findOne(stmts, extractIri, RDF.TYPE).getObject());
         assertEquals(GEN.HAS_ADMIN, findOne(stmts, extractIri, SpaceExtract.ROLE_PREDICATE).getObject());
         assertEquals(SpaceExtract.INVERSE, findOne(stmts, extractIri, SpaceExtract.ROLE_DIRECTION).getObject());
+        assertEquals(GEN.ADMIN_ROLE, findOne(stmts, extractIri, SpaceAuthority.ROLE).getObject());
         assertEquals(ALICE, findOne(stmts, extractIri, SpaceAuthority.AGENT).getObject());
         assertEquals(ROOT_NP_URI, findOne(stmts, extractIri, SpaceAuthority.VIA_NANOPUB).getObject());
         for (Statement s : stmts) {
