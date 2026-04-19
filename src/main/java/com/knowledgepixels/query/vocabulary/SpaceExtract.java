@@ -17,17 +17,16 @@ import org.nanopub.vocabulary.VocabUtils;
  * npax:<hash> a npa:RoleAssertion ;
  *             npa:rolePredicate gen:hasAdmin ;
  *             npa:roleDirection npa:inverse ;
- *             npa:role          gen:AdminRole ;
  *             npa:agent         <orcid:…> ;
  *             npa:viaNanopub    <sourceNp> .
  * }</pre>
  *
- * <p>{@code npa:role} carries the resolved role IRI. For built-in predicates
- * ({@code gen:hasAdmin}, future {@code gen:hasMaintainer}) it's hardcoded; for
- * learned predicates from role-definition nanopubs it's looked up via
- * {@link com.knowledgepixels.query.SpaceRegistry}. Multiple predicates can map
- * to the same role, so this link lets consumer queries group by role without
- * enumerating predicates.
+ * <p>The role IRI is intentionally absent from PR-B1 extracts — Nanodash's
+ * roles are declared in published role-definition nanopubs (e.g. the global
+ * "Build-in admin role" nanopub), not in hardcoded class IRIs. PR-B2 will
+ * extract those role definitions and add an {@code npa:role} link to role
+ * assertions so consumer queries can group by role without enumerating
+ * predicates.
  *
  * <p>Class IRIs discriminate the kind directly via {@code rdf:type} (mirroring
  * the trust-state pattern with {@code npa:TrustState} / {@code npa:AccountState}).

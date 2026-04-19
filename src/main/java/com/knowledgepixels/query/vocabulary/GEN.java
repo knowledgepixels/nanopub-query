@@ -36,10 +36,4 @@ public class GEN {
      */
     public static final IRI HAS_ADMIN = VocabUtils.createIRI(NAMESPACE, "hasAdmin");
 
-    /**
-     * The hardcoded admin role IRI. {@link #HAS_ADMIN} assertions are bound to this role.
-     * Future user-defined roles use IRIs declared by their role-definition nanopubs.
-     */
-    public static final IRI ADMIN_ROLE = VocabUtils.createIRI(NAMESPACE, "AdminRole");
-
 }
