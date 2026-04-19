@@ -24,8 +24,14 @@ import net.trustyuri.TrustyUriUtils;
  *
  * <p>Persisted shape (in the {@code spaces} repo's {@link NPA#GRAPH}):
  * <pre>{@code
- *   <npas:spaceRef> npa:hasSpaceIri <spaceIRI> .
+ *   <npas:spaceRef> npa:hasSpaceIri    <spaceIRI> ;
+ *                   npa:hasRootNanopub <rootNanopubURI> .
  * }</pre>
+ *
+ * <p>The artifact code is encoded in the space ref itself, but the full root
+ * nanopub URI isn't reconstructable in general (the same trusty artifact code
+ * can be hosted under different namespace prefixes), so we store it explicitly
+ * for query convenience.
  *
  * <p>Putting it in the spaces repo (rather than the global admin repo) makes the
  * spaces repo self-contained: a single SPARQL query against {@code spaces}
@@ -50,6 +56,14 @@ public class SpacesStateStore {
      * internal to space-registry persistence.
      */
     static final IRI NPA_HAS_SPACE_IRI = vf.createIRI(NPA.NAMESPACE, "hasSpaceIri");
+
+    /**
+     * Predicate linking a space ref to the URI of its root nanopub. The artifact
+     * code is encoded in the space ref, but the full URI isn't recoverable from
+     * it alone — same trusty artifact code can be hosted under different namespace
+     * prefixes. Stored explicitly for query convenience.
+     */
+    static final IRI NPA_HAS_ROOT_NANOPUB = vf.createIRI(NPA.NAMESPACE, "hasRootNanopub");
 
     private SpacesStateStore() {
     }
@@ -159,7 +173,7 @@ public class SpacesStateStore {
                     }
                     SpaceRegistry.Registration reg = registry.registerSpace(rootNanopubId, spaceIri);
                     if (reg.wasNew()) {
-                        persistSpace(rootNanopubId, spaceIri);
+                        persistSpace(rootNanopubId, spaceIri, rootUri);
                         registered++;
                     }
                 }
@@ -172,19 +186,22 @@ public class SpacesStateStore {
     }
 
     /**
-     * Persists a newly-registered {@code (spaceRef, spaceIri)} pair into the
-     * spaces repo. Idempotent: re-persisting the same pair is harmless (the
-     * SPARQL INSERT just re-asserts an existing triple).
+     * Persists a newly-registered space into the spaces repo, recording both the
+     * Space IRI and the full root-nanopub URI. Idempotent: re-persisting the same
+     * triples is harmless.
      *
-     * @param rootNanopubId artifact code of the root nanopub
-     * @param spaceIri      the Space IRI
+     * @param rootNanopubId  artifact code of the root nanopub
+     * @param spaceIri       the Space IRI
+     * @param rootNanopubUri the full URI of the root nanopub (as stated in the
+     *                       defining {@code gen:hasRootDefinition} triple)
      */
-    public static void persistSpace(String rootNanopubId, IRI spaceIri) {
+    public static void persistSpace(String rootNanopubId, IRI spaceIri, IRI rootNanopubUri) {
         String spaceRef = rootNanopubId + "_" + Utils.createHash(spaceIri);
         IRI refIri = NPAS.forSpaceRef(spaceRef);
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
             conn.begin(IsolationLevels.SERIALIZABLE);
             conn.add(refIri, NPA_HAS_SPACE_IRI, spaceIri, NPA.GRAPH);
+            conn.add(refIri, NPA_HAS_ROOT_NANOPUB, rootNanopubUri, NPA.GRAPH);
             conn.commit();
         } catch (Exception ex) {
             log.info("Failed to persist space {}: {}", spaceRef, ex.toString());
