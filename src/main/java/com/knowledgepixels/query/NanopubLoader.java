@@ -815,7 +815,7 @@ public class NanopubLoader {
             SpaceRegistry.Registration registration = SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri);
             spaceRefs.add(registration.spaceRef());
             if (registration.wasNew()) {
-                SpacesStateStore.persistSpace(rootNanopubId, spaceIri);
+                SpacesStateStore.persistSpace(rootNanopubId, spaceIri, rootUri);
             }
         }
         return spaceRefs;
