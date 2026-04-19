@@ -26,16 +26,16 @@ import com.knowledgepixels.query.vocabulary.SpaceExtract;
  * Identifies the contributions a nanopub makes to known spaces and produces
  * the corresponding extract triples for the {@code spaces} repo.
  *
- * <p>This first iteration covers two extract kinds:
+ * <p>This first iteration covers two extract classes:
  *
  * <ul>
- *   <li>{@link SpaceExtract#ADMIN_GRANT} — for any assertion of the form
- *       {@code <spaceIri> gen:hasAdmin <agent>} where {@code spaceIri} is
- *       registered in {@link SpaceRegistry}. One extract per
- *       {@code (spaceRef, granted-agent)}.</li>
- *   <li>{@link SpaceExtract#PROFILE_FIELD} — for any assertion whose subject
- *       is the Space IRI of a space defined by *this* nanopub (i.e. a
- *       {@code gen:Space}-typed nanopub with a matching
+ *   <li>{@link SpaceExtract#ADMIN_GRANT} ({@code npa:AdminGrant}) — for any
+ *       assertion of the form {@code <spaceIri> gen:hasAdmin <agent>} where
+ *       {@code spaceIri} is registered in {@link SpaceRegistry}. One extract
+ *       per {@code (spaceRef, granted-agent)}.</li>
+ *   <li>{@link SpaceExtract#PROFILE_FIELD} ({@code npa:ProfileField}) — for
+ *       any assertion whose subject is the Space IRI of a space defined by
+ *       *this* nanopub (i.e. a {@code gen:Space}-typed nanopub with a matching
  *       {@code gen:hasRootDefinition}). One extract per
  *       {@code (spaceRef, predicate, value)}, except for the
  *       {@code gen:hasRootDefinition} and {@code gen:hasAdmin} triples
@@ -142,8 +142,7 @@ public class SpacesExtractor {
     private static void emitAdminGrant(List<Statement> out, String spaceRef, IRI sourceNp, IRI grantedAgent) {
         IRI graph = NPAS.forSpaceRef(spaceRef);
         IRI extract = NPAX.forHash(extractHash(spaceRef, sourceNp, SpaceExtract.ADMIN_GRANT, grantedAgent.stringValue()));
-        out.add(vf.createStatement(extract, RDF.TYPE, SpaceExtract.EXTRACT, graph));
-        out.add(vf.createStatement(extract, SpaceExtract.EXTRACT_KIND, SpaceExtract.ADMIN_GRANT, graph));
+        out.add(vf.createStatement(extract, RDF.TYPE, SpaceExtract.ADMIN_GRANT, graph));
         out.add(vf.createStatement(extract, SpaceAuthority.AGENT, grantedAgent, graph));
         out.add(vf.createStatement(extract, SpaceAuthority.VIA_NANOPUB, sourceNp, graph));
     }
@@ -154,8 +153,7 @@ public class SpacesExtractor {
         // Including the predicate IRI separates "same value, different predicate" extracts.
         String payload = predicate.stringValue() + "|" + value.stringValue();
         IRI extract = NPAX.forHash(extractHash(spaceRef, sourceNp, SpaceExtract.PROFILE_FIELD, payload));
-        out.add(vf.createStatement(extract, RDF.TYPE, SpaceExtract.EXTRACT, graph));
-        out.add(vf.createStatement(extract, SpaceExtract.EXTRACT_KIND, SpaceExtract.PROFILE_FIELD, graph));
+        out.add(vf.createStatement(extract, RDF.TYPE, SpaceExtract.PROFILE_FIELD, graph));
         out.add(vf.createStatement(extract, SpaceExtract.FIELD_KEY, predicate, graph));
         out.add(vf.createStatement(extract, SpaceExtract.FIELD_VALUE, value, graph));
         out.add(vf.createStatement(extract, SpaceAuthority.VIA_NANOPUB, sourceNp, graph));
@@ -164,10 +162,12 @@ public class SpacesExtractor {
     /**
      * Computes the deterministic hash that identifies an extract within the
      * spaces repo. Stable across re-extraction of the same source nanopub for
-     * the same space, so re-running the loader produces no duplicates.
+     * the same space, so re-running the loader produces no duplicates. The
+     * extract-class IRI participates so changing the kind of an otherwise
+     * identical payload would yield a different IRI.
      */
-    static String extractHash(String spaceRef, IRI sourceNp, IRI extractKind, String payload) {
-        String input = spaceRef + "|" + sourceNp.stringValue() + "|" + extractKind.stringValue() + "|" + payload;
+    static String extractHash(String spaceRef, IRI sourceNp, IRI extractClass, String payload) {
+        String input = spaceRef + "|" + sourceNp.stringValue() + "|" + extractClass.stringValue() + "|" + payload;
         return Hashing.sha256().hashString(input, StandardCharsets.UTF_8).toString();
     }
 
