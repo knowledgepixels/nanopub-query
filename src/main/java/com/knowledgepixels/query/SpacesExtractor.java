@@ -29,10 +29,13 @@ import com.knowledgepixels.query.vocabulary.SpaceExtract;
  * <p>This first iteration covers two extract classes:
  *
  * <ul>
- *   <li>{@link SpaceExtract#ADMIN_GRANT} ({@code npa:AdminGrant}) — for any
- *       assertion of the form {@code <spaceIri> gen:hasAdmin <agent>} where
- *       {@code spaceIri} is registered in {@link SpaceRegistry}. One extract
- *       per {@code (spaceRef, granted-agent)}.</li>
+ *   <li>{@link SpaceExtract#ROLE_ASSERTION} ({@code npa:RoleAssertion}) — for
+ *       any assertion of the form {@code <spaceIri> gen:hasAdmin <agent>}
+ *       where {@code spaceIri} is registered in {@link SpaceRegistry}.
+ *       Built-in role properties ({@code gen:hasAdmin}, future
+ *       {@code gen:hasMaintainer}) are extracted with the predicate and
+ *       direction recorded directly; PR-B2 will add the same shape for
+ *       learned role properties from role-definition nanopubs.</li>
  *   <li>{@link SpaceExtract#PROFILE_FIELD} ({@code npa:ProfileField}) — for
  *       any assertion whose subject is the Space IRI of a space defined by
  *       *this* nanopub (i.e. a {@code gen:Space}-typed nanopub with a matching
@@ -40,7 +43,7 @@ import com.knowledgepixels.query.vocabulary.SpaceExtract;
  *       {@code (spaceRef, predicate, value)}, except for the
  *       {@code gen:hasRootDefinition} and {@code gen:hasAdmin} triples
  *       themselves (the former is structural; the latter is captured
- *       independently as an admin grant).</li>
+ *       independently as a role assertion).</li>
  * </ul>
  *
  * <p>Maintainer grants, role definitions, role assignments, and view-display
@@ -81,16 +84,17 @@ public class SpacesExtractor {
         List<Statement> out = new ArrayList<>();
         Set<String> contributedSpaces = new LinkedHashSet<>();
 
-        // (1) Admin-grant extracts: any <spaceIri> gen:hasAdmin <agent> where
-        // spaceIri is currently registered in SpaceRegistry. The publisher
-        // check (i.e. is the publisher actually entitled to grant admin?)
-        // happens at materialization time, not here.
+        // (1) Role-assertion extracts: any <spaceIri> gen:hasAdmin <agent> where
+        // spaceIri is currently registered in SpaceRegistry. The triple is in
+        // inverse direction (subject = space, object = agent). The publisher
+        // check (is the publisher actually entitled to grant?) happens at
+        // materialization time, not here.
         for (Statement st : np.getAssertion()) {
             if (!GEN.HAS_ADMIN.equals(st.getPredicate())) continue;
             if (!(st.getSubject() instanceof IRI spaceIri)) continue;
             if (!(st.getObject() instanceof IRI grantedAgent)) continue;
             for (String spaceRef : registry.findSpaceRefsBySpaceIri(spaceIri)) {
-                emitAdminGrant(out, spaceRef, np.getUri(), grantedAgent);
+                emitRoleAssertion(out, spaceRef, np.getUri(), GEN.HAS_ADMIN, SpaceExtract.INVERSE, grantedAgent);
                 contributedSpaces.add(spaceRef);
             }
         }
@@ -139,11 +143,15 @@ public class SpacesExtractor {
         return defined;
     }
 
-    private static void emitAdminGrant(List<Statement> out, String spaceRef, IRI sourceNp, IRI grantedAgent) {
+    private static void emitRoleAssertion(List<Statement> out, String spaceRef, IRI sourceNp,
+                                          IRI rolePredicate, IRI direction, IRI assignedAgent) {
         IRI graph = NPAS.forSpaceRef(spaceRef);
-        IRI extract = NPAX.forHash(extractHash(spaceRef, sourceNp, SpaceExtract.ADMIN_GRANT, grantedAgent.stringValue()));
-        out.add(vf.createStatement(extract, RDF.TYPE, SpaceExtract.ADMIN_GRANT, graph));
-        out.add(vf.createStatement(extract, SpaceAuthority.AGENT, grantedAgent, graph));
+        String payload = rolePredicate.stringValue() + "|" + direction.stringValue() + "|" + assignedAgent.stringValue();
+        IRI extract = NPAX.forHash(extractHash(spaceRef, sourceNp, SpaceExtract.ROLE_ASSERTION, payload));
+        out.add(vf.createStatement(extract, RDF.TYPE, SpaceExtract.ROLE_ASSERTION, graph));
+        out.add(vf.createStatement(extract, SpaceExtract.ROLE_PREDICATE, rolePredicate, graph));
+        out.add(vf.createStatement(extract, SpaceExtract.ROLE_DIRECTION, direction, graph));
+        out.add(vf.createStatement(extract, SpaceAuthority.AGENT, assignedAgent, graph));
         out.add(vf.createStatement(extract, SpaceAuthority.VIA_NANOPUB, sourceNp, graph));
     }
 

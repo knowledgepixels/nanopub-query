@@ -116,7 +116,7 @@ class SpacesExtractorTest {
     }
 
     @Test
-    void adminGrantInSpaceDefiningNanopub_producesAdminExtract() {
+    void adminGrantInSpaceDefiningNanopub_producesRoleAssertionExtract() {
         // Root nanopub defines space A and grants admin to Alice.
         Set<Statement> assertion = new LinkedHashSet<>();
         assertion.add(triple(SPACE_A, RDF.TYPE, GEN.SPACE));
@@ -132,13 +132,13 @@ class SpacesExtractorTest {
         String ref = spaceRef(ROOT_NP_AC, SPACE_A);
         assertEquals(Set.of(ref), result.spaceRefs());
 
-        // Find the admin-grant extract object via its rdf:type.
+        // Find the role-assertion extract object via its rdf:type.
         Set<Statement> stmts = new LinkedHashSet<>(result.statements());
         IRI graph = NPAS.forSpaceRef(ref);
         IRI extractIri = null;
         for (Statement s : stmts) {
             if (RDF.TYPE.equals(s.getPredicate())
-                    && SpaceExtract.ADMIN_GRANT.equals(s.getObject())) {
+                    && SpaceExtract.ROLE_ASSERTION.equals(s.getObject())) {
                 extractIri = (IRI) s.getSubject();
                 break;
             }
@@ -147,8 +147,10 @@ class SpacesExtractorTest {
                 extractIri.stringValue().substring(0, NPAX.NAMESPACE.length()),
                 "extract IRI must use the npax: namespace");
 
-        // Expect the three shape triples, all in the per-space graph context.
-        assertEquals(SpaceExtract.ADMIN_GRANT, findOne(stmts, extractIri, RDF.TYPE).getObject());
+        // Expect the five shape triples, all in the per-space graph context.
+        assertEquals(SpaceExtract.ROLE_ASSERTION, findOne(stmts, extractIri, RDF.TYPE).getObject());
+        assertEquals(GEN.HAS_ADMIN, findOne(stmts, extractIri, SpaceExtract.ROLE_PREDICATE).getObject());
+        assertEquals(SpaceExtract.INVERSE, findOne(stmts, extractIri, SpaceExtract.ROLE_DIRECTION).getObject());
         assertEquals(ALICE, findOne(stmts, extractIri, SpaceAuthority.AGENT).getObject());
         assertEquals(ROOT_NP_URI, findOne(stmts, extractIri, SpaceAuthority.VIA_NANOPUB).getObject());
         for (Statement s : stmts) {
@@ -177,7 +179,7 @@ class SpacesExtractorTest {
 
         String ref = spaceRef(ROOT_NP_AC, SPACE_A);
         assertEquals(Set.of(ref), result.spaceRefs());
-        // Exactly one admin-grant extract for Bob.
+        // Exactly one role-assertion extract for Bob.
         long bobExtracts = result.statements().stream()
                 .filter(s -> SpaceAuthority.AGENT.equals(s.getPredicate()) && BOB.equals(s.getObject()))
                 .count();
@@ -185,7 +187,7 @@ class SpacesExtractorTest {
     }
 
     @Test
-    void adminGrantHashes_areDeterministicAcrossExtractions() {
+    void roleAssertionHashes_areDeterministicAcrossExtractions() {
         Set<Statement> assertion = new LinkedHashSet<>();
         assertion.add(triple(SPACE_A, RDF.TYPE, GEN.SPACE));
         assertion.add(triple(SPACE_A, GEN.HAS_ROOT_DEFINITION, ROOT_NP_URI));
@@ -207,14 +209,16 @@ class SpacesExtractorTest {
     }
 
     @Test
-    void adminGrantHashes_differAcrossSpacesAndAgents() {
-        // Two spaces, two agents — every (space, agent) pair gets its own extract IRI.
+    void roleAssertionHashes_differAcrossSpacesAgentsAndPredicates() {
+        String pAdmin = GEN.HAS_ADMIN.stringValue();
+        String dInverse = SpaceExtract.INVERSE.stringValue();
+        // Same predicate + direction, vary space and agent.
         String h1 = SpacesExtractor.extractHash(spaceRef(ROOT_NP_AC, SPACE_A), ROOT_NP_URI,
-                SpaceExtract.ADMIN_GRANT, ALICE.stringValue());
+                SpaceExtract.ROLE_ASSERTION, pAdmin + "|" + dInverse + "|" + ALICE.stringValue());
         String h2 = SpacesExtractor.extractHash(spaceRef(ROOT_NP_AC, SPACE_A), ROOT_NP_URI,
-                SpaceExtract.ADMIN_GRANT, BOB.stringValue());
+                SpaceExtract.ROLE_ASSERTION, pAdmin + "|" + dInverse + "|" + BOB.stringValue());
         String h3 = SpacesExtractor.extractHash(spaceRef(ROOT_NP_AC, SPACE_B), ROOT_NP_URI,
-                SpaceExtract.ADMIN_GRANT, ALICE.stringValue());
+                SpaceExtract.ROLE_ASSERTION, pAdmin + "|" + dInverse + "|" + ALICE.stringValue());
         assertNotEquals(h1, h2);
         assertNotEquals(h1, h3);
         assertNotEquals(h2, h3);
