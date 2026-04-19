@@ -17,26 +17,38 @@ import com.knowledgepixels.query.vocabulary.NPAS;
 import net.trustyuri.TrustyUriUtils;
 
 /**
- * Admin-repo persistence for {@link SpaceRegistry}'s known {@code (spaceRef, spaceIri)}
- * pairs. Mirrors the pattern used by {@link TrustStateLoader} for trust-state pointer
- * persistence: pure I/O wrapper around {@link TripleStore}, with a {@link #bootstrap}
- * call run once at startup and a {@link #persistSpace} call invoked whenever
- * {@link NanopubLoader#detectAndRegisterSpaces} adds a new space.
+ * Persistence for {@link SpaceRegistry}'s known {@code (spaceRef, spaceIri)} pairs,
+ * stored in the {@code spaces} repo's {@link NPA#GRAPH} alongside the per-space
+ * extract data. Mirrors the trust-state pattern, where the trust repo holds both
+ * the snapshots and its own pointer metadata in {@code npa:graph}.
  *
- * <p>Persisted shape (in the admin repo's {@link NPA#GRAPH}):
+ * <p>Persisted shape (in the {@code spaces} repo's {@link NPA#GRAPH}):
  * <pre>{@code
- *   <npas:spaceRef> npa:hasSpaceIri <spaceIRI> .
+ *   <npas:spaceRef> npa:hasSpaceIri    <spaceIRI> ;
+ *                   npa:hasRootNanopub <rootNanopubURI> .
  * }</pre>
  *
- * <p>Role properties and the source-nanopub reverse index are <em>not</em> persisted
- * — they are re-derived as nanopubs flow through the loader. See
+ * <p>The artifact code is encoded in the space ref itself, but the full root
+ * nanopub URI isn't reconstructable in general (the same trusty artifact code
+ * can be hosted under different namespace prefixes), so we store it explicitly
+ * for query convenience.
+ *
+ * <p>Putting it in the spaces repo (rather than the global admin repo) makes the
+ * spaces repo self-contained: a single SPARQL query against {@code spaces}
+ * answers both "what spaces exist?" and "what extracts has each accumulated?".
+ *
+ * <p>Role properties and the source-nanopub reverse index are <em>not</em>
+ * persisted — they are re-derived as nanopubs flow through the loader. See
  * {@code doc/plan-space-repositories.md}.
  */
-public class SpacesAdminStore {
+public class SpacesStateStore {
 
-    private static final Logger log = LoggerFactory.getLogger(SpacesAdminStore.class);
+    private static final Logger log = LoggerFactory.getLogger(SpacesStateStore.class);
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
+
+    /** Local name of the repository that holds per-space extract data and registry persistence. */
+    static final String SPACES_REPO = "spaces";
 
     /**
      * Predicate linking a space ref (subject in the {@code npas:} namespace) to its
@@ -45,21 +57,29 @@ public class SpacesAdminStore {
      */
     static final IRI NPA_HAS_SPACE_IRI = vf.createIRI(NPA.NAMESPACE, "hasSpaceIri");
 
-    private SpacesAdminStore() {
+    /**
+     * Predicate linking a space ref to the URI of its root nanopub. The artifact
+     * code is encoded in the space ref, but the full URI isn't recoverable from
+     * it alone — same trusty artifact code can be hosted under different namespace
+     * prefixes. Stored explicitly for query convenience.
+     */
+    static final IRI NPA_HAS_ROOT_NANOPUB = vf.createIRI(NPA.NAMESPACE, "hasRootNanopub");
+
+    private SpacesStateStore() {
     }
 
     /**
-     * Loads any persisted {@code (spaceRef, spaceIri)} pairs from the admin repo and
-     * registers them in the given registry. Intended to run once at startup.
+     * Loads any persisted {@code (spaceRef, spaceIri)} pairs from the spaces repo
+     * and registers them in the given registry. Intended to run once at startup.
      *
-     * <p>Safe to call on a fresh deployment (admin repo may be empty — registers
-     * nothing). Any failure is logged at INFO; the registry is left empty and the
-     * loader will rebuild it as nanopubs flow through.
+     * <p>Safe to call on a fresh deployment (the spaces repo may not even exist —
+     * auto-created, found empty, seeded nothing). Any failure is logged at INFO;
+     * the registry is left empty and the loader will rebuild it as nanopubs flow.
      *
      * @param registry the registry to seed
      */
     public static void bootstrap(SpaceRegistry registry) {
-        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TripleStore.ADMIN_REPO)) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
             String query = String.format("""
                     SELECT ?ref ?iri WHERE {
                       GRAPH <%s> {
@@ -87,7 +107,7 @@ public class SpacesAdminStore {
                 }
             }
             if (loaded > 0) {
-                log.info("Spaces bootstrap: seeded {} space(s) from admin repo", loaded);
+                log.info("Spaces bootstrap: seeded {} space(s) from spaces repo", loaded);
             }
         } catch (Exception ex) {
             log.info("Spaces bootstrap: failed to read persisted spaces: {}", ex.toString());
@@ -99,7 +119,7 @@ public class SpacesAdminStore {
      * repo for {@link GEN#SPACE}. For each {@code <spaceIri> gen:hasRootDefinition
      * <rootUri>} triple found in any nanopub assertion there, registers the space
      * in {@link SpaceRegistry} and persists it via {@link #persistSpace} (so the
-     * admin-repo state catches up).
+     * spaces-repo state catches up).
      *
      * <p>Intended to run once at startup, after {@link #bootstrap}. Idempotent:
      * spaces already known to the registry are detected via the {@code wasNew}
@@ -153,7 +173,7 @@ public class SpacesAdminStore {
                     }
                     SpaceRegistry.Registration reg = registry.registerSpace(rootNanopubId, spaceIri);
                     if (reg.wasNew()) {
-                        persistSpace(rootNanopubId, spaceIri);
+                        persistSpace(rootNanopubId, spaceIri, rootUri);
                         registered++;
                     }
                 }
@@ -166,19 +186,22 @@ public class SpacesAdminStore {
     }
 
     /**
-     * Persists a newly-registered {@code (spaceRef, spaceIri)} pair into the admin
-     * repo. Idempotent: re-persisting the same pair is harmless (the SPARQL INSERT
-     * just re-asserts an existing triple).
+     * Persists a newly-registered space into the spaces repo, recording both the
+     * Space IRI and the full root-nanopub URI. Idempotent: re-persisting the same
+     * triples is harmless.
      *
-     * @param rootNanopubId artifact code of the root nanopub
-     * @param spaceIri      the Space IRI
+     * @param rootNanopubId  artifact code of the root nanopub
+     * @param spaceIri       the Space IRI
+     * @param rootNanopubUri the full URI of the root nanopub (as stated in the
+     *                       defining {@code gen:hasRootDefinition} triple)
      */
-    public static void persistSpace(String rootNanopubId, IRI spaceIri) {
+    public static void persistSpace(String rootNanopubId, IRI spaceIri, IRI rootNanopubUri) {
         String spaceRef = rootNanopubId + "_" + Utils.createHash(spaceIri);
         IRI refIri = NPAS.forSpaceRef(spaceRef);
-        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TripleStore.ADMIN_REPO)) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
             conn.begin(IsolationLevels.SERIALIZABLE);
             conn.add(refIri, NPA_HAS_SPACE_IRI, spaceIri, NPA.GRAPH);
+            conn.add(refIri, NPA_HAS_ROOT_NANOPUB, rootNanopubUri, NPA.GRAPH);
             conn.commit();
         } catch (Exception ex) {
             log.info("Failed to persist space {}: {}", spaceRef, ex.toString());

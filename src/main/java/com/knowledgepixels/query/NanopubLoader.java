@@ -345,6 +345,14 @@ public class NanopubLoader {
                 runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri)));
                 //			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
             }
+            // Project authority and profile contributions into the shared `spaces` repo.
+            // Computation is cheap (a walk over the assertion) so we do it inline; the
+            // write itself is parallelized with the other repo writes.
+            SpacesExtractor.ExtractionResult spaceExtracts =
+                    SpacesExtractor.extract(np, SpaceRegistry.get());
+            if (!spaceExtracts.statements().isEmpty()) {
+                runTask.accept(() -> loadSpaceExtracts(np.getUri(), spaceExtracts));
+            }
             //		for (IRI creatorIri : SimpleCreatorPattern.getCreators(np)) {
             //			// Exclude locally minted IRIs:
             //			if (creatorIri.stringValue().startsWith(np.getUri().stringValue())) continue;
@@ -634,6 +642,38 @@ public class NanopubLoader {
         return invalidatingStatements;
     }
 
+    private static void loadSpaceExtracts(IRI npUri, SpacesExtractor.ExtractionResult result) {
+        boolean success = false;
+        int retries = 0;
+        while (!success) {
+            RepositoryConnection conn = TripleStore.get().getRepoConnection("spaces");
+            try (conn) {
+                conn.begin(IsolationLevels.SERIALIZABLE);
+                conn.add(result.statements());
+                conn.commit();
+                success = true;
+            } catch (Exception ex) {
+                log.info("Could not load space extracts. ", ex);
+                if (conn.isActive()) conn.rollback();
+            }
+            if (!success) {
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to load space extracts after " + MAX_RETRIES + " retries");
+                }
+                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
+                try {
+                    Thread.sleep(RETRY_DELAY_MS);
+                } catch (InterruptedException x) {
+                }
+            }
+        }
+        // Reverse index: only after the write commits.
+        for (String spaceRef : result.spaceRefs()) {
+            SpaceRegistry.get().recordSourceNanopub(npUri, spaceRef);
+        }
+    }
+
     @GeneratedFlagForDependentElements
     private static void loadNoteToRepo(Resource subj, String note) {
         boolean success = false;
@@ -727,7 +767,7 @@ public class NanopubLoader {
             SpaceRegistry.Registration registration = SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri);
             spaceRefs.add(registration.spaceRef());
             if (registration.wasNew()) {
-                SpacesAdminStore.persistSpace(rootNanopubId, spaceIri);
+                SpacesStateStore.persistSpace(rootNanopubId, spaceIri, rootUri);
             }
         }
         return spaceRefs;
