@@ -10,35 +10,29 @@ import org.nanopub.vocabulary.VocabUtils;
  *
  * <p>Extracts are the loader's per-source-nanopub contributions — the inputs
  * the materializer (see {@link SpaceAuthority}) iterates to compute closures
- * and produce the validated authority view. Each extract has the shape:
+ * and produce the validated authority view. Each extract is an instance of one
+ * extract-kind class:
  *
  * <pre>{@code
- * npax:<hash> a npa:Extract ;
- *             npa:extractKind <kind> ;
- *             npa:viaNanopub  <sourceNp> ;
+ * npax:<hash> a npa:AdminGrant ;
+ *             npa:viaNanopub <sourceNp> ;
  *             … kind-specific payload predicates … .
  * }</pre>
  *
- * <p>Kind individuals enumerate what the extract represents (admin grant,
- * profile field, etc.). Payload predicates (e.g. {@link #FIELD_KEY},
- * {@link #FIELD_VALUE}, plus shared {@link SpaceAuthority#AGENT}) carry the
- * kind-specific detail.
+ * <p>Class IRIs discriminate the kind directly via {@code rdf:type} (mirroring
+ * the trust-state pattern with {@code npa:TrustState} / {@code npa:AccountState}).
+ * Payload predicates ({@link #FIELD_KEY}, {@link #FIELD_VALUE}, plus shared
+ * {@link SpaceAuthority#AGENT}) carry the kind-specific detail.
  *
  * <p>See {@code doc/plan-space-repositories.md}.
  */
 public class SpaceExtract {
 
-    /** RDF type for extract objects. */
-    public static final IRI EXTRACT = createIRI("Extract");
+    /** Extract class: a {@code gen:hasAdmin} grant (granted agent in {@link SpaceAuthority#AGENT}). */
+    public static final IRI ADMIN_GRANT = createIRI("AdminGrant");
 
-    /** Tags an {@link #EXTRACT} object with one of the extract-kind individuals below. */
-    public static final IRI EXTRACT_KIND = createIRI("extractKind");
-
-    /** Extract kind: a {@code gen:hasAdmin} grant (object = granted agent IRI in {@link SpaceAuthority#AGENT}). */
-    public static final IRI ADMIN_GRANT = createIRI("adminGrant");
-
-    /** Extract kind: a profile field about the Space IRI (carries {@link #FIELD_KEY} + {@link #FIELD_VALUE}). */
-    public static final IRI PROFILE_FIELD = createIRI("profileField");
+    /** Extract class: a profile field about the Space IRI (carries {@link #FIELD_KEY} + {@link #FIELD_VALUE}). */
+    public static final IRI PROFILE_FIELD = createIRI("ProfileField");
 
     /** Predicate of the extracted profile triple (e.g. {@code dcterms:description}, {@code owl:sameAs}). */
     public static final IRI FIELD_KEY = createIRI("fieldKey");

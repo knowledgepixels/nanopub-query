@@ -132,13 +132,12 @@ class SpacesExtractorTest {
         String ref = spaceRef(ROOT_NP_AC, SPACE_A);
         assertEquals(Set.of(ref), result.spaceRefs());
 
-        // Find the admin-grant extract object.
+        // Find the admin-grant extract object via its rdf:type.
         Set<Statement> stmts = new LinkedHashSet<>(result.statements());
         IRI graph = NPAS.forSpaceRef(ref);
-        // Locate the extract IRI by the kind triple.
         IRI extractIri = null;
         for (Statement s : stmts) {
-            if (SpaceExtract.EXTRACT_KIND.equals(s.getPredicate())
+            if (RDF.TYPE.equals(s.getPredicate())
                     && SpaceExtract.ADMIN_GRANT.equals(s.getObject())) {
                 extractIri = (IRI) s.getSubject();
                 break;
@@ -148,9 +147,8 @@ class SpacesExtractorTest {
                 extractIri.stringValue().substring(0, NPAX.NAMESPACE.length()),
                 "extract IRI must use the npax: namespace");
 
-        // Expect the four shape triples, all in the per-space graph context.
-        assertEquals(SpaceExtract.EXTRACT, findOne(stmts, extractIri, RDF.TYPE).getObject());
-        assertEquals(SpaceExtract.ADMIN_GRANT, findOne(stmts, extractIri, SpaceExtract.EXTRACT_KIND).getObject());
+        // Expect the three shape triples, all in the per-space graph context.
+        assertEquals(SpaceExtract.ADMIN_GRANT, findOne(stmts, extractIri, RDF.TYPE).getObject());
         assertEquals(ALICE, findOne(stmts, extractIri, SpaceAuthority.AGENT).getObject());
         assertEquals(ROOT_NP_URI, findOne(stmts, extractIri, SpaceAuthority.VIA_NANOPUB).getObject());
         for (Statement s : stmts) {
@@ -239,8 +237,8 @@ class SpacesExtractorTest {
         // We expect: 0 admin-grant extracts (none in this assertion),
         // 2 profile-field extracts (description, sameAs).
         long profileExtracts = result.statements().stream()
-                .filter(s -> SpaceExtract.PROFILE_FIELD.equals(s.getObject())
-                        && SpaceExtract.EXTRACT_KIND.equals(s.getPredicate()))
+                .filter(s -> RDF.TYPE.equals(s.getPredicate())
+                        && SpaceExtract.PROFILE_FIELD.equals(s.getObject()))
                 .count();
         assertEquals(2, profileExtracts);
 
@@ -296,8 +294,8 @@ class SpacesExtractorTest {
         SpacesExtractor.ExtractionResult result = SpacesExtractor.extract(other, SpaceRegistry.get());
 
         long profileExtracts = result.statements().stream()
-                .filter(s -> SpaceExtract.PROFILE_FIELD.equals(s.getObject())
-                        && SpaceExtract.EXTRACT_KIND.equals(s.getPredicate()))
+                .filter(s -> RDF.TYPE.equals(s.getPredicate())
+                        && SpaceExtract.PROFILE_FIELD.equals(s.getObject()))
                 .count();
         assertEquals(0, profileExtracts);
         assertTrue(result.spaceRefs().isEmpty());
