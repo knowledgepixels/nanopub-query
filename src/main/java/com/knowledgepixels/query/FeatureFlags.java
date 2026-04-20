@@ -55,6 +55,61 @@ public final class FeatureFlags {
                 Utils.getEnvString("NANOPUB_QUERY_ENABLE_SPACES", "true"));
     }
 
+    /**
+     * When {@code false}, per-nanopub writes to the {@code full} repo are skipped
+     * in {@link NanopubLoader#executeLoading}. The {@code full} repo is the
+     * catch-all endpoint for generic SPARQL queries that aren't scoped by pubkey
+     * or type; disabling it breaks those queries but removes one of the heavier
+     * per-nanopub write targets. {@code pubkey_*} and {@code type_*} still get
+     * the same {@code allStatements}, so per-pubkey / per-type queries still work.
+     *
+     * <p>Intended both as a throughput-measurement lever on a test instance and
+     * as a deliberate per-instance production option for deployments that don't
+     * need generic SPARQL.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_ENABLE_FULL_REPO} environment
+     * variable. Default: {@code true}.
+     *
+     * @return {@code true} if writes to the {@code full} repo are enabled
+     */
+    public static boolean fullRepoEnabled() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_ENABLE_FULL_REPO", "true"));
+    }
+
+    /**
+     * When {@code false}, per-nanopub writes to the {@code text} repo are skipped.
+     * The {@code text} repo is Lucene-backed and supports full-text search via
+     * {@code npa:hasFilterLiteral}; disabling it removes Lucene from the write
+     * path entirely (the single largest per-nanopub cost in the repo fan-out),
+     * at the price of breaking full-text search.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_ENABLE_TEXT_REPO} environment
+     * variable. Default: {@code true}.
+     *
+     * @return {@code true} if writes to the {@code text} repo are enabled
+     */
+    public static boolean textRepoEnabled() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_ENABLE_TEXT_REPO", "true"));
+    }
+
+    /**
+     * When {@code false}, per-nanopub writes to the {@code last30d} repo are
+     * skipped, along with its hourly cleanup SPARQL. The repo serves recent-
+     * nanopub queries; when disabled, the same queries can be expressed against
+     * the {@code full} repo with a date filter on {@code dcterms:created}.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_ENABLE_LAST30D_REPO} environment
+     * variable. Default: {@code true}.
+     *
+     * @return {@code true} if writes to the {@code last30d} repo are enabled
+     */
+    public static boolean last30dRepoEnabled() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_ENABLE_LAST30D_REPO", "true"));
+    }
+
     private FeatureFlags() {
     }
 
