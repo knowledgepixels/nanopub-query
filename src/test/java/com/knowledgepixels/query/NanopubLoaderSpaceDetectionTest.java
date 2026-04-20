@@ -48,6 +48,11 @@ class NanopubLoaderSpaceDetectionTest {
         mockedUtils = Mockito.mockStatic(Utils.class);
         mockedUtils.when(() -> Utils.createHash(any()))
                 .thenAnswer(inv -> "H(" + inv.getArgument(0) + ")");
+        // FeatureFlags.spacesEnabled() reads Utils.getEnvString. Under mockStatic the
+        // default answer is null, which would silently disable the feature — stub to
+        // return the passed-in default so production-default semantics apply in tests.
+        mockedUtils.when(() -> Utils.getEnvString(any(), any()))
+                .thenAnswer(inv -> inv.getArgument(1));
 
         // Stub NanopubUtils.getTypes so we can control nanopub-level types directly,
         // without having to construct realistic pubinfo statements.

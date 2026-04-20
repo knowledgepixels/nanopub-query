@@ -59,6 +59,7 @@ public class SpacesAdminStore {
      * @param registry the registry to seed
      */
     public static void bootstrap(SpaceRegistry registry) {
+        if (!FeatureFlags.spacesEnabled()) return;
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TripleStore.ADMIN_REPO)) {
             String query = String.format("""
                     SELECT ?ref ?iri WHERE {
@@ -113,6 +114,7 @@ public class SpacesAdminStore {
      * @param registry the registry to seed
      */
     public static void scanExistingSpaces(SpaceRegistry registry) {
+        if (!FeatureFlags.spacesEnabled()) return;
         String typeRepo = "type_" + Utils.createHash(GEN.SPACE);
         if (!TripleStore.get().getRepositoryNames().contains(typeRepo)) {
             log.info("Spaces scan: no {} repo yet — skipping", typeRepo);
@@ -174,6 +176,7 @@ public class SpacesAdminStore {
      * @param spaceIri      the Space IRI
      */
     public static void persistSpace(String rootNanopubId, IRI spaceIri) {
+        if (!FeatureFlags.spacesEnabled()) return;
         String spaceRef = rootNanopubId + "_" + Utils.createHash(spaceIri);
         IRI refIri = NPAS.forSpaceRef(spaceRef);
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TripleStore.ADMIN_REPO)) {

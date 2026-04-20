@@ -47,6 +47,15 @@ public class MainVerticle extends AbstractVerticle {
      */
     @Override
     public void start(Promise<Void> startPromise) throws Exception {
+        if (!FeatureFlags.trustStateEnabled()) {
+            log.warn("Trust state feature disabled via NANOPUB_QUERY_ENABLE_TRUST_STATE=false — "
+                    + "no trust snapshots will be fetched or materialised, and the 'trust' repo will not be auto-created.");
+        }
+        if (!FeatureFlags.spacesEnabled()) {
+            log.warn("Spaces feature disabled via NANOPUB_QUERY_ENABLE_SPACES=false — "
+                    + "no space-defining nanopubs will be registered, no extracts will be written, "
+                    + "and the 'spaces' repo will not be auto-created.");
+        }
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
                         .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))

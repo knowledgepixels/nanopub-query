@@ -21,6 +21,15 @@ import org.slf4j.LoggerFactory;
  * detection. Role-property tracking, per-source-nanopub reverse index, and admin-repo
  * persistence are added in later steps when they have a consumer. See
  * {@code doc/plan-space-repositories.md} for the full roadmap.
+ *
+ * <p><b>Thread safety.</b> All public methods that touch internal state are
+ * {@code synchronized} on the registry instance. The reverse index
+ * ({@code recordSourceNanopub} / {@code getSpaceRefsForSource} / {@code removeSourceNanopub})
+ * is written by loader-pool threads and read from other threads, so unsynchronised
+ * access to the backing {@link HashMap} would risk classic concurrent-modification
+ * hazards (lost updates, bucket corruption, infinite loops during rehashing). Methods
+ * that return sets return defensive snapshots, not live views, so callers can iterate
+ * without holding the monitor.
  */
 public class SpaceRegistry {
 
@@ -33,7 +42,7 @@ public class SpaceRegistry {
      *
      * @return the singleton instance
      */
-    public static SpaceRegistry get() {
+    public static synchronized SpaceRegistry get() {
         if (instance == null) {
             instance = new SpaceRegistry();
         }
@@ -68,7 +77,7 @@ public class SpaceRegistry {
      * @param spaceIri      the Space IRI declared in the root nanopub's assertion
      * @return the registration result: the space ref and whether it was newly added
      */
-    public Registration registerSpace(String rootNanopubId, IRI spaceIri) {
+    public synchronized Registration registerSpace(String rootNanopubId, IRI spaceIri) {
         String spaceRef = rootNanopubId + "_" + Utils.createHash(spaceIri);
         boolean added = knownSpaceRefs.add(spaceRef);
         spaceIriToSpaceRefs.computeIfAbsent(spaceIri, k -> new LinkedHashSet<>()).add(spaceRef);
@@ -84,7 +93,7 @@ public class SpaceRegistry {
      * @param spaceRef the space ref to check
      * @return {@code true} if known
      */
-    public boolean isKnownSpace(String spaceRef) {
+    public synchronized boolean isKnownSpace(String spaceRef) {
         return knownSpaceRefs.contains(spaceRef);
     }
 
@@ -104,12 +113,12 @@ public class SpaceRegistry {
     }
 
     /**
-     * Returns an unmodifiable view of all known space refs.
+     * Returns a snapshot of all known space refs.
      *
-     * @return all known space refs
+     * @return an immutable snapshot of all known space refs
      */
-    public Set<String> getKnownSpaceRefs() {
-        return Collections.unmodifiableSet(knownSpaceRefs);
+    public synchronized Set<String> getKnownSpaceRefs() {
+        return Set.copyOf(knownSpaceRefs);
     }
 
     /**
@@ -117,11 +126,11 @@ public class SpaceRegistry {
      * space refs can share a Space IRI when distinct root nanopubs both declare it.
      *
      * @param spaceIri the Space IRI to look up
-     * @return an unmodifiable set of matching space refs (empty if none are registered)
+     * @return an immutable snapshot of matching space refs (empty if none are registered)
      */
-    public Set<String> findSpaceRefsBySpaceIri(IRI spaceIri) {
+    public synchronized Set<String> findSpaceRefsBySpaceIri(IRI spaceIri) {
         Set<String> refs = spaceIriToSpaceRefs.get(spaceIri);
-        return refs == null ? Collections.emptySet() : Collections.unmodifiableSet(refs);
+        return refs == null ? Collections.emptySet() : Set.copyOf(refs);
     }
 
     /**
@@ -134,7 +143,7 @@ public class SpaceRegistry {
      * @return {@code true} if newly added, {@code false} if already known
      * @throws IllegalArgumentException if the space ref is not registered
      */
-    public boolean registerRoleProperty(String spaceRef, RoleProperty roleProperty) {
+    public synchronized boolean registerRoleProperty(String spaceRef, RoleProperty roleProperty) {
         if (!knownSpaceRefs.contains(spaceRef)) {
             throw new IllegalArgumentException("Unknown space ref: " + spaceRef);
         }
@@ -145,12 +154,12 @@ public class SpaceRegistry {
      * Returns the role properties learned for the given space.
      *
      * @param spaceRef the space ref to look up
-     * @return an unmodifiable set of registered role properties (empty if the space
+     * @return an immutable snapshot of registered role properties (empty if the space
      *         has none, or if the space ref isn't registered)
      */
-    public Set<RoleProperty> getRoleProperties(String spaceRef) {
+    public synchronized Set<RoleProperty> getRoleProperties(String spaceRef) {
         Set<RoleProperty> props = roleProperties.get(spaceRef);
-        return props == null ? Collections.emptySet() : Collections.unmodifiableSet(props);
+        return props == null ? Collections.emptySet() : Set.copyOf(props);
     }
 
     /**
@@ -161,7 +170,7 @@ public class SpaceRegistry {
      * @param sourceNanopubUri the URI of the source nanopub
      * @param spaceRef         the space ref the nanopub contributed to
      */
-    public void recordSourceNanopub(IRI sourceNanopubUri, String spaceRef) {
+    public synchronized void recordSourceNanopub(IRI sourceNanopubUri, String spaceRef) {
         sourceNanopubsToSpaceRefs.computeIfAbsent(sourceNanopubUri, k -> new LinkedHashSet<>()).add(spaceRef);
     }
 
@@ -169,11 +178,11 @@ public class SpaceRegistry {
      * Returns the set of space refs the given source nanopub contributed to.
      *
      * @param sourceNanopubUri the URI of the source nanopub
-     * @return an unmodifiable set (empty if the nanopub contributed to no spaces)
+     * @return an immutable snapshot (empty if the nanopub contributed to no spaces)
      */
-    public Set<String> getSpaceRefsForSource(IRI sourceNanopubUri) {
+    public synchronized Set<String> getSpaceRefsForSource(IRI sourceNanopubUri) {
         Set<String> refs = sourceNanopubsToSpaceRefs.get(sourceNanopubUri);
-        return refs == null ? Collections.emptySet() : Collections.unmodifiableSet(refs);
+        return refs == null ? Collections.emptySet() : Set.copyOf(refs);
     }
 
     /**
@@ -182,12 +191,12 @@ public class SpaceRegistry {
      * marked dirty.
      *
      * @param sourceNanopubUri the URI of the source nanopub
-     * @return the set of space refs the source had contributed to before removal
-     *         (empty if it wasn't tracked)
+     * @return an immutable snapshot of the space refs the source had contributed to
+     *         before removal (empty if it wasn't tracked)
      */
-    public Set<String> removeSourceNanopub(IRI sourceNanopubUri) {
+    public synchronized Set<String> removeSourceNanopub(IRI sourceNanopubUri) {
         Set<String> refs = sourceNanopubsToSpaceRefs.remove(sourceNanopubUri);
-        return refs == null ? Collections.emptySet() : Collections.unmodifiableSet(refs);
+        return refs == null ? Collections.emptySet() : Set.copyOf(refs);
     }
 
 }
