@@ -5,7 +5,6 @@ import org.apache.http.StatusLine;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
 import org.eclipse.rdf4j.repository.Repository;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.commons.support.HierarchyTraversalMode;
@@ -43,6 +42,28 @@ class TripleStoreTest {
         }
     }
 
+    /**
+     * Sets the shared {@code httpclient} field on a TripleStore mock. TripleStore now
+     * uses one shared Apache HttpClient for all outbound RDF4J traffic (previously
+     * getRepositoryNames built its own via {@code HttpClients.createDefault()}, which
+     * the tests mocked via {@code mockStatic(HttpClients.class)}). Since mocks don't
+     * run field initialisers, that field is null on a mock instance and must be
+     * injected via reflection for each test.
+     */
+    private void injectHttpClient(TripleStore mock, CloseableHttpClient client) {
+        final var field = ReflectionSupport.findFields(
+                TripleStore.class,
+                f -> f.getName().equals("httpclient"),
+                HierarchyTraversalMode.TOP_DOWN
+        ).getFirst();
+        field.setAccessible(true);
+        try {
+            field.set(mock, client);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @Test
     void getRepoConnectionWithValidRepo() {
         TripleStore mock = mock(TripleStore.class);
@@ -63,13 +84,11 @@ class TripleStoreTest {
         TripleStore mock = mock(TripleStore.class, CALLS_REAL_METHODS);
         ReentrantReadWriteLock repoNamesCacheLock = initRepoNamesCacheLock(mock);
         CloseableHttpClient httpClientMock = mock(CloseableHttpClient.class);
+        injectHttpClient(mock, httpClientMock);
 
         when(httpClientMock.execute(any(HttpUriRequest.class))).thenThrow(new IOException());
 
-        try (var mockedStatic = mockStatic(HttpClients.class)) {
-            mockedStatic.when(HttpClients::createDefault).thenReturn(httpClientMock);
-            assertNull(mock.getRepositoryNames());
-        }
+        assertNull(mock.getRepositoryNames());
         assertEquals(0, repoNamesCacheLock.getReadLockCount());
         assertEquals(0, repoNamesCacheLock.getWriteHoldCount());
     }
@@ -79,6 +98,7 @@ class TripleStoreTest {
         TripleStore mock = mock(TripleStore.class, CALLS_REAL_METHODS);
         ReentrantReadWriteLock repoNamesCacheLock = initRepoNamesCacheLock(mock);
         CloseableHttpClient httpClientMock = mock(CloseableHttpClient.class);
+        injectHttpClient(mock, httpClientMock);
         CloseableHttpResponse responseMock = mock(CloseableHttpResponse.class);
 
         when(httpClientMock.execute(any(HttpUriRequest.class))).thenReturn(responseMock);
@@ -87,10 +107,7 @@ class TripleStoreTest {
         when(responseMock.getStatusLine()).thenReturn(mock(StatusLine.class));
         when(responseMock.getStatusLine().getStatusCode()).thenReturn(500);
 
-        try (var mockedStatic = mockStatic(HttpClients.class)) {
-            mockedStatic.when(HttpClients::createDefault).thenReturn(httpClientMock);
-            assertNull(mock.getRepositoryNames());
-        }
+        assertNull(mock.getRepositoryNames());
         assertEquals(0, repoNamesCacheLock.getReadLockCount());
         assertEquals(0, repoNamesCacheLock.getWriteHoldCount());
     }
@@ -100,6 +117,7 @@ class TripleStoreTest {
         TripleStore mock = mock(TripleStore.class, CALLS_REAL_METHODS);
         ReentrantReadWriteLock repoNamesCacheLock = initRepoNamesCacheLock(mock);
         CloseableHttpClient httpClientMock = mock(CloseableHttpClient.class);
+        injectHttpClient(mock, httpClientMock);
         CloseableHttpResponse responseMock = mock(CloseableHttpResponse.class);
 
         when(httpClientMock.execute(any(HttpUriRequest.class))).thenReturn(responseMock);
@@ -110,11 +128,8 @@ class TripleStoreTest {
         when(responseMock.getStatusLine()).thenReturn(mock(StatusLine.class));
         when(responseMock.getStatusLine().getStatusCode()).thenReturn(200);
 
-        try (var mockedStatic = mockStatic(HttpClients.class)) {
-            mockedStatic.when(HttpClients::createDefault).thenReturn(httpClientMock);
-            Set<String> result = mock.getRepositoryNames();
-            assertEquals(Set.of("repo1", "repo2"), result);
-        }
+        Set<String> result = mock.getRepositoryNames();
+        assertEquals(Set.of("repo1", "repo2"), result);
         assertEquals(0, repoNamesCacheLock.getReadLockCount());
         assertEquals(0, repoNamesCacheLock.getWriteHoldCount());
     }
@@ -124,6 +139,7 @@ class TripleStoreTest {
         TripleStore mock = mock(TripleStore.class, CALLS_REAL_METHODS);
         ReentrantReadWriteLock repoNamesCacheLock = initRepoNamesCacheLock(mock);
         CloseableHttpClient httpClientMock = mock(CloseableHttpClient.class);
+        injectHttpClient(mock, httpClientMock);
         CloseableHttpResponse responseMock = mock(CloseableHttpResponse.class);
 
         when(httpClientMock.execute(any(HttpUriRequest.class))).thenReturn(responseMock);
@@ -134,14 +150,11 @@ class TripleStoreTest {
         when(responseMock.getStatusLine()).thenReturn(mock(StatusLine.class));
         when(responseMock.getStatusLine().getStatusCode()).thenReturn(200);
 
-        try (var mockedStatic = mockStatic(HttpClients.class)) {
-            mockedStatic.when(HttpClients::createDefault).thenReturn(httpClientMock);
-            Set<String> firstCallResult = mock.getRepositoryNames();
-            Set<String> secondCallResult = mock.getRepositoryNames();
-            assertEquals(Set.of("repo1", "repo2"), firstCallResult);
-            assertEquals(firstCallResult, secondCallResult);
-            verify(httpClientMock, times(1)).execute(any(HttpUriRequest.class));
-        }
+        Set<String> firstCallResult = mock.getRepositoryNames();
+        Set<String> secondCallResult = mock.getRepositoryNames();
+        assertEquals(Set.of("repo1", "repo2"), firstCallResult);
+        assertEquals(firstCallResult, secondCallResult);
+        verify(httpClientMock, times(1)).execute(any(HttpUriRequest.class));
         assertEquals(0, repoNamesCacheLock.getReadLockCount());
         assertEquals(0, repoNamesCacheLock.getWriteHoldCount());
     }

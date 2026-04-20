@@ -1,7 +1,7 @@
 package com.knowledgepixels.query;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
-import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.methods.RequestBuilder;
 import org.apache.http.entity.StringEntity;
@@ -85,7 +85,24 @@ public class TripleStore {
         getRepository("empty");  // Make sure empty repo exists
     }
 
-    private final CloseableHttpClient httpclient = HttpClients.createDefault();
+    /**
+     * Shared HTTP client for all RDF4J traffic. Apache HttpClient treats all requests
+     * to a given host + port + protocol as one "route", so every `HTTPRepository` in
+     * this process funnels through this single client's connection pool — plus the
+     * two ad-hoc users in {@link #createRepo} and {@link #getRepositoryNames}, which
+     * have been consolidated onto this client too.
+     *
+     * <p>The Apache defaults (maxPerRoute=2 / maxTotal=20) throttle four concurrent
+     * loader-pool threads down to two-way parallelism at the HTTP layer — invisible
+     * client-side serialisation the code is actively fighting. Raised to 10 / 40
+     * here: comfortable headroom for the 4-thread loader pool plus admin-repo
+     * transactions and the metrics tick, small enough to be a conservative first
+     * step with room to grow later.
+     */
+    private final CloseableHttpClient httpclient = HttpClients.custom()
+            .setMaxConnPerRoute(10)
+            .setMaxConnTotal(40)
+            .build();
 
     @GeneratedFlagForDependentElements
     Repository getRepository(String name) {
@@ -209,7 +226,10 @@ public class TripleStore {
         if (!repoName.equals(ADMIN_REPO)) {
             getRepository(ADMIN_REPO);  // make sure admin repo is loaded first
         }
-        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+        // Uses the shared this.httpclient rather than a per-call client so it inherits
+        // the configured pool sizes (and, once change 1 of the fix plan lands, the
+        // socket/connection-request timeouts).
+        try {
             //log.info("Trying to creating repo " + name);
 
             // TODO new syntax somehow doesn't work for the Lucene case:
@@ -312,19 +332,22 @@ public class TripleStore {
 
             HttpUriRequest createRepoRequest = RequestBuilder.put().setUri(endpointBase + "repositories/" + repoName).addHeader("Content-Type", "text/turtle").setEntity(new StringEntity(createRepoQueryString)).build();
 
-            HttpResponse response = httpclient.execute(createRepoRequest);
-            int statusCode = response.getStatusLine().getStatusCode();
-            if (statusCode == 409) {
-                //log.info("Already exists.");
-                getRepository(repoName).init();
-            } else if (statusCode >= 200 && statusCode < 300) {
-                //log.info("Successfully created.");
-                initNewRepo(repoName);
-            } else {
-                log.info("Status code: {}", response.getStatusLine().getStatusCode());
-                log.info(response.getStatusLine().getReasonPhrase());
-                String handledResponse = new BasicResponseHandler().handleResponse(response);
-                log.info("Response: {}", handledResponse);
+            // Response is try-with-resources'd so the connection is released back to
+            // the shared pool rather than leaked.
+            try (CloseableHttpResponse response = httpclient.execute(createRepoRequest)) {
+                int statusCode = response.getStatusLine().getStatusCode();
+                if (statusCode == 409) {
+                    //log.info("Already exists.");
+                    getRepository(repoName).init();
+                } else if (statusCode >= 200 && statusCode < 300) {
+                    //log.info("Successfully created.");
+                    initNewRepo(repoName);
+                } else {
+                    log.info("Status code: {}", response.getStatusLine().getStatusCode());
+                    log.info(response.getStatusLine().getReasonPhrase());
+                    String handledResponse = new BasicResponseHandler().handleResponse(response);
+                    log.info("Response: {}", handledResponse);
+                }
             }
         } catch (IOException ex) {
             log.info("Could not create repo.", ex);
@@ -383,11 +406,12 @@ public class TripleStore {
                 return cachedRepositoryNames;
             }
             Map<String, Boolean> repositoryNames = null;
-            try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-                HttpResponse resp = httpclient.execute(RequestBuilder.get()
-                        .setUri(endpointBase + "/repositories")
-                        .addHeader("Content-Type", "text/csv")
-                        .build());
+            // Uses the shared this.httpclient; response try-with-resources releases
+            // the pooled connection when done.
+            try (CloseableHttpResponse resp = httpclient.execute(RequestBuilder.get()
+                    .setUri(endpointBase + "/repositories")
+                    .addHeader("Content-Type", "text/csv")
+                    .build())) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()));
                 int code = resp.getStatusLine().getStatusCode();
                 if (code < 200 || code >= 300) return null;
