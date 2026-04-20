@@ -32,6 +32,20 @@ public final class MetricsCollector {
         Gauge.builder("registry.pubkey.repositories.counter", pubkeyRepositoriesCounter, AtomicInteger::get).register(meterRegistry);
         Gauge.builder("registry.full.repositories.counter", fullRepositoriesCounter, AtomicInteger::get).register(meterRegistry);
 
+        // Circuit-breaker observability: expose both the raw counter and a boolean
+        // "breaker active" flag. The boolean is redundant with counter >= threshold
+        // but much cleaner to visualise in Grafana (the counter can saturate well
+        // above the threshold during a sustained outage, which makes a single
+        // "is the breaker tripped?" alert awkward to express over the raw value).
+        Gauge.builder("registry.loader.consecutive_batch_failures",
+                        () -> (double) JellyNanopubLoader.consecutiveBatchFailures)
+                .description("Consecutive loadUpdates batches that threw an exception before succeeding")
+                .register(meterRegistry);
+        Gauge.builder("registry.loader.breaker_active",
+                        () -> JellyNanopubLoader.consecutiveBatchFailures >= JellyNanopubLoader.BREAKER_THRESHOLD ? 1.0 : 0.0)
+                .description("1 if the loader circuit breaker is tripped (consecutive failures >= threshold), 0 otherwise")
+                .register(meterRegistry);
+
         // Status label metrics
         for (final var status : StatusController.State.values()) {
             AtomicInteger stateGauge = new AtomicInteger(0);
