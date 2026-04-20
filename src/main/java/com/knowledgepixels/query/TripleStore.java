@@ -1,6 +1,7 @@
 package com.knowledgepixels.query;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.methods.RequestBuilder;
@@ -98,10 +99,32 @@ public class TripleStore {
      * here: comfortable headroom for the 4-thread loader pool plus admin-repo
      * transactions and the metrics tick, small enough to be a conservative first
      * step with room to grow later.
+     *
+     * <p>Timeouts set via {@code setDefaultRequestConfig}:
+     * <ul>
+     *   <li><b>socket-read = 60 s</b> — an individual HTTP response body must arrive
+     *       within this window. Healthy per-nanopub commits complete in milliseconds,
+     *       so 60 s is pure safety margin; its job is to turn the silent "threads
+     *       parked forever inside a commit" wedge (observed in the April test) into
+     *       a recoverable error that feeds the existing retry path.</li>
+     *   <li><b>connection-request = 30 s</b> — a caller waiting for a pooled connection
+     *       gives up after this long. Prevents the invisible self-deadlock in
+     *       {@code loadInvalidateStatements} (one thread holding N connections while
+     *       waiting for an (N+1)th) from hanging forever.</li>
+     *   <li><b>connect = 10 s</b> — kills TCP handshakes that stall. Generous but
+     *       bounded.</li>
+     * </ul>
+     * Without these defaults, HttpClient uses {@code -1} everywhere, which means
+     * "wait forever".
      */
     private final CloseableHttpClient httpclient = HttpClients.custom()
             .setMaxConnPerRoute(10)
             .setMaxConnTotal(40)
+            .setDefaultRequestConfig(RequestConfig.custom()
+                    .setSocketTimeout(60_000)
+                    .setConnectionRequestTimeout(30_000)
+                    .setConnectTimeout(10_000)
+                    .build())
             .build();
 
     @GeneratedFlagForDependentElements

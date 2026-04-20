@@ -33,6 +33,26 @@ public class JellyNanopubLoader {
     private static final int RETRY_DELAY_METADATA = 3000;
     private static final int RETRY_DELAY_JELLY = 5000;
 
+    /**
+     * Circuit-breaker state. Counts consecutive {@code loadUpdates} invocations in
+     * which the catch block fired; resets to zero on the next successful batch.
+     * Scheduled on the single-threaded executor in {@link MainVerticle}, so a plain
+     * {@code int} is enough — no concurrency.
+     *
+     * <p>When the counter reaches {@link #BREAKER_THRESHOLD}, the next invocation
+     * sleeps {@link #BREAKER_PAUSE_MS} before proceeding. Lets the saturated RDF4J
+     * drain instead of being hammered every {@link #UPDATES_POLL_INTERVAL} ms.
+     *
+     * <p>Depends on {@link com.knowledgepixels.query.TripleStore}'s socket timeouts
+     * (change 1 of the fix plan) to turn parked commits into propagating exceptions;
+     * without them, {@code loadBatch} can park forever, the catch never fires, and
+     * this counter stays at zero.
+     */
+    static volatile int consecutiveBatchFailures = 0;
+
+    static final int BREAKER_THRESHOLD = 3;
+    static final long BREAKER_PAUSE_MS = 30_000L;
+
     private static final Logger log = LoggerFactory.getLogger(JellyNanopubLoader.class);
 
     /**
@@ -105,6 +125,21 @@ public class JellyNanopubLoader {
      * calling it again.
      */
     public static void loadUpdates() {
+        // Circuit breaker: after BREAKER_THRESHOLD consecutive failed batches, pause
+        // before the next attempt so a saturated RDF4J can drain. Check happens before
+        // any RDF4J-touching work so the sleep isn't itself under the broken regime.
+        if (consecutiveBatchFailures >= BREAKER_THRESHOLD) {
+            log.warn("Circuit breaker active after {} consecutive batch failures; pausing {} ms before next attempt",
+                    consecutiveBatchFailures, BREAKER_PAUSE_MS);
+            try {
+                Thread.sleep(BREAKER_PAUSE_MS);
+            } catch (InterruptedException e) {
+                // Preserve interruption semantics so a graceful shutdown (e.g. via
+                // MainVerticle's shutdown hook) isn't blocked by the pause.
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
         try {
             final var status = StatusController.get().getState();
             lastCommittedCounter = status.loadCounter;
@@ -151,6 +186,8 @@ public class JellyNanopubLoader {
                 return;
             }
             loadBatch(lastCommittedCounter, LoadingType.UPDATE);
+            // Batch completed without an exception — reset the breaker counter.
+            consecutiveBatchFailures = 0;
             log.info("Loaded {} update(s). Counter: {}, target was: {}",
                     lastCommittedCounter - status.loadCounter, lastCommittedCounter, targetCounter);
             if (lastCommittedCounter < targetCounter) {
@@ -159,8 +196,9 @@ public class JellyNanopubLoader {
                         "but loaded only up to {}.", lastCommittedCounter);
             }
         } catch (Exception e) {
-            log.info("Failed to load updates. Current counter: {}", lastCommittedCounter);
-            log.info("Failure Reason: ", e);
+            consecutiveBatchFailures++;
+            log.warn("Failed to load updates. Current counter: {} (consecutive failures: {})",
+                    lastCommittedCounter, consecutiveBatchFailures, e);
         } finally {
             try {
                 StatusController.get().setReady();
