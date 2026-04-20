@@ -358,12 +358,18 @@ public class NanopubLoader {
             // Submit all tasks except the "meta" task
             if (timestamp != null) {
                 if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
-                    runTask.accept(() -> loadNanopubToLatest(allStatements));
+                    if (FeatureFlags.last30dRepoEnabled()) {
+                        runTask.accept(() -> loadNanopubToLatest(allStatements));
+                    }
                 }
             }
 
-            runTask.accept(() -> loadNanopubToRepo(np.getUri(), textStatements, "text"));
-            runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "full"));
+            if (FeatureFlags.textRepoEnabled()) {
+                runTask.accept(() -> loadNanopubToRepo(np.getUri(), textStatements, "text"));
+            }
+            if (FeatureFlags.fullRepoEnabled()) {
+                runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "full"));
+            }
             // Note: "meta" task is deferred until all other tasks complete successfully
 
             runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString())));

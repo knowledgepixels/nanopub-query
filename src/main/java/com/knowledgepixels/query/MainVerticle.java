@@ -56,6 +56,18 @@ public class MainVerticle extends AbstractVerticle {
                     + "no space-defining nanopubs will be registered, no extracts will be written, "
                     + "and the 'spaces' repo will not be auto-created.");
         }
+        if (!FeatureFlags.fullRepoEnabled()) {
+            log.warn("Writes to the 'full' repo disabled via NANOPUB_QUERY_ENABLE_FULL_REPO=false — "
+                    + "generic SPARQL queries against /repo/full will return an empty store.");
+        }
+        if (!FeatureFlags.textRepoEnabled()) {
+            log.warn("Writes to the 'text' repo disabled via NANOPUB_QUERY_ENABLE_TEXT_REPO=false — "
+                    + "full-text search via /repo/text will return nothing.");
+        }
+        if (!FeatureFlags.last30dRepoEnabled()) {
+            log.warn("Writes to the 'last30d' repo disabled via NANOPUB_QUERY_ENABLE_LAST30D_REPO=false — "
+                    + "the /repo/last30d endpoint will be empty; rewrite queries against /repo/full with a date filter.");
+        }
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
                         .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))
