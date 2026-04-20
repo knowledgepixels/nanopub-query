@@ -38,6 +38,7 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 
@@ -48,8 +49,37 @@ public class NanopubLoader {
 
     private static HttpClient httpClient;
     private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
-    private static final int MAX_RETRIES = 30;
-    private static final int RETRY_DELAY_MS = 10000;
+
+    /**
+     * Retry budget for the five (with #71 merged: six) structurally identical
+     * retry loops in this file. Previously the shape was flat {@code 10 s × 30} —
+     * five minutes of constant hammering at RDF4J that did not help a slow server.
+     * The new shape is bounded exponential backoff with ±50 % jitter:
+     * {@code base = 1, 2, 4, 8, 16, 32, 60, 60 s} for attempts 1…8, each perturbed
+     * by up to half its base value. Jitter prevents the 4-thread loadingPool from
+     * retrying in lock-step after a shared RDF4J failure (GC pause / overload spike).
+     * Worst-case wall time per failing task drops from ~35 min (post-change-1
+     * timeouts × 30 flat retries) to ~11 min (8 retries × 60 s timeout + backoff
+     * sleeps). This is the figure that sets the circuit-breaker trip time in
+     * {@link JellyNanopubLoader}.
+     */
+    private static final int MAX_RETRIES = 8;
+    private static final long[] BACKOFF_BASE_MS =
+            {1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 32_000L, 60_000L, 60_000L};
+
+    /**
+     * Returns the sleep delay in ms for the given 1-indexed retry attempt. Delay
+     * is {@link #BACKOFF_BASE_MS}{@code [attempt-1]} perturbed by ±50 % uniform
+     * jitter, clamped to be non-negative.
+     *
+     * @param attempt 1-indexed retry attempt number
+     * @return the computed sleep delay in ms
+     */
+    static long computeBackoffMillis(int attempt) {
+        long base = BACKOFF_BASE_MS[Math.min(attempt - 1, BACKOFF_BASE_MS.length - 1)];
+        long jitter = ThreadLocalRandom.current().nextLong(base + 1) - base / 2;
+        return Math.max(0L, base + jitter);
+    }
     private Nanopub np;
     private NanopubSignatureElement el = null;
     private List<Statement> metaStatements = new ArrayList<>();
@@ -430,10 +460,12 @@ public class NanopubLoader {
                 if (retries >= MAX_RETRIES) {
                     throw new RuntimeException("Failed to load nanopub to last30d repo after " + MAX_RETRIES + " retries");
                 }
-                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(RETRY_DELAY_MS);
+                    Thread.sleep(delay);
                 } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -479,10 +511,12 @@ public class NanopubLoader {
                 if (retries >= MAX_RETRIES) {
                     throw new RuntimeException("Failed to load nanopub " + npId + " to repo " + repoName + " after " + MAX_RETRIES + " retries");
                 }
-                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(RETRY_DELAY_MS);
+                    Thread.sleep(delay);
                 } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -574,10 +608,12 @@ public class NanopubLoader {
                 if (retries >= MAX_RETRIES) {
                     throw new RuntimeException("Failed to load invalidate statements for " + thisNp.getUri() + " after " + MAX_RETRIES + " retries");
                 }
-                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(RETRY_DELAY_MS);
+                    Thread.sleep(delay);
                 } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -624,10 +660,12 @@ public class NanopubLoader {
                 if (retries >= MAX_RETRIES) {
                     throw new RuntimeException("Failed to get invalidating statements for " + npId + " after " + MAX_RETRIES + " retries");
                 }
-                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(RETRY_DELAY_MS);
+                    Thread.sleep(delay);
                 } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -653,10 +691,12 @@ public class NanopubLoader {
                 if (retries >= MAX_RETRIES) {
                     throw new RuntimeException("Failed to load note to repo for " + subj + " after " + MAX_RETRIES + " retries");
                 }
-                log.info("Retrying in 10 seconds (attempt {}/{})...", retries, MAX_RETRIES);
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
                 try {
-                    Thread.sleep(RETRY_DELAY_MS);
+                    Thread.sleep(delay);
                 } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
