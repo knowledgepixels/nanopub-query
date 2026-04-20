@@ -88,6 +88,7 @@ public class TrustStateLoader {
      * scratch.
      */
     public static void bootstrap() {
+        if (!FeatureFlags.trustStateEnabled()) return;
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TRUST_REPO)) {
             String query = String.format("""
                     SELECT ?s WHERE {
@@ -135,6 +136,7 @@ public class TrustStateLoader {
      *                          expose one
      */
     public static void maybeUpdate(String newTrustStateHash) {
+        if (!FeatureFlags.trustStateEnabled()) return;
         if (newTrustStateHash == null || newTrustStateHash.isEmpty()) return;
         String current = TrustStateRegistry.get().getCurrentHash().orElse(null);
         if (newTrustStateHash.equals(current)) return;

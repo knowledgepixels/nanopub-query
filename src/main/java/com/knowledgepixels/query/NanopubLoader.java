@@ -706,6 +706,7 @@ public class NanopubLoader {
      *         steps of #62.
      */
     static Set<String> detectAndRegisterSpaces(Nanopub np) {
+        if (!FeatureFlags.spacesEnabled()) return Collections.emptySet();
         boolean isSpaceTyped = false;
         for (IRI typeIri : NanopubUtils.getTypes(np)) {
             if (typeIri.equals(GEN.SPACE)) {
