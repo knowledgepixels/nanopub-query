@@ -422,7 +422,7 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.info("Could not get environment variable", ex);
+                log.warn("Could not load nanopub to last30d repo.", ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
@@ -471,7 +471,7 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.info("Could not load nanopub to repo. ", ex);
+                log.warn("Could not load nanopub to repo.", ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
@@ -560,7 +560,7 @@ public class NanopubLoader {
                 for (RepositoryConnection c : connections) c.commit();
                 success = true;
             } catch (Exception ex) {
-                log.info("Could not load invalidate statements. ", ex);
+                log.warn("Could not load invalidate statements.", ex);
                 if (metaConn.isActive()) metaConn.rollback();
                 for (RepositoryConnection c : connections) {
                     if (c.isActive()) c.rollback();
@@ -616,7 +616,7 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.info("Could not load invalidating statements. ", ex);
+                log.warn("Could not load invalidating statements.", ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
@@ -646,7 +646,7 @@ public class NanopubLoader {
                 conn.add(statements);
                 success = true;
             } catch (Exception ex) {
-                log.info("Could not load note to repo. ", ex);
+                log.warn("Could not load note to repo.", ex);
             }
             if (!success) {
                 retries++;
@@ -668,8 +668,7 @@ public class NanopubLoader {
                 return true;
             }
         } catch (GeneralSecurityException ex) {
-            log.info("Error for signature element {}", el.getUri());
-            log.info("Error", ex);
+            log.warn("Signature validation failed for signature element {}", el.getUri(), ex);
         }
         return false;
     }
@@ -749,7 +748,7 @@ public class NanopubLoader {
                 loaded = true;
             }
         } catch (Exception ex) {
-            log.info("Could no load nanopub. ", ex);
+            log.warn("Could not check whether nanopub is loaded.", ex);
         }
         return loaded;
     }

@@ -57,7 +57,7 @@ public class StatusController {
     private boolean initialized = false;
     private volatile State state = null;
     private volatile long lastCommittedCounter = -1;
-    private Long registrySetupId = null;
+    private volatile Long registrySetupId = null;
     private RepositoryConnection adminRepoConn;
 
     /**
@@ -243,9 +243,14 @@ public class StatusController {
      * @return the registry setup ID, or null if not yet known
      */
     public Long getRegistrySetupId() {
-        synchronized (this) {
-            return registrySetupId;
-        }
+        // Lock-free read: field is volatile, writers still hold synchronized(this)
+        // so there are no concurrent writers. applyGlobalHeaders in MainVerticle
+        // calls this on every inbound request on the Vert.x event loop — blocking
+        // here behind updateState's admin-repo transaction was a BlockedThreadChecker
+        // hazard. The DB-commit-first order in the setter (setRegistrySetupId)
+        // means a reader can observe the previous value for the few ms between DB
+        // commit and field assignment; no caller depends on stronger consistency.
+        return registrySetupId;
     }
 
     /**

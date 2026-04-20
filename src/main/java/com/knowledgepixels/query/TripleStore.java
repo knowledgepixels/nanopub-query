@@ -13,6 +13,7 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.repository.base.RepositoryConnectionWrapper;
 import org.eclipse.rdf4j.repository.http.HTTPRepository;
 import org.nanopub.NanopubUtils;
 import org.nanopub.vocabulary.NPA;
@@ -24,6 +25,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -42,6 +46,14 @@ public class TripleStore {
     private static final Logger log = LoggerFactory.getLogger(TripleStore.class);
 
     private final Map<String, Repository> repositories = new LinkedHashMap<>();
+
+    /**
+     * Per-repo open-connection counter, read by the eviction loop to skip repos that
+     * still have live connections. Incremented in {@link #getRepoConnection(String)}
+     * just before the connection is handed out and decremented via a
+     * {@link RepositoryConnectionWrapper} that intercepts {@code close()} exactly once.
+     */
+    private final ConcurrentHashMap<String, AtomicInteger> openConnections = new ConcurrentHashMap<>();
 
     private String endpointBase = null;
     private String endpointType = null;
@@ -78,12 +90,8 @@ public class TripleStore {
     @GeneratedFlagForDependentElements
     Repository getRepository(String name) {
         synchronized (this) {
-            while (repositories.size() > 100) {
-                Entry<String, Repository> e = repositories.entrySet().iterator().next();
-                repositories.remove(e.getKey());
-                log.info("Shutting down repo: {}", e.getKey());
-                e.getValue().shutDown();
-                log.info("Shutdown complete");
+            if (repositories.size() > 100) {
+                evictIdleRepos();
             }
             if (repositories.containsKey(name)) {
                 // Move to the end of the list:
@@ -116,11 +124,84 @@ public class TripleStore {
      */
     @GeneratedFlagForDependentElements
     public RepositoryConnection getRepoConnection(String name) {
-        Repository repo = getRepository(name);
-        if (repo == null) {
-            return null;
+        // The increment has to happen under the same monitor that guards eviction,
+        // otherwise another thread could evict this repo in the window between
+        // getRepository() returning and the counter going above zero. getConnection()
+        // on HTTPRepository is local (it doesn't do HTTP), so holding the lock here
+        // is cheap.
+        synchronized (this) {
+            Repository repo = getRepository(name);
+            if (repo == null) {
+                return null;
+            }
+            AtomicInteger counter = openConnections.computeIfAbsent(name, k -> new AtomicInteger());
+            counter.incrementAndGet();
+            return new CountingRepositoryConnection(repo, repo.getConnection(), counter);
         }
-        return repo.getConnection();
+    }
+
+    /**
+     * Evicts the eldest cache entries until either the size is back within the
+     * 100-entry cap or every remaining entry has at least one open connection.
+     * The cap is load-bearing — each cached entry keeps an LMDB environment alive
+     * on the RDF4J server (in-memory cache, mmap pages, native memory), so
+     * exceeding it by much risks server-side OOM. Actively-used repos are skipped
+     * rather than shut down, because {@link org.eclipse.rdf4j.repository.http.HTTPRepository#shutDown()}
+     * closes the session manager and kills any live transaction on that repo with
+     * a connection-close error (the {@code MMapIndexInput – Already closed}
+     * failure mode observed on query-3 in the April test). The cache self-converges
+     * as active repos become idle.
+     */
+    @GeneratedFlagForDependentElements
+    private void evictIdleRepos() {
+        List<String> skipped = new ArrayList<>();
+        Iterator<Entry<String, Repository>> iter = repositories.entrySet().iterator();
+        while (iter.hasNext() && repositories.size() > 100) {
+            Entry<String, Repository> e = iter.next();
+            AtomicInteger active = openConnections.get(e.getKey());
+            if (active != null && active.get() > 0) {
+                skipped.add(e.getKey());
+                continue;
+            }
+            iter.remove();
+            log.info("Shutting down repo: {}", e.getKey());
+            e.getValue().shutDown();
+            log.info("Shutdown complete");
+        }
+        if (!skipped.isEmpty()) {
+            log.warn("Skipped eviction for {} active repo(s); cache size is now {} (cap 100). Active names: {}",
+                    skipped.size(), repositories.size(), skipped);
+        }
+    }
+
+    /**
+     * Minimal wrapper around a delegate {@link RepositoryConnection} whose only job
+     * is to decrement the per-repo open-connection counter exactly once when the
+     * caller closes it. Uses {@link AtomicBoolean} so that repeated/idempotent
+     * {@code close()} calls (common with try-with-resources plus explicit close)
+     * don't decrement more than once.
+     */
+    private static final class CountingRepositoryConnection extends RepositoryConnectionWrapper {
+
+        private final AtomicInteger counter;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        CountingRepositoryConnection(Repository repo, RepositoryConnection delegate, AtomicInteger counter) {
+            super(repo, delegate);
+            this.counter = counter;
+        }
+
+        @Override
+        public void close() {
+            try {
+                super.close();
+            } finally {
+                if (closed.compareAndSet(false, true)) {
+                    counter.decrementAndGet();
+                }
+            }
+        }
+
     }
 
     @GeneratedFlagForDependentElements
