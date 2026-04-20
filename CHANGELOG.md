@@ -1,3 +1,48 @@
+## [1.9.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.8.0...nanopub-query-1.9.0) (2026-04-20)
+
+### Features
+
+* add env-var flags to disable trust-state and spaces features ([c504a9a](https://github.com/knowledgepixels/nanopub-query/commit/c504a9a34c2f6571bc0f02a50d87b08c63160070))
+* add SpaceRegistry skeleton (in-memory, no consumer yet) ([9bf1a4d](https://github.com/knowledgepixels/nanopub-query/commit/9bf1a4d1c8dd1056749495002225a48067f9569b))
+* add TrustStateRegistry skeleton (in-memory, no consumer yet) ([2b49776](https://github.com/knowledgepixels/nanopub-query/commit/2b4977631d3cd0602884a030a2596190de52b422))
+* bootstrap trust state registry from persisted pointer ([0926256](https://github.com/knowledgepixels/nanopub-query/commit/0926256543ba0d5d5e33938ad0c741940426fe45))
+* conservative circuit breaker in JellyNanopubLoader ([253fab8](https://github.com/knowledgepixels/nanopub-query/commit/253fab8f2b0507d245dfe78c76a3b9c4f01b03a5)), closes [#73](https://github.com/knowledgepixels/nanopub-query/issues/73)
+* detect space-defining nanopubs in NanopubLoader ([a4c3d75](https://github.com/knowledgepixels/nanopub-query/commit/a4c3d7522db9d5503f23739298215510c230a760))
+* detect trust state hash changes via existing update poll ([438af45](https://github.com/knowledgepixels/nanopub-query/commit/438af45968d8dcb4730e040b787d1b35b41afbfc))
+* expand SpaceRegistry with role properties, source index, and persistence ([fdbfc9b](https://github.com/knowledgepixels/nanopub-query/commit/fdbfc9b40e68051569cae94fc83e88ec639d1b7d))
+* fetch and parse trust state snapshots ([19011b8](https://github.com/knowledgepixels/nanopub-query/commit/19011b8edb4eb28566677dd8fd7bfdf43284b014))
+* load space-defining nanopubs into space_<spaceRef> repos ([60800db](https://github.com/knowledgepixels/nanopub-query/commit/60800db998a0534938dadc14a4f0d5fe89b97eb9))
+* materialize trust state snapshots into the trust repo ([e92c62c](https://github.com/knowledgepixels/nanopub-query/commit/e92c62cef4fe7c5e4e535b08c156f42c51599fd0))
+* optional per-instance disable of full/text/last30d repo writes ([44b16aa](https://github.com/knowledgepixels/nanopub-query/commit/44b16aacd42edaa2fde7f0702cb63da6be436bf5))
+* prune old trust states beyond retention window ([28f41bd](https://github.com/knowledgepixels/nanopub-query/commit/28f41bd5d67b5817197166355332faa30b99d6d9))
+* scan type_<gen:Space> repo at startup to back-fill SpaceRegistry ([37f6986](https://github.com/knowledgepixels/nanopub-query/commit/37f69868d508ef5caa62b5c2edb294d3ff1025c6))
+* skip checksum and count tracking for space_ repos ([4e9ede0](https://github.com/knowledgepixels/nanopub-query/commit/4e9ede031cabd14a987cc9460d909f4a0395672f))
+
+### Bug Fixes
+
+* bound HTTP timeouts on the shared TripleStore client ([98e8e36](https://github.com/knowledgepixels/nanopub-query/commit/98e8e36ff5d2bdc1d7619d712c75a11bcfaa583e))
+* clean up misleading and low-severity logging in NanopubLoader ([3fa5527](https://github.com/knowledgepixels/nanopub-query/commit/3fa5527acdb16a2b683c771bf8d1b6addb0360b8))
+* skip eviction for actively-used repos in TripleStore ([ab70cd2](https://github.com/knowledgepixels/nanopub-query/commit/ab70cd243831f76eddf054c450bbcbe34ee5ff29))
+* skip misleading initial nanopub-count/checksum triples for non-tracking repos ([88ac66b](https://github.com/knowledgepixels/nanopub-query/commit/88ac66bd6bcb551f5db4320b90e18f876196ce7d))
+* skip nanopub-count/checksum init for the admin repo too ([14bef1d](https://github.com/knowledgepixels/nanopub-query/commit/14bef1da71c77ee34a6e61f44d2e3f06f57c2c49))
+* synchronise SpaceRegistry state access across threads ([f219ad5](https://github.com/knowledgepixels/nanopub-query/commit/f219ad51f878800318e028f4936e633c8c78150f)), closes [#62](https://github.com/knowledgepixels/nanopub-query/issues/62) [#71](https://github.com/knowledgepixels/nanopub-query/issues/71)
+* tolerate null pathCount/ratio/quota on skipped accounts ([6f391f5](https://github.com/knowledgepixels/nanopub-query/commit/6f391f50f99769ea67b59f76882a2e1f00dd9f72))
+
+### Performance improvements
+
+* exponential backoff with jitter in NanopubLoader retry loops ([32533ee](https://github.com/knowledgepixels/nanopub-query/commit/32533eedaabfaf7cfc19e696f0f6b0bb3b4f8e7d)), closes [#71](https://github.com/knowledgepixels/nanopub-query/issues/71)
+* make StatusController.getRegistrySetupId() lock-free ([de14135](https://github.com/knowledgepixels/nanopub-query/commit/de141356dff80e2e67b7cbef39a228bc115ab021))
+* move MetricsCollector.updateMetrics() off the event loop ([9e17243](https://github.com/knowledgepixels/nanopub-query/commit/9e172431396e5dff2dee6d26d932f82299cc22a9))
+* raise HTTP pool sizes and consolidate on a shared client ([dbba486](https://github.com/knowledgepixels/nanopub-query/commit/dbba4866982443ace04d6168b2de1c0ac43a03e4))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([e02316b](https://github.com/knowledgepixels/nanopub-query/commit/e02316bf9612d036963cb7f72a23748a47de1244))
+
+### Refactoring
+
+* align space-repo foundation with thin single-repo model ([cb0b42c](https://github.com/knowledgepixels/nanopub-query/commit/cb0b42ce730e8e0e66e75c94c8b31bf89ce4f96a))
+
 ## [1.8.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.7.0...nanopub-query-1.8.0) (2026-04-08)
 
 ### Features
