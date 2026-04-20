@@ -428,8 +428,14 @@ public class MainVerticle extends AbstractVerticle {
         });
         proxyServer.listen(9393);
 
-        // Periodic metrics update
-        vertx.setPeriodic(1000, id -> collector.updateMetrics());
+        // Periodic metrics update. Runs on a dedicated single-thread scheduled executor
+        // (not on the Vert.x event loop) because `updateMetrics` can fall through to a
+        // synchronous HTTP call in `TripleStore.getRepositoryNames()` when the cache has
+        // been invalidated. `scheduleWithFixedDelay` naturally serialises ticks and cannot
+        // pile up if the work occasionally runs long. Same pattern as `JellyNanopubLoader.loadUpdates`
+        // below.
+        Executors.newSingleThreadScheduledExecutor()
+                .scheduleWithFixedDelay(collector::updateMetrics, 1, 1, TimeUnit.SECONDS);
 
 
         new Thread(() -> {
