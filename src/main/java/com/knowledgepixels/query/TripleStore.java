@@ -27,6 +27,7 @@ import java.io.InputStreamReader;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -125,6 +126,12 @@ public class TripleStore {
                     .setConnectionRequestTimeout(30_000)
                     .setConnectTimeout(10_000)
                     .build())
+            // Hygiene: kill pooled connections that RDF4J has quietly closed server-side
+            // before we try to reuse them. Without this, a half-broken connection is
+            // only noticed when the next request fails, spending the full socket-read
+            // timeout discovering it.
+            .evictExpiredConnections()
+            .evictIdleConnections(30, TimeUnit.SECONDS)
             .build();
 
     @GeneratedFlagForDependentElements
@@ -176,7 +183,15 @@ public class TripleStore {
             }
             AtomicInteger counter = openConnections.computeIfAbsent(name, k -> new AtomicInteger());
             counter.incrementAndGet();
-            return new CountingRepositoryConnection(repo, repo.getConnection(), counter);
+            try {
+                return new CountingRepositoryConnection(repo, repo.getConnection(), counter);
+            } catch (Throwable t) {
+                // If getConnection() or the wrapper constructor throws after we bumped
+                // the counter, decrement so the repo isn't pinned against eviction by
+                // a phantom "active" connection it doesn't actually have.
+                counter.decrementAndGet();
+                throw t;
+            }
         }
     }
 
