@@ -359,7 +359,7 @@ public class NanopubLoader {
             if (timestamp != null) {
                 if (new Date().getTime() - timestamp.getTimeInMillis() < THIRTY_DAYS) {
                     if (FeatureFlags.last30dRepoEnabled()) {
-                        runTask.accept(() -> loadNanopubToLatest(allStatements));
+                        runTask.accept(() -> loadNanopubToLatest(np.getUri(), allStatements));
                     }
                 }
             }
@@ -424,7 +424,7 @@ public class NanopubLoader {
     private static long ONE_HOUR = 1000L * 60 * 60;
 
     @GeneratedFlagForDependentElements
-    private static void loadNanopubToLatest(List<Statement> statements) {
+    private static void loadNanopubToLatest(IRI npId, List<Statement> statements) {
         boolean success = false;
         int retries = 0;
         while (!success) {
@@ -458,16 +458,16 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.warn("Could not load nanopub to last30d repo.", ex);
+                log.warn("Could not load nanopub {} to last30d repo.", npId, ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
                 retries++;
                 if (retries >= MAX_RETRIES) {
-                    throw new RuntimeException("Failed to load nanopub to last30d repo after " + MAX_RETRIES + " retries");
+                    throw new RuntimeException("Failed to load nanopub " + npId + " to last30d repo after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
+                log.info("Retrying in {} ms for nanopub {} in last30d (attempt {}/{})...", delay, npId, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -509,7 +509,7 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.warn("Could not load nanopub to repo.", ex);
+                log.warn("Could not load nanopub {} to repo {}.", npId, repoName, ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
@@ -518,7 +518,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load nanopub " + npId + " to repo " + repoName + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
+                log.info("Retrying in {} ms for nanopub {} in repo {} (attempt {}/{})...", delay, npId, repoName, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -600,7 +600,7 @@ public class NanopubLoader {
                 for (RepositoryConnection c : connections) c.commit();
                 success = true;
             } catch (Exception ex) {
-                log.warn("Could not load invalidate statements.", ex);
+                log.warn("Could not load invalidate statements for {}.", thisNp.getUri(), ex);
                 if (metaConn.isActive()) metaConn.rollback();
                 for (RepositoryConnection c : connections) {
                     if (c.isActive()) c.rollback();
@@ -615,7 +615,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load invalidate statements for " + thisNp.getUri() + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
+                log.info("Retrying in {} ms for invalidate statements of {} (attempt {}/{})...", delay, thisNp.getUri(), retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -658,7 +658,7 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                log.warn("Could not load invalidating statements.", ex);
+                log.warn("Could not load invalidating statements for {}.", npId, ex);
                 if (conn.isActive()) conn.rollback();
             }
             if (!success) {
@@ -667,7 +667,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to get invalidating statements for " + npId + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
+                log.info("Retrying in {} ms for invalidating statements of {} (attempt {}/{})...", delay, npId, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -690,7 +690,7 @@ public class NanopubLoader {
                 conn.add(statements);
                 success = true;
             } catch (Exception ex) {
-                log.warn("Could not load note to repo.", ex);
+                log.warn("Could not load note to repo for {}.", subj, ex);
             }
             if (!success) {
                 retries++;
@@ -698,7 +698,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load note to repo for " + subj + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                log.info("Retrying in {} ms (attempt {}/{})...", delay, retries, MAX_RETRIES);
+                log.info("Retrying in {} ms for note on {} (attempt {}/{})...", delay, subj, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
