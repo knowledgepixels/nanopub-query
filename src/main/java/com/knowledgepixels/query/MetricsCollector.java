@@ -45,6 +45,19 @@ public final class MetricsCollector {
                         () -> JellyNanopubLoader.consecutiveBatchFailures >= JellyNanopubLoader.BREAKER_THRESHOLD ? 1.0 : 0.0)
                 .description("1 if the loader circuit breaker is tripped (consecutive failures >= threshold), 0 otherwise")
                 .register(meterRegistry);
+        // Liveness signal that works without log access: seconds since the last
+        // non-exceptional loadUpdates return. Counts both "loaded a batch" and
+        // "caught up, nothing to do" as progress. An instance whose value climbs
+        // unbounded while peers stay low is stuck on something the other
+        // gauges don't capture.
+        Gauge.builder("registry.loader.last_successful_batch_age_seconds",
+                        () -> {
+                            long t = JellyNanopubLoader.lastSuccessfulBatchAtMs;
+                            if (t == 0L) return 0.0;    // not started yet
+                            return (System.currentTimeMillis() - t) / 1000.0;
+                        })
+                .description("Seconds since the last non-exceptional loadUpdates return (idle or loading)")
+                .register(meterRegistry);
 
         // Status label metrics
         for (final var status : StatusController.State.values()) {

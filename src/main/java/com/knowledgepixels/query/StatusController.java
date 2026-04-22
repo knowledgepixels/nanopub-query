@@ -208,6 +208,14 @@ public class StatusController {
             if (lastCommittedCounter > loadCounter) {
                 throw new IllegalStateException("Cannot update the load counter from " + lastCommittedCounter + " to " + loadCounter);
             }
+            // Idempotence guard: skip the admin-repo rewrite if the state and counter
+            // are already where we'd set them. A no-op loop iteration of the updates
+            // loader otherwise re-writes the same two triples hundreds of times an
+            // hour over a long idle tail, each write growing the admin-repo LMDB via
+            // copy-on-write.
+            if (state == State.LOADING_UPDATES && lastCommittedCounter == loadCounter) {
+                return;
+            }
             updateState(State.LOADING_UPDATES, loadCounter);
         }
     }

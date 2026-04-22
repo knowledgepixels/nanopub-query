@@ -53,6 +53,26 @@ public class JellyNanopubLoader {
     static final int BREAKER_THRESHOLD = 3;
     static final long BREAKER_PAUSE_MS = 30_000L;
 
+    /**
+     * Epoch-millis of the last successful {@code loadUpdates} invocation (whether it
+     * actually loaded a batch or was a "caught up, nothing to do" tick). Read by
+     * {@link MetricsCollector} to expose {@code registry.loader.last_successful_batch_age_seconds}
+     * so an operator can tell at a glance from Grafana whether an instance is still
+     * making progress. Updated on every non-exceptional return from loadUpdates,
+     * including idle returns — an instance that is caught up and correctly polling
+     * still counts as alive.
+     */
+    static volatile long lastSuccessfulBatchAtMs = 0L;
+
+    /**
+     * Heartbeat counter for loadUpdates invocations. A summary log line is emitted
+     * every {@link #HEARTBEAT_INTERVAL_INVOCATIONS} invocations so a truncated or
+     * sampled log still shows the loader's state evolving. At the default 2 s poll
+     * interval, 30 invocations ≈ 1 line per minute.
+     */
+    private static long loadUpdatesInvocations = 0L;
+    private static final long HEARTBEAT_INTERVAL_INVOCATIONS = 30;
+
     private static final Logger log = LoggerFactory.getLogger(JellyNanopubLoader.class);
 
     /**
@@ -180,14 +200,24 @@ public class JellyNanopubLoader {
                 StatusController.get().setRegistrySetupId(currentSetupId);
             }
 
-            StatusController.get().setLoadingUpdates(status.loadCounter);
             if (lastCommittedCounter >= targetCounter) {
+                // Nothing to do. Keep state at READY (setReady is idempotent) and
+                // skip the redundant setLoadingUpdates → setReady admin-repo write
+                // that the old flow did on every idle poll. Also reset the breaker
+                // counter — a successful "nothing to do" is still a successful tick
+                // and should clear stale failure state from earlier transient errors.
                 StatusController.get().setReady();
+                consecutiveBatchFailures = 0;
+                lastSuccessfulBatchAtMs = System.currentTimeMillis();
+                maybeLogHeartbeat(targetCounter, true);
                 return;
             }
+            StatusController.get().setLoadingUpdates(status.loadCounter);
             loadBatch(lastCommittedCounter, LoadingType.UPDATE);
             // Batch completed without an exception — reset the breaker counter.
             consecutiveBatchFailures = 0;
+            lastSuccessfulBatchAtMs = System.currentTimeMillis();
+            maybeLogHeartbeat(targetCounter, false);
             log.info("Loaded {} update(s). Counter: {}, target was: {}",
                     lastCommittedCounter - status.loadCounter, lastCommittedCounter, targetCounter);
             if (lastCommittedCounter < targetCounter) {
@@ -207,6 +237,20 @@ public class JellyNanopubLoader {
                 log.info("Failure Reason: ", e);
             }
         }
+    }
+
+    /**
+     * Emit a heartbeat summary log line roughly every
+     * {@link #HEARTBEAT_INTERVAL_INVOCATIONS} invocations of {@link #loadUpdates}.
+     * Lets an operator reconstruct loader progress from a sparse or sampled log
+     * export, independent of Prometheus retention.
+     */
+    private static void maybeLogHeartbeat(long targetCounter, boolean idle) {
+        loadUpdatesInvocations++;
+        if (loadUpdatesInvocations % HEARTBEAT_INTERVAL_INVOCATIONS != 0) return;
+        log.info("Loader heartbeat: counter={} target={} idle={} consecutiveBatchFailures={} breakerActive={}",
+                lastCommittedCounter, targetCounter, idle, consecutiveBatchFailures,
+                consecutiveBatchFailures >= BREAKER_THRESHOLD);
     }
 
     /**
