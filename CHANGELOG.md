@@ -1,3 +1,21 @@
+## [1.10.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.9.0...nanopub-query-1.10.0) (2026-04-22)
+
+### Features
+
+* add loader liveness diagnostics and URI-tagged warn/retry logs ([0286085](https://github.com/knowledgepixels/nanopub-query/commit/02860851fd0eacbbbda7d1b973f0a6956af50f27))
+
+### Bug Fixes
+
+* harden TripleStore HTTP-client lifecycle ([fbe4205](https://github.com/knowledgepixels/nanopub-query/commit/fbe42054281363c0a9144cf44bcc14e400cacc29))
+
+### Performance improvements
+
+* skip redundant admin-repo writes on idle loadUpdates polls ([f9cfd9a](https://github.com/knowledgepixels/nanopub-query/commit/f9cfd9aa573b332b3763b1ee70a35433c2d1cec1))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([2975ce4](https://github.com/knowledgepixels/nanopub-query/commit/2975ce4c34beaa594ba6085bc90c6a735362cf2d))
+
 ## [1.9.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.8.0...nanopub-query-1.9.0) (2026-04-20)
 
 ### Features
