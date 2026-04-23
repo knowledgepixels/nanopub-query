@@ -12,7 +12,9 @@ A space is identified by a **space ref** of the form `<NPID>_<SPACEIRIHASH>`:
 - **NPID** — trusty-URI artifact code of the **root nanopub**.
 - **SPACEIRIHASH** — `Utils.createHash(<Space IRI>)`, same pattern as `type_<HASH>`.
 
-Every space-defining nanopub declares its root via `gen:hasRootDefinition` (self-referential for the root itself; pointing at the original root for any update). A `gen:Space`-typed nanopub without this triple is ignored.
+Every space-defining nanopub declares its root via `gen:hasRootDefinition` (self-referential for the root itself; pointing at the original root for any update).
+
+For backwards compatibility during the transition phase, a `gen:Space`-typed nanopub *without* a `gen:hasRootDefinition` triple is still accepted: the declaration nanopub is treated as its own root. Each such declaration therefore produces its own space ref (per declaration, not shared across declarations for the same Space IRI). To be phased out once existing deployments have republished with explicit roots.
 
 ## Role types
 
@@ -68,10 +70,12 @@ Working prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref 
 graph npa:spacesGraph {
   npas:<spaceRef> a npa:SpaceRef ;
                   npa:spaceIri     <spaceIRI> ;
-                  npa:rootNanopub  <rootNP> ;
+                  npa:rootNanopub  <rootNP> ;    # defaults to <thisNP> if the nanopub has no gen:hasRootDefinition
                   npa:hasDefinition <thisNP> .
 }
 ```
+
+Trust seeding is per space ref, so in the rootless transition case each declaration becomes its own root and creates its own space ref. During the transition, Nanodash can default to surfacing the earliest- or latest-defined space ref per Space IRI.
 
 For every `gen:Space` nanopub carrying one or more `gen:hasAdmin` triples in its assertion, additionally emit one `gen:RoleInstantiation` entry covering all asserted admins as multi-valued `npa:forAgent`:
 
@@ -92,7 +96,7 @@ If the loaded nanopub is additionally the space's root — detectable by `npa:ro
   npas:<spaceRef> npa:hasRootAdmin <adminAgent> .
 ```
 
-These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed.
+These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref.
 
 Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`. Names are working titles.
 
