@@ -40,9 +40,51 @@ Two things in one repo:
 
    For backwards compatibility, nanopubs using alternative role-assignment predicates — `gen:hasTeamMember` (`<https://w3id.org/kpxl/gen/terms/hasTeamMember>`), Wikidata P1344 (`<http://www.wikidata.org/entity/P1344>`), and more to be added — are treated as `gen:RoleAssignment` nanopubs. Temporary.
 
-2. **One validated-links graph** (fixed IRI, tbd) holding the authority closures, validated role assignments, and validated view displays that hold under the current trust state. Each entry carries `viaNanopub` and the resolved publisher agent, so consumers never `SERVICE`-join to `trust`.
+2. **One validated-links graph**, `npa:spacesGraph`, holding the authority closures, validated role assignments, and validated view displays that hold under the current trust state. Each entry carries `npa:viaNanopub` and the resolved publisher agent, so consumers never `SERVICE`-join to `trust`.
 
-Profile fields stay in the raw assertions; the validated graph holds pointers + validated links only.
+Profile fields stay in the raw assertions; `npa:spacesGraph` holds pointers + validated links only.
+
+### Triples added per `gen:Space` nanopub
+
+Working prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
+
+```turtle
+GRAPH npa:spacesGraph {
+  npas:<spaceRef> a npa:SpaceRef ;
+                  npa:spaceIri     <spaceIRI> ;
+                  npa:rootNanopub  <rootNP> ;
+                  npa:hasDefinition <thisNP> .
+}
+```
+
+If the loaded nanopub *is* its own root (i.e. `<spaceIRI> gen:hasRootDefinition <thisNP>` is self-referential), additionally emit one triple per `gen:hasAdmin` target in its assertion:
+
+```turtle
+  npas:<spaceRef> npa:hasRootAdmin <adminAgent> .
+```
+
+These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed.
+
+Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`. Names are working titles.
+
+### Triples added per `gen:SpaceMemberRole` nanopub
+
+Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The existing assertion triples are copied verbatim; a single `npa:embeddedIn` triple provides the provenance link.
+
+```turtle
+GRAPH npa:spacesGraph {
+  <roleIri> a gen:SpaceMemberRole ;
+            gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
+            gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
+            npa:embeddedIn         <thisNP> .
+}
+```
+
+Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`.
+
+**Embedding must be checked:** only emit these triples if `<roleIri>` starts with `<thisNP>`'s IRI (i.e. the role is genuinely embedded in this nanopub). Otherwise ignore — a role IRI outside the nanopub's namespace is not a valid embedded mint.
+
+Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:embeddedIn` or by matching the `<roleIri>` directly against the raw assertion graph. Tier (`gen:MaintainerRole` / `gen:MemberRole` / `gen:ObserverRole`) is not captured here — tbd how and where that's declared.
 
 ## Update flow
 
