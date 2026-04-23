@@ -33,13 +33,13 @@ Two things in one repo:
 
 1. **Raw nanopubs** of the following predefined types, loaded whole (all four graphs) and kept indefinitely:
    - `gen:Space`
-   - `gen:SpaceMemberRole`
    - `gen:hasRole`
-   - `gen:RoleAssignment` (new)
+   - `gen:SpaceMemberRole`
+   - `gen:RoleInstantiation` (new)
    - `gen:ViewDisplay`
    - `gen:ResourceView`
 
-   For backwards compatibility, nanopubs whose assertion uses any of the following currently-used properties are also treated as `gen:RoleAssignment` nanopubs (temporary; to be dropped at a later point):
+   For backwards compatibility, nanopubs whose assertion uses any of the following currently-used properties are also treated as `gen:RoleInstantiation` nanopubs (temporary; to be dropped at a later point):
 
    - `<http://www.wikidata.org/entity/P1344>`
    - `<http://www.wikidata.org/entity/P463>`
@@ -73,7 +73,20 @@ graph npa:spacesGraph {
 }
 ```
 
-If the loaded nanopub *is* its own root (i.e. `<spaceIRI> gen:hasRootDefinition <thisNP>` is self-referential), additionally emit one triple per `gen:hasAdmin` target in its assertion:
+For every `gen:Space` nanopub carrying one or more `gen:hasAdmin` triples in its assertion, additionally emit one `gen:RoleInstantiation` entry covering all asserted admins as multi-valued `npa:forAgent`:
+
+```turtle
+  <thisNP> a gen:RoleInstantiation ;
+           npa:forSpace        <spaceIRI> ;
+           npa:regularProperty gen:hasAdmin ;
+           npa:forAgent        <adminAgent1>, <adminAgent2> ;
+           npx:signedBy        <publishingAgent> ;
+           npa:pubkeyHash      "<pubkeyHash>" .
+```
+
+So admins asserted in any `gen:Space` nanopub (root or update) show up in the same SPARQL pattern consumers use for ordinary admin role instantiations.
+
+If the loaded nanopub is additionally the space's root — detectable by `npa:rootNanopub` equalling `npa:hasDefinition` for the same space ref, i.e. `<thisNP> = <rootNP>` — also emit one triple per `gen:hasAdmin` target:
 
 ```turtle
   npas:<spaceRef> npa:hasRootAdmin <adminAgent> .
@@ -81,20 +94,23 @@ If the loaded nanopub *is* its own root (i.e. `<spaceIRI> gen:hasRootDefinition 
 
 These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed.
 
-And additionally emit one `gen:RoleAssignment` entry on the root nanopub covering all root admins as multi-valued `npa:forAgent`:
+Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`. Names are working titles.
+
+### Triples added per `gen:hasRole` nanopub
+
+Only validated attachments are emitted (publisher must resolve to an admin of the target space at materialization time); a nanopub that fails this check produces no triples in `npa:spacesGraph`.
 
 ```turtle
+graph npa:spacesGraph {
   <thisNP> a gen:RoleAssignment ;
-           npa:forSpace        npas:<spaceRef> ;
-           npa:regularProperty gen:hasAdmin ;
-           npa:forAgent        <adminAgent1>, <adminAgent2> ;
-           npx:signedBy        <publishingAgent> ;
-           npa:pubkeyHash      "<pubkeyHash>" .
+           npa:forSpace    <spaceIRI> ;
+           gen:hasRole     <roleIri> ;
+           npx:signedBy    <publishingAgent> ;
+           npa:pubkeyHash  "<pubkeyHash>" .
+}
 ```
 
-So root admins show up in the same SPARQL pattern consumers use for ordinary admin assignments.
-
-Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`. Names are working titles.
+Prefix: `npx:` = `<http://purl.org/nanopub/x/>`. `npa:forSpace` points to the Space IRI (not the space-ref form), as used in the source nanopub's assertion. The attached `<roleIri>` is the IRI of a role instance defined in some `gen:SpaceMemberRole` nanopub; consumers JOIN against that def for the role's predicates and tier.
 
 ### Triples added per `gen:SpaceMemberRole` nanopub
 
@@ -115,13 +131,13 @@ Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`.
 
 Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:embeddedIn` or by matching the `<roleIri>` directly against the raw assertion graph. Tier (`gen:MaintainerRole` / `gen:MemberRole` / `gen:ObserverRole`) is not captured here — tbd how and where that's declared.
 
-### Triples added per `gen:RoleAssignment` nanopub
+### Triples added per `gen:RoleInstantiation` nanopub
 
-Only validated assignments are emitted; a nanopub that fails policy produces no triples in `npa:spacesGraph` (the raw nanopub stays in the repo regardless).
+Only validated instantiations are emitted; a nanopub that fails policy produces no triples in `npa:spacesGraph` (the raw nanopub stays in the repo regardless).
 
 ```turtle
 graph npa:spacesGraph {
-  <thisNP> a gen:RoleAssignment ;
+  <thisNP> a gen:RoleInstantiation ;
            npa:forSpace        <spaceIri> ;
            npa:regularProperty <regularPropIRI> ;   # iff regular direction was used
            # OR
@@ -132,9 +148,7 @@ graph npa:spacesGraph {
 }
 ```
 
-Prefix: `npx:` = `<http://purl.org/nanopub/x/>`.
-
-Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per assignment, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `gen:SpaceMemberRole` def (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
+Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per instantiation, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `gen:SpaceMemberRole` def (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
 
 ## Update flow
 
