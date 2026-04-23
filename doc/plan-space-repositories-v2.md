@@ -33,12 +33,28 @@ Two things in one repo:
 
 1. **Raw nanopubs** of the following predefined types, loaded whole (all four graphs) and kept indefinitely:
    - `gen:Space`
+   - `gen:SpaceMemberRole`
    - `gen:hasRole`
    - `gen:RoleAssignment` (new)
    - `gen:ViewDisplay`
    - `gen:ResourceView`
 
-   For backwards compatibility, nanopubs using alternative role-assignment predicates — `gen:hasTeamMember` (`<https://w3id.org/kpxl/gen/terms/hasTeamMember>`), Wikidata P1344 (`<http://www.wikidata.org/entity/P1344>`), and more to be added — are treated as `gen:RoleAssignment` nanopubs. Temporary.
+   For backwards compatibility, nanopubs whose assertion uses any of the following currently-used properties are also treated as `gen:RoleAssignment` nanopubs (temporary; to be dropped at a later point):
+
+   - `<http://www.wikidata.org/entity/P1344>`
+   - `<http://www.wikidata.org/entity/P463>`
+   - `<http://www.wikidata.org/entity/P710>`
+   - `<http://www.wikidata.org/entity/P823>`
+   - `<https://w3id.org/fair/3pff/has-event-assistant>`
+   - `<https://w3id.org/fair/3pff/has-event-facilitator>`
+   - `<https://w3id.org/fair/3pff/participatedAsFacilitatorAssistantIn>`
+   - `<https://w3id.org/fair/3pff/participatedAsImplementerAspirantIn>`
+   - `<https://w3id.org/fair/3pff/participatedAsParticipantIn>`
+   - `<https://w3id.org/kpxl/gen/terms/hasAdmin>`
+   - `<https://w3id.org/kpxl/gen/terms/hasObserver>`
+   - `<https://w3id.org/kpxl/gen/terms/hasProjectLead>`
+   - `<https://w3id.org/kpxl/gen/terms/hasTeamMember>`
+   - `<https://w3id.org/kpxl/gen/terms/plansToAttend>`
 
 2. **One validated-links graph**, `npa:spacesGraph`, holding the authority closures, validated role assignments, and validated view displays that hold under the current trust state. Each entry carries `npa:viaNanopub` and the resolved publisher agent, so consumers never `SERVICE`-join to `trust`.
 
@@ -85,6 +101,27 @@ Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`.
 **Embedding must be checked:** only emit these triples if `<roleIri>` starts with `<thisNP>`'s IRI (i.e. the role is genuinely embedded in this nanopub). Otherwise ignore — a role IRI outside the nanopub's namespace is not a valid embedded mint.
 
 Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:embeddedIn` or by matching the `<roleIri>` directly against the raw assertion graph. Tier (`gen:MaintainerRole` / `gen:MemberRole` / `gen:ObserverRole`) is not captured here — tbd how and where that's declared.
+
+### Triples added per `gen:RoleAssignment` nanopub
+
+Only validated assignments are emitted; a nanopub that fails policy produces no triples in `npa:spacesGraph` (the raw nanopub stays in the repo regardless).
+
+```turtle
+GRAPH npa:spacesGraph {
+  <thisNP> a gen:RoleAssignment ;
+           npa:forSpace        <spaceIri> ;
+           npa:regularProperty <regularPropIRI> ;   # iff regular direction was used
+           # OR
+           npa:inverseProperty <inversePropIRI> ;   # iff inverse direction was used
+           npa:forAgent        <agent> ;
+           npx:signedBy        <publishingAgent> ;
+           npa:pubkeyHash      "<pubkeyHash>" .
+}
+```
+
+Prefix: `npx:` = `<http://purl.org/nanopub/x/>`.
+
+Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per assignment, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `gen:SpaceMemberRole` def (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
 
 ## Update flow
 
