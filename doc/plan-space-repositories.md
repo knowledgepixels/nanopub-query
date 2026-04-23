@@ -34,8 +34,8 @@ Four predefined `gen:SpaceMemberRole` subclasses form the authority hierarchy:
 
 | Type | Predicate / how it's granted |
 |------|------------------------------|
-| `gen:AdminRole`      | Hardcoded to `gen:hasAdmin`. No user-defined admin roles in the MVP. |
-| `gen:MaintainerRole` | Built-in `gen:hasMaintainer`; user-defined predicates can also declare this type. |
+| `gen:AdminRole`      | Single hardcoded instance `<https://w3id.org/np/RA_eEJjQbxzSqYSwPzfjzOZi5sMPpUmHskFNsgJYSws8I/adminRole>`, which defines `gen:hasAdmin`. No other admin roles. |
+| `gen:MaintainerRole` | User-defined predicates declared `rdf:type gen:MaintainerRole`. Nothing is hardcoded at this tier. |
 | `gen:MemberRole`     | User-defined predicates declared `rdf:type gen:MemberRole`. |
 | `gen:ObserverRole`   | User-defined predicates declared `rdf:type gen:ObserverRole`. **Default** when a role definition doesn't declare a type. |
 
@@ -46,7 +46,7 @@ Per-tier privilege enforcement (`core`/`structure`/`content`/`comment`) is Nanod
 Per space, in its named graph, the projection holds **only what's derived or extracted** — never raw nanopubs. Each entry carries `npa:viaNanopub` provenance back to the source in `full`.
 
 - **Space profile** — root NPID, Space IRI, description, dates, alt IDs, declared subtypes.
-- **Authority extracts** — the `gen:hasAdmin` / `gen:hasMaintainer` triples copied from source assertions, each tagged with the source nanopub and the publisher's resolved agent. These are the *inputs* the materializer iterates to compute closures.
+- **Authority extracts** — the `gen:hasAdmin` triples and the triples using any registered `gen:MaintainerRole`-typed predicate, copied from source assertions and each tagged with the source nanopub and the publisher's resolved agent. These are the *inputs* the materializer iterates to compute closures.
 - **Role definitions** — for each user-defined role predicate registered for the space: predicate IRI, declared role type (defaulting to `gen:ObserverRole`), label, template URI, regular/inverse property metadata.
 - **`RoleAssignment` objects** — one per `(agent, role, space)` tuple, with one or more `npa:hasEvidence` links (see below).
 - **Validated view displays** — for each `gen:isDisplayFor` source whose publisher passes the view-display policy: display IRI, target resource, linked view (`gen:isDisplayOfView`), title, applies-to / applies-to-namespace / applies-to-instances-of rules, deactivation status (`gen:DeactivatedViewDisplay`), presentation hints (page size, display width, structural position), template URI, source nanopub. Defaults that fall through from the linked view are not duplicated — Nanodash already merges them.
@@ -62,7 +62,7 @@ Membership is the fixed-point closure of a delegation chain, validated against t
 
 ### Closures (admin, then maintainer)
 
-The **admin** closure starts from the root nanopub's `gen:hasAdmin` triples (trusted by construction — the root NPID is part of the space ref) and grows by accepting any further `gen:hasAdmin` declaration whose publisher pubkey resolves (via trust state) to an existing admin. Iterate to fixed point. The **maintainer** closure runs the same way over `gen:hasMaintainer`, seeded from grants by closed admins, accepting further grants from admins or existing maintainers. Computed in Java (SPARQL 1.1 has no fixed-point recursion).
+The **admin** closure starts from the root nanopub's `gen:hasAdmin` triples (trusted by construction — the root NPID is part of the space ref) and grows by accepting any further `gen:hasAdmin` declaration whose publisher pubkey resolves (via trust state) to an existing admin. Iterate to fixed point. The **maintainer** closure runs the same way over any registered `gen:MaintainerRole`-typed predicate, seeded from grants by closed admins, accepting further grants from admins or existing maintainers. Computed in Java (SPARQL 1.1 has no fixed-point recursion).
 
 ### Two evidence kinds
 
@@ -130,7 +130,7 @@ Switching a tier to dual confirmation later is a SPARQL change in consumer queri
 Done in `NanopubLoader` + a new `SpaceRegistry` (in-memory, persisted to the admin repo).
 
 - `SpaceRegistry`: tracks known space refs and the role properties learned per space; reverse index Space IRI → space refs. Loaded from admin repo on startup.
-- Detection in the loader (constructor / type-extraction site): identify nanopubs that contribute to a known space — `gen:Space` (with required `gen:hasRootDefinition`), `gen:hasAdmin`/`gen:hasMaintainer`, role definitions for known spaces, role-assignments matching learned role properties, `gen:isDisplayFor` referencing a known space ref, root-nanopub profile data.
+- Detection in the loader (constructor / type-extraction site): identify nanopubs that contribute to a known space — `gen:Space` (with required `gen:hasRootDefinition`), `gen:hasAdmin`, triples using any registered `gen:MaintainerRole`-typed predicate, role definitions for known spaces, role-assignments matching learned role properties, `gen:isDisplayFor` referencing a known space ref, root-nanopub profile data.
 - For each detected nanopub, **extract** the relevant triples (not the whole nanopub) into the corresponding space graph in the `spaces` repo, tagged with `npa:viaNanopub` provenance. The extraction set is the schema in [What's In the `spaces` Repo](#whats-in-the-spaces-repo).
 - `TripleStore`: one-time `spaces` repo init (not a per-prefix branch). Lighter indexes are fine — the repo is small.
 
