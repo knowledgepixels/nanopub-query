@@ -71,9 +71,13 @@ graph npa:spacesGraph {
   npas:<spaceRef> a npa:SpaceRef ;
                   npa:spaceIri     <spaceIRI> ;
                   npa:rootNanopub  <rootNP> ;    # defaults to <thisNP> if the nanopub has no gen:hasRootDefinition
-                  npa:hasDefinition <thisNP> .
+                  npa:hasDefinition <thisNP> ;
+                  npx:signedBy     <publishingAgent> ;
+                  npa:pubkeyHash   "<pubkeyHash>" .
 }
 ```
+
+Each loaded `gen:Space` nanopub contributes its own `npx:signedBy` and `npa:pubkeyHash` values, so multiple defining nanopubs (root + updates) accumulate multiple signer/pubkey pairs on the same `npas:<spaceRef>` — consumers can check validity of each declaration by matching signer/pubkey against the trust repo.
 
 Trust seeding is per space ref, so in the rootless transition case each declaration becomes its own root and creates its own space ref. During the transition, Nanodash can default to surfacing the earliest- or latest-defined space ref per Space IRI.
 
