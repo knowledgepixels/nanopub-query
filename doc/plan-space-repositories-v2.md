@@ -122,7 +122,7 @@ Role instances are *embedded* (not introduced) in their defining nanopub, so eac
 
 ```turtle
 graph npa:spacesGraph {
-  <roleIri> a gen:SpaceMemberRole ;
+  <roleIri> a gen:SpaceMemberRole, <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
             gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
             gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
             npa:embeddedIn         <thisNP> .
@@ -131,9 +131,11 @@ graph npa:spacesGraph {
 
 Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`.
 
+The tier `rdf:type` triple (`gen:MaintainerRole`, `gen:MemberRole`, or `gen:ObserverRole`) is copied from the assertion alongside the `gen:SpaceMemberRole` type. If no tier is declared, default to `gen:ObserverRole`.
+
 **Embedding must be checked:** only emit these triples if `<roleIri>` starts with `<thisNP>`'s IRI (i.e. the role is genuinely embedded in this nanopub). Otherwise ignore — a role IRI outside the nanopub's namespace is not a valid embedded mint.
 
-Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:embeddedIn` or by matching the `<roleIri>` directly against the raw assertion graph. Tier (`gen:MaintainerRole` / `gen:MemberRole` / `gen:ObserverRole`) is not captured here — tbd how and where that's declared.
+Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:embeddedIn` or by matching the `<roleIri>` directly against the raw assertion graph.
 
 ### Triples added per `gen:RoleInstantiation` nanopub
 
