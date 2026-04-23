@@ -81,6 +81,19 @@ If the loaded nanopub *is* its own root (i.e. `<spaceIRI> gen:hasRootDefinition 
 
 These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed.
 
+And additionally emit one `gen:RoleAssignment` entry on the root nanopub covering all root admins as multi-valued `npa:forAgent`:
+
+```turtle
+  <thisNP> a gen:RoleAssignment ;
+           npa:forSpace        npas:<spaceRef> ;
+           npa:regularProperty gen:hasAdmin ;
+           npa:forAgent        <adminAgent1>, <adminAgent2> ;
+           npx:signedBy        <publishingAgent> ;
+           npa:pubkeyHash      "<pubkeyHash>" .
+```
+
+So root admins show up in the same SPARQL pattern consumers use for ordinary admin assignments.
+
 Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`. Names are working titles.
 
 ### Triples added per `gen:SpaceMemberRole` nanopub
