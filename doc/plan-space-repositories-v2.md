@@ -65,7 +65,7 @@ Profile fields stay in the raw assertions; `npa:spacesGraph` holds pointers + va
 Working prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
 
 ```turtle
-GRAPH npa:spacesGraph {
+graph npa:spacesGraph {
   npas:<spaceRef> a npa:SpaceRef ;
                   npa:spaceIri     <spaceIRI> ;
                   npa:rootNanopub  <rootNP> ;
@@ -88,7 +88,7 @@ Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw 
 Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The existing assertion triples are copied verbatim; a single `npa:embeddedIn` triple provides the provenance link.
 
 ```turtle
-GRAPH npa:spacesGraph {
+graph npa:spacesGraph {
   <roleIri> a gen:SpaceMemberRole ;
             gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
             gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
@@ -107,7 +107,7 @@ Label / name / title / assignment-template pointer stay in the raw assertion; co
 Only validated assignments are emitted; a nanopub that fails policy produces no triples in `npa:spacesGraph` (the raw nanopub stays in the repo regardless).
 
 ```turtle
-GRAPH npa:spacesGraph {
+graph npa:spacesGraph {
   <thisNP> a gen:RoleAssignment ;
            npa:forSpace        <spaceIri> ;
            npa:regularProperty <regularPropIRI> ;   # iff regular direction was used
