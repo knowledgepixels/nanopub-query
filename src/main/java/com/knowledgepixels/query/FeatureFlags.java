@@ -38,12 +38,9 @@ public final class FeatureFlags {
     }
 
     /**
-     * When {@code false}, all spaces-related work is disabled:
-     * {@link NanopubLoader#detectAndRegisterSpaces},
-     * {@link SpacesAdminStore#bootstrap},
-     * {@link SpacesAdminStore#scanExistingSpaces}, and
-     * {@link SpacesAdminStore#persistSpace} become no-ops. The {@code spaces} repo
-     * is never auto-created and no space state is ever registered.
+     * When {@code false}, all spaces-related work is disabled: space-relevant
+     * nanopubs are not extracted into {@code npa:spacesGraph}, the {@code spaces}
+     * repo is never auto-created, and no space-state materialization runs.
      *
      * <p>Controlled by the {@code NANOPUB_QUERY_ENABLE_SPACES} environment
      * variable. Default: {@code true}.

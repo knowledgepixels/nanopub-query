@@ -31,7 +31,6 @@ import org.nanopub.vocabulary.PAV;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.knowledgepixels.query.vocabulary.GEN;
 
 import java.security.GeneralSecurityException;
 import java.util.*;
@@ -87,6 +86,7 @@ public class NanopubLoader {
     private List<Statement> literalStatements = new ArrayList<>();
     private List<Statement> invalidateStatements = new ArrayList<>();
     private List<Statement> textStatements, allStatements;
+    private List<Statement> spaceExtractionStatements = new ArrayList<>();
     private Calendar timestamp = null;
     private Statement pubkeyStatement, pubkeyStatementX;
     private List<String> notes = new ArrayList<>();
@@ -266,9 +266,6 @@ public class NanopubLoader {
             // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
             literalFilter += " _type_" + Utils.createHash(typeIri);
         }
-        // Side-effecting call: populates SpaceRegistry as gen:Space-typed nanopubs flow through.
-        // Consumers of the registry (extraction, materialization) land in later steps of #62.
-        detectAndRegisterSpaces(np);
         String label = NanopubUtils.getLabel(np);
         if (label != null) {
             metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), NPA.GRAPH));
@@ -305,6 +302,14 @@ public class NanopubLoader {
         textStatements = new ArrayList<>(literalStatements);
         textStatements.addAll(metaStatements);
         textStatements.addAll(invalidatingStatements);
+
+        if (FeatureFlags.spacesEnabled()) {
+            IRI signedBy = (el.getSigners().size() == 1) ? el.getSigners().iterator().next() : null;
+            String pubkeyHash = Utils.createHash(el.getPublicKeyString());
+            Date createdAt = (timestamp != null) ? timestamp.getTime() : null;
+            SpacesExtractor.Context ctx = new SpacesExtractor.Context(ac, signedBy, pubkeyHash, createdAt);
+            spaceExtractionStatements = SpacesExtractor.extract(np, ctx);
+        }
     }
 
     /**
@@ -395,6 +400,10 @@ public class NanopubLoader {
             //			loadNanopubToRepo(np.getUri(), allStatements, "user_" + Utils.createHash(authorIri));
             //			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(authorIri));
             //		}
+
+            if (FeatureFlags.spacesEnabled() && !spaceExtractionStatements.isEmpty()) {
+                runTask.accept(() -> loadToSpacesRepo(np.getUri(), allStatements, spaceExtractionStatements));
+            }
 
             for (Statement st : invalidateStatements) {
                 runTask.accept(() -> loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));
@@ -528,6 +537,79 @@ public class NanopubLoader {
         }
     }
 
+    /**
+     * Writes the raw nanopub statements (all four graphs) into the {@code spaces}
+     * repo alongside the pre-computed extraction statements (which target
+     * {@code npa:spacesGraph}). Stamps the load-number on the nanopub IRI and bumps
+     * {@code npa:thisRepo npa:currentLoadCounter} in {@code npa:graph}, all within
+     * one serializable transaction.
+     *
+     * <p>Idempotent: if the nanopub already has a {@code npa:hasLoadNumber} stamp in
+     * {@code npa:graph} of the {@code spaces} repo, this is a no-op.
+     *
+     * @param npId            nanopub IRI
+     * @param nanopubTriples  raw nanopub statements (all four graphs + meta)
+     * @param spaceExtraction summary triples destined for {@code npa:spacesGraph}
+     */
+    @GeneratedFlagForDependentElements
+    private static void loadToSpacesRepo(IRI npId, List<Statement> nanopubTriples,
+                                         List<Statement> spaceExtraction) {
+        boolean success = false;
+        int retries = 0;
+        while (!success) {
+            RepositoryConnection conn = TripleStore.get().getRepoConnection("spaces");
+            try (conn) {
+                conn.begin(IsolationLevels.SERIALIZABLE);
+                // Idempotency: skip if this nanopub is already stamped in this repo.
+                if (Utils.getObjectForPattern(conn, NPA.GRAPH, npId, NPA.HAS_LOAD_NUMBER) != null) {
+                    conn.commit();
+                    success = true;
+                    continue;
+                }
+                long newCounter = fetchSpacesLoadCounter(conn) + 1;
+                conn.remove(NPA.THIS_REPO,
+                        com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER,
+                        null, NPA.GRAPH);
+                conn.add(NPA.THIS_REPO,
+                        com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER,
+                        vf.createLiteral(newCounter), NPA.GRAPH);
+                conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(newCounter), NPA.GRAPH);
+                conn.add(nanopubTriples);
+                conn.add(spaceExtraction);
+                conn.commit();
+                success = true;
+            } catch (Exception ex) {
+                log.warn("Could not load nanopub {} to spaces repo.", npId, ex);
+                if (conn.isActive()) conn.rollback();
+            }
+            if (!success) {
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to load nanopub " + npId + " to spaces repo after " + MAX_RETRIES + " retries");
+                }
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms for nanopub {} in spaces repo (attempt {}/{})...", delay, npId, retries, MAX_RETRIES);
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    private static long fetchSpacesLoadCounter(RepositoryConnection conn) {
+        Value v = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO,
+                com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER);
+        if (v == null) return 0;
+        try {
+            return Long.parseLong(v.stringValue());
+        } catch (NumberFormatException ex) {
+            log.warn("Invalid npa:currentLoadCounter literal in spaces repo: {}", v);
+            return 0;
+        }
+    }
+
     private record RepoStatus(boolean isLoaded, long count, String checksum) {
     }
 
@@ -575,13 +657,28 @@ public class NanopubLoader {
 //						connections.add(loadStatements("text-pubkey_" + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement));
                     }
 
+                    // Collect target types so we can both propagate per-type AND decide
+                    // whether the target is space-relevant in a single pass over meta.
+                    Set<IRI> targetTypes = new HashSet<>();
                     for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invalidatedNpId, NPX.HAS_NANOPUB_TYPE)) {
-                        IRI typeIri = (IRI) v;
-                        // TODO Avoid calling getTypes and getCreators multiple times:
-                        if (!NanopubUtils.getTypes(thisNp).contains(typeIri)) {
+                        if (v instanceof IRI typeIri) targetTypes.add(typeIri);
+                    }
+                    Set<IRI> thisNpTypes = NanopubUtils.getTypes(thisNp);
+                    for (IRI typeIri : targetTypes) {
+                        if (!thisNpTypes.contains(typeIri)) {
                             //log.info("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for type " + typeIri);
                             connections.add(loadStatements("type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement, pubkeyStatementX));
 //							connections.add(loadStatements("text-type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
+                        }
+                    }
+
+                    // Emit an npa:Invalidation entry into the spaces repo if the target
+                    // had any space-relevant type. Piggybacks on the type lookup above
+                    // so we don't re-read meta.
+                    if (FeatureFlags.spacesEnabled() && SpacesExtractor.isSpaceRelevant(targetTypes)) {
+                        List<Statement> invEntry = buildInvalidationEntry(thisNp, invalidatedNpId, targetTypes, thisPubkey);
+                        if (!invEntry.isEmpty()) {
+                            connections.add(loadStatements("spaces", invEntry.toArray(new Statement[0])));
                         }
                     }
 
@@ -623,6 +720,42 @@ public class NanopubLoader {
                 }
             }
         }
+    }
+
+    /**
+     * Builds the statements for an {@code npa:Invalidation} entry describing a
+     * space-relevant retraction/supersession. Caller writes these into the
+     * {@code spaces} repo.
+     *
+     * @param thisNp        the invalidator nanopub
+     * @param invalidatedNp IRI of the invalidated target
+     * @param targetTypes   the target's types (already read from the meta repo)
+     * @param thisPubkey    the invalidator's signing pubkey
+     * @return the invalidation-entry statements, or an empty list if no signer is known
+     */
+    private static List<Statement> buildInvalidationEntry(Nanopub thisNp, IRI invalidatedNp,
+                                                          Set<IRI> targetTypes, String thisPubkey) {
+        String artifactCode = TrustyUriUtils.getArtifactCode(thisNp.getUri().toString());
+        if (artifactCode == null || artifactCode.isEmpty()) return Collections.emptyList();
+        IRI signer = null;
+        for (Statement st : thisNp.getPubinfo()) {
+            if (!st.getSubject().equals(thisNp.getUri())) continue;
+            if (!st.getPredicate().equals(NPX.SIGNED_BY)) continue;
+            if (st.getObject() instanceof IRI signerIri) {
+                signer = signerIri;
+                break;
+            }
+        }
+        Date createdAt = null;
+        try {
+            Calendar ts = SimpleTimestampPattern.getCreationTime(thisNp);
+            if (ts != null) createdAt = ts.getTime();
+        } catch (IllegalArgumentException ignored) {
+            // pubinfo timestamp missing or malformed; extraction entry simply omits dct:created.
+        }
+        SpacesExtractor.Context ctx = new SpacesExtractor.Context(
+                artifactCode, signer, Utils.createHash(thisPubkey), createdAt);
+        return SpacesExtractor.extractInvalidation(thisNp, invalidatedNp, targetTypes, ctx);
     }
 
     @GeneratedFlagForDependentElements
@@ -734,49 +867,6 @@ public class NanopubLoader {
             if (st.getPredicate().equals(NPX.DECLARED_BY)) return true;
         }
         return false;
-    }
-
-    /**
-     * Detects whether the given nanopub is a Space-defining nanopub (typed
-     * {@code gen:Space}) and, if so, registers each space it declares (one per
-     * {@code <spaceIri> gen:hasRootDefinition <rootUri>} triple) in
-     * {@link SpaceRegistry}. Nanopubs missing the {@code gen:hasRootDefinition}
-     * triple are not recognized as space-defining — there is no transition fallback.
-     *
-     * @param np the nanopub to inspect
-     * @return the set of space refs registered from this nanopub (possibly empty);
-     *         currently used by tests to assert detection behavior. Production
-     *         callers invoke this for its side effect on {@link SpaceRegistry};
-     *         downstream consumers (extraction, materialization) follow in later
-     *         steps of #62.
-     */
-    static Set<String> detectAndRegisterSpaces(Nanopub np) {
-        if (!FeatureFlags.spacesEnabled()) return Collections.emptySet();
-        boolean isSpaceTyped = false;
-        for (IRI typeIri : NanopubUtils.getTypes(np)) {
-            if (typeIri.equals(GEN.SPACE)) {
-                isSpaceTyped = true;
-                break;
-            }
-        }
-        if (!isSpaceTyped) return Collections.emptySet();
-        Set<String> spaceRefs = new LinkedHashSet<>();
-        for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.HAS_ROOT_DEFINITION)) continue;
-            if (!(st.getSubject() instanceof IRI spaceIri)) continue;
-            if (!(st.getObject() instanceof IRI rootUri)) continue;
-            String rootNanopubId = TrustyUriUtils.getArtifactCode(rootUri.stringValue());
-            if (rootNanopubId == null || rootNanopubId.isEmpty()) {
-                log.warn("Ignoring space {}: gen:hasRootDefinition target is not a trusty URI: {}", spaceIri, rootUri);
-                continue;
-            }
-            SpaceRegistry.Registration registration = SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri);
-            spaceRefs.add(registration.spaceRef());
-            if (registration.wasNew()) {
-                SpacesAdminStore.persistSpace(rootNanopubId, spaceIri);
-            }
-        }
-        return spaceRefs;
     }
 
     /**
