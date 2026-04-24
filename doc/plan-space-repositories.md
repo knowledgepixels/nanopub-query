@@ -58,13 +58,14 @@ Two things in one repo:
 
 2. **One extraction graph**, `npa:spacesGraph`, holding add-only summary triples for each loaded space-relevant nanopub and each invalidation. No validation happens at this layer — everything that matches a predefined type is written here, load-number-stamped.
 
-3. **One space-state graph**, `npass:<trustStateHash>`, holding the validated closures under the current trust state (see [Space state graph](#space-state-graph)). Rebuilt incrementally via SPARQL UPDATE driven by load-number deltas.
+3. **One space-state graph**, `npass:<trustStateHash>_<loadCounterAtBuildStart>`, holding the validated closures under the current trust state (see [Space state graph](#space-state-graph)). Extended incrementally via SPARQL UPDATE driven by load-number deltas; fully rebuilt (into a new graph IRI) on trust-state flip or on the periodic-rebuild signal.
 
 Every extraction uses a dedicated subject IRI per entry — derived from the originating nanopub's artifact code so subjects never collide with user nanopub IRIs, role IRIs, or anything else a nanopub might declare types on. Prefixes:
 
 - `npari:` = `<http://purl.org/nanopub/admin/roleinst/>` — subject for `gen:RoleInstantiation` entries
 - `npara:` = `<http://purl.org/nanopub/admin/roleassign/>` — subject for `gen:hasRole` (role-attachment) entries
 - `npard:` = `<http://purl.org/nanopub/admin/roledecl/>` — subject for `npa:RoleDeclaration` entries (extracted from `gen:SpaceMemberRole` nanopubs)
+- `npadef:` = `<http://purl.org/nanopub/admin/spacedef/>` — subject for `npa:SpaceDefinition` entries (per contributing `gen:Space` nanopub)
 - `npainv:` = `<http://purl.org/nanopub/admin/invalidation/>` — subject for `npa:Invalidation` entries
 
 Each entry carries `npa:viaNanopub <originatingNP>` to link back to the source; the stamped load number goes on that nanopub IRI so all of a nanopub's emitted entries share one stamp:
@@ -81,23 +82,30 @@ In addition, every extraction entry carries a `dct:created` timestamp (prefix `d
 
 Prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
 
+Two entries are emitted. An aggregate `npa:SpaceRef` (one per space ref, space-identity information only — no per-contributor fields, so no provenance-based cleanup needed) and a per-nanopub `npa:SpaceDefinition` that carries every triple specific to this particular contributing nanopub:
+
 ```turtle
 GRAPH npa:spacesGraph {
+  # Aggregate — space-identity; multiple contributing nanopubs reinforce the same triples
   npas:<spaceRef> a npa:SpaceRef ;
-                  npa:spaceIri     <spaceIRI> ;
-                  npa:rootNanopub  <rootNP> ;    # object of gen:hasRootDefinition; <thisNP> if the triple is absent
-                  npa:hasDefinition <thisNP> ;
-                  npx:signedBy     <publishingAgent> ;
-                  npa:pubkeyHash   "<pubkeyHash>" ;
-                  dct:created      "<timestamp>"^^xsd:dateTime .
+                  npa:spaceIri    <spaceIRI> ;
+                  npa:rootNanopub <rootNP> .    # object of gen:hasRootDefinition; <thisNP> if the triple is absent
+
+  # Per-contributor — one per loaded gen:Space nanopub for this space ref
+  npadef:<artifactCode> a npa:SpaceDefinition ;
+                        npa:forSpaceRef npas:<spaceRef> ;
+                        npa:viaNanopub  <thisNP> ;
+                        npx:signedBy    <publishingAgent> ;
+                        npa:pubkeyHash  "<pubkeyHash>" ;
+                        dct:created     "<timestamp>"^^xsd:dateTime .
 }
 ```
 
-For update nanopubs `<rootNP>` equals the original root (not `<thisNP>`), consistent with the root's own self-referential `gen:hasRootDefinition`; multiple contributing nanopubs thus share one `npa:rootNanopub` value on the same `npas:<spaceRef>`.
+For update nanopubs `<rootNP>` equals the original root (not `<thisNP>`), consistent with the root's own self-referential `gen:hasRootDefinition`. Every contributing nanopub reinforces the same `npa:spaceIri`/`npa:rootNanopub` triples on the aggregate (RDF set semantics).
 
-Each loaded `gen:Space` nanopub contributes its own `npx:signedBy` and `npa:pubkeyHash` values, so multiple defining nanopubs (root + updates) accumulate multiple signer/pubkey pairs on the same `npas:<spaceRef>` — consumers can check validity of each declaration by matching signer/pubkey against the trust repo.
+Because each `npadef:` entry carries `npa:viaNanopub`, invalidating a `gen:Space` nanopub cleans it up via the standard DELETE-on-`npa:viaNanopub` path: signer/pubkey/created for that contributor go away, and the root's trust seed goes with it (see below). The aggregate `npas:<spaceRef>` remains — it's space-identity, not per-contributor.
 
-Trust seeding is per space ref, so in the rootless transition case each declaration becomes its own root and creates its own space ref. When multiple space refs exist for the same Space IRI, Nanodash resolves to the one whose root nanopub has the earliest `dct:created` — first-root-wins, deterministic across time. Pattern: `ORDER BY ?created LIMIT 1` on `?spaceRef npa:spaceIri <…>; npa:rootNanopub ?root. ?root dct:created ?created`.
+Trust seeding is per space ref, so in the rootless transition case each declaration becomes its own root and creates its own space ref. When multiple space refs exist for the same Space IRI, Nanodash resolves to the one whose root definition has the earliest `dct:created` — first-root-wins, deterministic across time. Pattern: `ORDER BY ?created LIMIT 1` on `?spaceRef npa:rootNanopub ?root. ?def npa:viaNanopub ?root; dct:created ?created`.
 
 For every `gen:Space` nanopub carrying one or more `gen:hasAdmin` triples in its assertion, additionally emit one `gen:RoleInstantiation` entry covering all asserted admins as multi-valued `npa:forAgent`:
 
@@ -116,13 +124,13 @@ where `<artifactCode>` is the trusty-URI artifact code of `<thisNP>`.
 
 So admins asserted in any `gen:Space` nanopub (root or update) show up in the same SPARQL pattern consumers use for ordinary admin role instantiations.
 
-If the loaded nanopub is additionally the space's root — detectable by `npa:rootNanopub` equalling `npa:hasDefinition` for the same space ref, i.e. `<thisNP> = <rootNP>` — also emit one triple per `gen:hasAdmin` target:
+If the loaded nanopub is additionally the space's root — detectable by `npa:rootNanopub <thisNP>` on its `npas:<spaceRef>` — also attach the trust-seed admin agents to the `npadef:` entry (not to the aggregate `npas:<spaceRef>`):
 
 ```turtle
-  npas:<spaceRef> npa:hasRootAdmin <adminAgent> .
+  npadef:<artifactCode> npa:hasRootAdmin <adminAgent1>, <adminAgent2> .
 ```
 
-These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref.
+These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref. Invalidating the root gen:Space nanopub DELETEs the `npadef:` entry (via `npa:viaNanopub`), taking the `npa:hasRootAdmin` seeds with it.
 
 ### Triples added per `gen:hasRole` nanopub
 
@@ -212,11 +220,19 @@ Second-order invalidations are ignored — an invalidation whose target is itsel
 
 ## Space state graph
 
-A single `npass:<trustStateHash>` graph (prefix `npass:` = `<http://purl.org/nanopub/admin/spacestate/>`) holds the current validated state. Current-state pointer in `npa:graph`:
+A single space-state graph (prefix `npass:` = `<http://purl.org/nanopub/admin/spacestate/>`) holds the current validated state. Its IRI is:
+
+```
+npass:<trustStateHash>_<loadCounterAtBuildStart>
+```
+
+Underscore-joined, human-decodable by splitting on `_` (same shape as the `<NPID>_<SPACEIRIHASH>` space-ref form). `<loadCounterAtBuildStart>` is the value of `npa:thisRepo npa:currentLoadCounter` captured when this particular full build kicked off — so incremental cycles within the graph leave the name unchanged; only a full build (trust-state flip or periodic rebuild — see below) mints a new graph IRI.
+
+Current-state pointer in `npa:graph`:
 
 ```turtle
 GRAPH npa:graph {
-  npa:thisRepo npa:hasCurrentSpaceState npass:<trustStateHash> .
+  npa:thisRepo npa:hasCurrentSpaceState npass:<trustStateHash>_<loadCounterAtBuildStart> .
 }
 ```
 
@@ -225,13 +241,15 @@ The graph contains two parts:
 1. **Mirrored trust state** — copy of the trust-approved `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. "Trust-approved" means `npa:trustStatus` ∈ `{npa:loaded, npa:toLoad}` (the positive set per [design-trust-state-repos.md](design-trust-state-repos.md); `npa:contested`, `npa:skipped`, and the transient statuses are distinct values of the same `npa:trustStatus` predicate and are excluded automatically). Inline rather than federated so per-tier UPDATEs join purely locally.
 2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Each entry keeps its `npari:` / `npara:` subject IRI and carries `npa:viaNanopub <originatingNP>`, so invalidation cleanup matches entries by their originating nanopub.
 
-Progress counter for incremental updates, stored inside the state graph itself so it drops atomically with `DROP GRAPH npass:<oldHash>` on trust-state flip:
+Progress counter for incremental updates, stored inside the state graph itself so it drops atomically with `DROP GRAPH npass:<oldId>`:
 
 ```turtle
-GRAPH npass:<trustStateHash> {
-  npass:<trustStateHash> npa:processedUpTo <N> .
+GRAPH npass:<trustStateHash>_<loadCounterAtBuildStart> {
+  npass:<trustStateHash>_<loadCounterAtBuildStart> npa:processedUpTo <N> .
 }
 ```
+
+`<N>` starts at `<loadCounterAtBuildStart>` and is bumped by incremental cycles.
 
 ### Validation rule
 
@@ -241,7 +259,7 @@ Since the registry's trust calculation flags any pubkey that claims multiple age
 
 ### Mirror step
 
-Executed in Java by `AuthorityResolver`, not via SPARQL SERVICE. Open a `RepositoryConnection` on each side; read trust-approved account-state rows from `npat:<trustStateHash>` in the `trust` repo; write the filtered rows into `npass:<trustStateHash>` in the `spaces` repo, inside one spaces-side transaction:
+Executed in Java by `AuthorityResolver`, not via SPARQL SERVICE. Open a `RepositoryConnection` on each side; read trust-approved account-state rows from `npat:<trustStateHash>` in the `trust` repo; write the filtered rows into the new `npass:<trustStateHash>_<loadCounterAtBuildStart>` graph in the `spaces` repo, inside one spaces-side transaction:
 
 ```java
 try (var trustConn = trustRepo.getConnection();
@@ -251,7 +269,7 @@ try (var trustConn = trustRepo.getConnection();
         for (Statement s : rows) {
             if (!APPROVED_SET.contains(s.getObject())) continue;  // {npa:loaded, npa:toLoad}
             // copy (?accountState a npa:AccountState; npa:agent ...; npa:pubkey ...;
-            //       npa:trustStatus ?status) into npass:<trustStateHash>
+            //       npa:trustStatus ?status) into npass:<trustStateHash>_<loadCounterAtBuildStart>
         }
     }
     spacesConn.commit();
@@ -262,21 +280,24 @@ Keeps the spaces-repo transaction local, avoids SERVICE fragility, and matches t
 
 ## Update flow
 
-Incremental and add-only at the raw layer; incremental at the space-state layer too, with full rebuild only on trust-state flips.
+Incremental and add-only at the raw layer; incremental at the space-state layer too, with full rebuild on trust-state flips *and* on periodic rebuild triggers (see [Periodic full rebuild](#periodic-full-rebuild)). All full rebuilds run in parallel with reads by writing to a brand-new graph and flipping the pointer atomically.
 
-### First build (new trust state)
+### Full build
 
-Triggered by a trust-state flip (the trust repo's `npa:hasCurrentTrustState` pointer changes to a new hash). Sequence:
+Triggered by (a) a trust-state flip (the trust repo's `npa:hasCurrentTrustState` changes), or (b) the periodic-rebuild flag being set. Sequence:
 
-1. Mirror the trust-approved rows (see [Mirror step](#mirror-step)) from `npat:<newHash>` into a fresh `npass:<newHash>` graph.
-2. Run the per-tier UPDATE loops from scratch (processedUpTo = 0):
-   - **Admin**: seed from `npa:hasRootAdmin`; fixed-point INSERT every `gen:RoleInstantiation` with `npa:regularProperty gen:hasAdmin` whose `npa:pubkeyHash` resolves (via the mirrored rows) to an agent already in the admin set for that space.
+1. Capture `M = currentLoadCounter` and `T = currentTrustStateHash`. The new graph's IRI is `npass:<T>_<M>`.
+2. Mirror the trust-approved rows (see [Mirror step](#mirror-step)) from `npat:<T>` into the fresh `npass:<T>_<M>` graph.
+3. Run the per-tier UPDATE loops from scratch on `npass:<T>_<M>`:
+   - **Admin**: seed from `npadef:<…> npa:hasRootAdmin` (root-definition trust seeds); fixed-point INSERT every `gen:RoleInstantiation` with `npa:regularProperty gen:hasAdmin` whose `npa:pubkeyHash` resolves (via the mirrored rows) to an agent already in the admin set for that space.
    - **`gen:hasRole` validation**: INSERT every `gen:RoleAssignment` whose publisher is in the admin set of the target space. These validated attachments define which role predicates are active per space.
    - **Maintainer**: INSERT every `gen:RoleInstantiation` whose predicate is the `gen:hasRegularProperty` (or `gen:hasInverseProperty`) of an `npa:RoleDeclaration` with `npa:hasRoleType gen:MaintainerRole` attached to the target space, and whose publisher is in the admin set (or existing maintainer set). Fixed-point.
    - **Member / Observer**: same pattern, tiered publisher constraints. Observer additionally accepts **self-evidence**: the instantiation's `(npa:pubkeyHash, npa:forAgent)` pair matches an `npa:AccountState` in the mirrored rows — meaning the publisher truly is the assignee under the current trust state.
-3. Set `processedUpTo` to the current `currentLoadCounter`.
-4. Flip the current-space-state pointer to `npass:<newHash>`.
-5. `DROP GRAPH npass:<oldHash>`.
+4. Set `processedUpTo` to `M` inside the new graph.
+5. Flip `npa:thisRepo npa:hasCurrentSpaceState` to `npass:<T>_<M>`.
+6. `DROP GRAPH npass:<previousId>` and clear `npa:needsFullRebuild` if set.
+
+Concurrency: readers keep hitting the old graph (via the pointer) throughout steps 1–4; they only see the new graph after step 5. Incremental cycles can keep running on the old graph during the build — their work is discarded when the pointer flips, but the first incremental cycle on the new graph picks up `(M, currentLoadCounter]` and extends it.
 
 ### Incremental update (same trust state, new raw activity)
 
@@ -321,7 +342,14 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
        ?acct a npa:AccountState ;
              npa:agent  ?publisher ;
              npa:pubkey ?pkh .
-       { ?space (^npa:spaceIri)/npa:hasRootAdmin ?publisher . }   # seed
+       {
+         # Seed: a root-definition entry's hasRootAdmin for this space
+         GRAPH npa:spacesGraph {
+           ?def a npa:SpaceDefinition ;
+                npa:forSpaceRef [ npa:spaceIri ?space ] ;
+                npa:hasRootAdmin ?publisher .
+         }
+       }
        UNION
        { ?prev a gen:RoleInstantiation ;
                npa:forSpace ?space ;
@@ -333,8 +361,10 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
      } }
    }
    ```
-   For the admin closure's seed triples themselves (`npas:<spaceRef> npa:hasRootAdmin <agent>`), the load number isn't on `npas:<spaceRef>` directly — traverse via `npas:<spaceRef> npa:hasDefinition ?np. ?np npa:hasLoadNumber ?ln` to filter by delta. Maintainer / member / observer tiers follow the same shape: join `?entry npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)`, swap the tier-specific publisher constraints.
+   For the admin closure's seed triples (`npadef:<…> npa:hasRootAdmin <agent>`), the load-number filter is the usual `?def npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)` — same shape as every other extraction entry. Maintainer / member / observer tiers follow the same shape: join `?entry npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)`, swap the tier-specific publisher constraints.
 3. Bump `processedUpTo` to the max load number consumed.
+
+**Late-arrival handling.** A candidate whose enabling structural event (admin grant, `gen:hasRole` attachment, or `npa:RoleDeclaration`) hasn't happened yet at its own load-time gets filtered by `FILTER(?ln > ?lastProcessed)` and is never retried via delta-only scans. Rule: if a cycle's INSERTs add any new admin grant, validated attachment, or role declaration, immediately re-run the *downstream* tier INSERTs without the load-number filter on the candidate side (keeping only `FILTER NOT EXISTS` dedup). This catches candidates that landed before their enabler, at the cost of a full-scan pass on cycles with structural changes. Pure instantiation-add cycles stay on the fast delta path.
 
 Loader and materializer decouple: the loader keeps appending raw triples with incrementing load numbers, the materializer processes deltas in small cycles. No global CLEAR.
 
@@ -348,12 +378,27 @@ Invalidating a `gen:SpaceMemberRole` nanopub removes its `npa:RoleDeclaration` f
 
 ### Trust-state flip always means full rebuild
 
-Load-number incremental only applies *within* a trust state. A flip changes which pubkeys map to which agents, invalidating all derivations. `processedUpTo` restarts at 0 on the new graph.
+Load-number incremental only applies *within* a trust state. A flip changes which pubkeys map to which agents, invalidating all derivations. The full-build procedure above handles it: new `npass:<newT>_<M>` graph, pointer flip, drop old.
+
+### Periodic full rebuild
+
+Incremental updates cover pure addition cleanly, but invalidations of *structural* derivations (admin grants, validated `gen:hasRole` attachments, role declarations) leave sticky downstream entries in the current space-state graph that would only be re-evaluated on a from-scratch rebuild. To bound that staleness without cascading-DELETE complexity, a flag + periodic worker:
+
+- Flag triple in `npa:graph`: `npa:thisRepo npa:needsFullRebuild true`.
+- The incremental cycle sets the flag whenever it DELETEs a structural derivation:
+  - any admin-tier `gen:RoleInstantiation` (publisher lost admin status),
+  - any `gen:RoleAssignment` attachment (a role was detached from a space),
+  - any `npa:RoleDeclaration` (a role definition was retracted).
+  
+  Invalidations that only remove leaf derivations (non-admin tier instantiations) don't set the flag.
+- A periodic worker (configurable interval, default in the 5–15 min range, roughly aligned with trust-state-flip cadence) checks the flag. If set: run the full-build procedure above (same trust state, fresh `npass:<T>_<M>` with `M = currentLoadCounter`), flip the pointer, drop the old graph, clear the flag.
+
+Readers are never blocked: during the worker's build the pointer still references the previous graph; the swap is atomic. Wasted incremental work during the rebuild is bounded by rebuild duration.
 
 ## Implementation phases
 
 1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps.
-2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full first-build on trust-state flips, manages the `npass:<trustStateHash>` pointer and old-graph cleanup.
+2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup.
 3. **Routes/metrics/invalidation** — `/spaces` listing, `for-space` redirect, gauges (rebuild duration, delta size, `processedUpTo` lag).
 4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query against the current `npass:*` graph; drop `isAdminPubkey` gate and pinned templates/queries.
 
