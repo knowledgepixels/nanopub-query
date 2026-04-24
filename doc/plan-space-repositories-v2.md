@@ -85,12 +85,14 @@ Prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_
 GRAPH npa:spacesGraph {
   npas:<spaceRef> a npa:SpaceRef ;
                   npa:spaceIri     <spaceIRI> ;
-                  npa:rootNanopub  <rootNP> ;    # defaults to <thisNP> if the nanopub has no gen:hasRootDefinition
+                  npa:rootNanopub  <rootNP> ;    # object of gen:hasRootDefinition; <thisNP> if the triple is absent
                   npa:hasDefinition <thisNP> ;
                   npx:signedBy     <publishingAgent> ;
                   npa:pubkeyHash   "<pubkeyHash>" .
 }
 ```
+
+For update nanopubs `<rootNP>` equals the original root (not `<thisNP>`), consistent with the root's own self-referential `gen:hasRootDefinition`; multiple contributing nanopubs thus share one `npa:rootNanopub` value on the same `npas:<spaceRef>`.
 
 Each loaded `gen:Space` nanopub contributes its own `npx:signedBy` and `npa:pubkeyHash` values, so multiple defining nanopubs (root + updates) accumulate multiple signer/pubkey pairs on the same `npas:<spaceRef>` — consumers can check validity of each declaration by matching signer/pubkey against the trust repo.
 
@@ -217,10 +219,12 @@ The graph contains two parts:
 1. **Mirrored trust state** — copy of the trust-approved `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. "Trust-approved" means `npa:trustStatus` ∈ `{npa:loaded, npa:toLoad}` (the positive set per [design-trust-state-repos.md](design-trust-state-repos.md); `npa:contested`, `npa:skipped`, and the transient statuses are distinct values of the same `npa:trustStatus` predicate and are excluded automatically). Inline rather than federated so per-tier UPDATEs join purely locally.
 2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Each entry keeps its `npari:` / `npara:` subject IRI and carries `npa:viaNanopub <originatingNP>`, so invalidation cleanup matches entries by their originating nanopub.
 
-Progress counter for incremental updates:
+Progress counter for incremental updates, stored inside the state graph itself so it drops atomically with `DROP GRAPH npass:<oldHash>` on trust-state flip:
 
 ```turtle
-npass:<trustStateHash> npa:processedUpTo <N> .
+GRAPH npass:<trustStateHash> {
+  npass:<trustStateHash> npa:processedUpTo <N> .
+}
 ```
 
 ### Validation rule
