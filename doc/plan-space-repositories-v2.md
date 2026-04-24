@@ -62,7 +62,7 @@ Two things in one repo:
 
 Profile fields stay in the raw nanopub assertions; consumers JOIN from extraction triples to raw assertion graphs via the nanopub IRI.
 
-Every extraction uses a dedicated subject IRI per entry — derived from the originating nanopub's artifact code so subjects never collide with user nanopub IRIs, role IRIs, or anything else a nanopub might declare types on. Working prefixes:
+Every extraction uses a dedicated subject IRI per entry — derived from the originating nanopub's artifact code so subjects never collide with user nanopub IRIs, role IRIs, or anything else a nanopub might declare types on. Prefixes:
 
 - `npari:` = `<http://purl.org/nanopub/admin/roleinst/>` — subject for `gen:RoleInstantiation` entries
 - `npara:` = `<http://purl.org/nanopub/admin/roleassign/>` — subject for `gen:hasRole` (role-attachment) entries
@@ -79,7 +79,7 @@ where `N` is the nanopub-query load counter at extraction time. The `spaces` rep
 
 ### Triples added per `gen:Space` nanopub
 
-Working prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
+Prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
 
 ```turtle
 GRAPH npa:spacesGraph {
@@ -120,7 +120,7 @@ If the loaded nanopub is additionally the space's root — detectable by `npa:ro
 
 These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref.
 
-Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`. Names are working titles.
+Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`.
 
 ### Triples added per `gen:hasRole` nanopub
 
