@@ -75,7 +75,7 @@ where `N` is the nanopub-query load counter at extraction time. The `spaces` rep
 Working prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
 
 ```turtle
-graph npa:spacesGraph {
+GRAPH npa:spacesGraph {
   npas:<spaceRef> a npa:SpaceRef ;
                   npa:spaceIri     <spaceIRI> ;
                   npa:rootNanopub  <rootNP> ;    # defaults to <thisNP> if the nanopub has no gen:hasRootDefinition
@@ -117,7 +117,7 @@ Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw 
 All attachments are emitted into `npa:spacesGraph`; validation (publisher must be in the admin closure of the target space) happens in the space-state-graph materialization step.
 
 ```turtle
-graph npa:spacesGraph {
+GRAPH npa:spacesGraph {
   <thisNP> a gen:RoleAssignment ;
            npa:forSpace    <spaceIRI> ;
            gen:hasRole     <roleIri> ;
@@ -133,7 +133,7 @@ Prefix: `npx:` = `<http://purl.org/nanopub/x/>`. `npa:forSpace` points to the Sp
 Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The existing assertion triples are copied verbatim; a single `npa:embeddedIn` triple provides the provenance link.
 
 ```turtle
-graph npa:spacesGraph {
+GRAPH npa:spacesGraph {
   <roleIri> a gen:SpaceMemberRole, <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
             gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
             gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
@@ -154,7 +154,7 @@ Label / name / title / assignment-template pointer stay in the raw assertion; co
 All instantiations are emitted into `npa:spacesGraph`; validation happens in the space-state-graph materialization step.
 
 ```turtle
-graph npa:spacesGraph {
+GRAPH npa:spacesGraph {
   <thisNP> a gen:RoleInstantiation ;
            npa:forSpace        <spaceIri> ;
            npa:regularProperty <regularPropIRI> ;   # iff regular direction was used
@@ -175,7 +175,7 @@ No independent space-relevance check on invalidators. `NanopubLoader.java:578-58
 Each invalidation is loaded as an add-only event into `npa:spacesGraph`, stamped with the load number like any other extraction:
 
 ```turtle
-graph npa:spacesGraph {
+GRAPH npa:spacesGraph {
   <invalidatingNP> a npa:Invalidation ;
                    npa:invalidates  <invalidatedNP> ;
                    npx:signedBy     <publishingAgent> ;
