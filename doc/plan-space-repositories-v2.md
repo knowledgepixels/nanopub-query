@@ -38,8 +38,6 @@ Two things in one repo:
    - `gen:hasRole`
    - `gen:SpaceMemberRole`
    - `gen:RoleInstantiation` (new)
-   - `gen:ViewDisplay`
-   - `gen:ResourceView`
 
    For backwards compatibility, nanopubs whose assertion uses any of the following currently-used properties are also treated as `gen:RoleInstantiation` nanopubs (temporary; to be dropped at a later point):
 
@@ -58,7 +56,7 @@ Two things in one repo:
    - `<https://w3id.org/kpxl/gen/terms/hasTeamMember>`
    - `<https://w3id.org/kpxl/gen/terms/plansToAttend>`
 
-2. **One validated-links graph**, `npa:spacesGraph`, holding the authority closures, validated role assignments, and validated view displays that hold under the current trust state. Each entry carries `npa:viaNanopub` and the resolved publisher agent, so consumers never `SERVICE`-join to `trust`.
+2. **One validated-links graph**, `npa:spacesGraph`, holding the authority closures and validated role assignments that hold under the current trust state. Each entry carries `npa:viaNanopub` and the resolved publisher agent, so consumers never `SERVICE`-join to `trust`.
 
 Profile fields stay in the raw assertions; `npa:spacesGraph` holds pointers + validated links only.
 
@@ -177,7 +175,7 @@ Admin closure seeded by the root's `gen:hasAdmin`; maintainer closure over regis
 ## Implementation phases
 
 1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces`.
-2. **Materialization** — new `AuthorityResolver` owns closures, evidence classification, view-display validation, atomic rebuild.
+2. **Materialization** — new `AuthorityResolver` owns closures, evidence classification, atomic rebuild.
 3. **Routes/metrics/invalidation** — `/spaces` listing, `for-space` redirect, gauges, invalidation-triggered rebuild.
 4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query against `spaces`; drop `isAdminPubkey` gate and pinned templates/queries.
 
@@ -198,5 +196,5 @@ On first deployment, scan `meta` / `full` for the predefined types, load each ma
 ## Verification
 
 - Unit: closures, evidence classification, rebuild idempotence.
-- Integration: space definition, admin chain depth ≥ 2, role definition + assignment, ViewDisplay by admin vs. non-admin, supersession, trust-state flip, root retraction.
+- Integration: space definition, admin chain depth ≥ 2, role definition + assignment, supersession, trust-state flip, root retraction.
 - End-to-end: Space page renders from `spaces` alone, no `SERVICE` to `trust`.
