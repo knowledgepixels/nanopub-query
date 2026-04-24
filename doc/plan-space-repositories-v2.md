@@ -39,7 +39,7 @@ Two things in one repo:
    - `gen:SpaceMemberRole`
    - `gen:RoleInstantiation` (new)
 
-   For backwards compatibility, nanopubs whose assertion uses any of the following currently-used properties are also treated as `gen:RoleInstantiation` nanopubs (temporary; to be dropped at a later point):
+   For backwards compatibility, nanopubs typed with any of the following currently-used properties are also treated as `gen:RoleInstantiation` nanopubs (temporary; to be dropped at a later point). The registry indexes single-triple-assertion nanopubs with their predicate IRI as an additional `npx:hasNanopubType`, so no separate assertion-predicate scan is needed — the standard type-based ingestion path delivers them:
 
    - `<http://www.wikidata.org/entity/P1344>`
    - `<http://www.wikidata.org/entity/P463>`
@@ -158,6 +158,8 @@ Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`. `npa:role` carries the ac
 
 The tier value for `npa:hasRoleType` comes from whatever subclass of `gen:SpaceMemberRole` (`gen:MaintainerRole`, `gen:MemberRole`, or `gen:ObserverRole`) the role is typed as in the source assertion. If the assertion declares none, default to `gen:ObserverRole`.
 
+**No publisher-validation gate** — any nanopub with a valid embedded role IRI produces an `npa:RoleDeclaration`. A declaration is inert on its own and only becomes operative once attached to a space via a validated `gen:hasRole` nanopub.
+
 **Embedding must be checked:** only emit these triples if `<roleIri>` starts with `<thisNP>`'s IRI (i.e. the role is genuinely embedded in this nanopub). Otherwise ignore — a role IRI outside the nanopub's namespace is not a valid embedded mint.
 
 Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:viaNanopub` or by matching the `<roleIri>` directly against the raw assertion graph.
@@ -212,7 +214,7 @@ GRAPH npa:graph {
 
 The graph contains two parts:
 
-1. **Mirrored trust state** — copy of the approved + non-contested `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. Inline rather than federated so per-tier UPDATEs join purely locally.
+1. **Mirrored trust state** — copy of the trust-approved `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. "Trust-approved" means `npa:trustStatus` ∈ `{npa:loaded, npa:toLoad}` (the positive set per [design-trust-state-repos.md](design-trust-state-repos.md); `npa:contested`, `npa:skipped`, and the transient statuses are distinct values of the same `npa:trustStatus` predicate and are excluded automatically). Inline rather than federated so per-tier UPDATEs join purely locally.
 2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Each entry keeps its `npari:` / `npara:` subject IRI and carries `npa:viaNanopub <originatingNP>`, so invalidation cleanup matches entries by their originating nanopub.
 
 Progress counter for incremental updates:
@@ -220,6 +222,33 @@ Progress counter for incremental updates:
 ```turtle
 npass:<trustStateHash> npa:processedUpTo <N> .
 ```
+
+### Validation rule
+
+All tier checks (authority evidence for admin/maintainer/member; self-evidence for observer) resolve the publisher via `(agent, pubkey)` pairs in the mirrored rows — i.e. the signing key on the extraction (`npa:pubkeyHash`) must match an `npa:AccountState` whose `npa:agent` is the agent being checked. `npx:signedBy` is informational only (self-declared from pubinfo) and never decides validity.
+
+Since the registry's trust calculation flags any pubkey that claims multiple agents as `npa:contested` (and contested rows are not in the mirrored set), a trust-approved pubkey in `npass:<ts>` resolves to exactly one agent. No multi-agent ambiguity to handle at validation time.
+
+### Mirror step
+
+Executed in Java by `AuthorityResolver`, not via SPARQL SERVICE. Open a `RepositoryConnection` on each side; read trust-approved account-state rows from `npat:<trustStateHash>` in the `trust` repo; write the filtered rows into `npass:<trustStateHash>` in the `spaces` repo, inside one spaces-side transaction:
+
+```java
+try (var trustConn = trustRepo.getConnection();
+     var spacesConn = spacesRepo.getConnection()) {
+    spacesConn.begin();
+    try (var rows = trustConn.getStatements(null, NPA.TRUST_STATUS, null, trustStateIri)) {
+        for (Statement s : rows) {
+            if (!APPROVED_SET.contains(s.getObject())) continue;  // {npa:loaded, npa:toLoad}
+            // copy (?accountState a npa:AccountState; npa:agent ...; npa:pubkey ...;
+            //       npa:trustStatus ?status) into npass:<trustStateHash>
+        }
+    }
+    spacesConn.commit();
+}
+```
+
+Keeps the spaces-repo transaction local, avoids SERVICE fragility, and matches the existing `TrustStateLoader` pattern (also Java-side cross-source copy).
 
 ## Update flow
 
@@ -229,12 +258,12 @@ Incremental and add-only at the raw layer; incremental at the space-state layer 
 
 Triggered by a trust-state flip (the trust repo's `npa:hasCurrentTrustState` pointer changes to a new hash). Sequence:
 
-1. Mirror approved + non-contested rows from `npat:<newHash>` into a fresh `npass:<newHash>` graph.
+1. Mirror the trust-approved rows (see [Mirror step](#mirror-step)) from `npat:<newHash>` into a fresh `npass:<newHash>` graph.
 2. Run the per-tier UPDATE loops from scratch (processedUpTo = 0):
    - **Admin**: seed from `npa:hasRootAdmin`; fixed-point INSERT every `gen:RoleInstantiation` with `npa:regularProperty gen:hasAdmin` whose `npa:pubkeyHash` resolves (via the mirrored rows) to an agent already in the admin set for that space.
    - **`gen:hasRole` validation**: INSERT every `gen:RoleAssignment` whose publisher is in the admin set of the target space. These validated attachments define which role predicates are active per space.
    - **Maintainer**: INSERT every `gen:RoleInstantiation` whose predicate is the `gen:hasRegularProperty` (or `gen:hasInverseProperty`) of an `npa:RoleDeclaration` with `npa:hasRoleType gen:MaintainerRole` attached to the target space, and whose publisher is in the admin set (or existing maintainer set). Fixed-point.
-   - **Member / Observer**: same pattern, tiered publisher constraints. Observer also accepts self-evidence (publisher = assignee).
+   - **Member / Observer**: same pattern, tiered publisher constraints. Observer additionally accepts **self-evidence**: the instantiation's `(npa:pubkeyHash, npa:forAgent)` pair matches an `npa:AccountState` in the mirrored rows — meaning the publisher truly is the assignee under the current trust state.
 3. Set `processedUpTo` to the current `currentLoadCounter`.
 4. Flip the current-space-state pointer to `npass:<newHash>`.
 5. `DROP GRAPH npass:<oldHash>`.
@@ -270,6 +299,8 @@ Triggers coalesce into a pending-rebuild flag; if a trigger arrives mid-cycle, t
 ### Revocation semantics
 
 Sticky and non-cascading: invalidating a grant removes only the derivation keyed on that nanopub. Other grants to the same agent persist. Second-order invalidations are ignored.
+
+Invalidating a `gen:SpaceMemberRole` nanopub removes its `npa:RoleDeclaration` from `npass:<ts>` via the standard per-`npa:viaNanopub` DELETE. Previously-derived instantiations under that role stay (sticky); new instantiations can no longer be derived because the JOIN against `npa:RoleDeclaration` fails.
 
 ### Trust-state flip always means full rebuild
 
