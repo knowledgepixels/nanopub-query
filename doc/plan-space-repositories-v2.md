@@ -62,7 +62,14 @@ Two things in one repo:
 
 Profile fields stay in the raw nanopub assertions; consumers JOIN from extraction triples to raw assertion graphs via the nanopub IRI.
 
-Every extraction, in addition to its content-specific triples, stamps the originating nanopub with its load number:
+Every extraction uses a dedicated subject IRI per entry — derived from the originating nanopub's artifact code so subjects never collide with user nanopub IRIs, role IRIs, or anything else a nanopub might declare types on. Working prefixes:
+
+- `npari:` = `<http://purl.org/nanopub/admin/roleinst/>` — subject for `gen:RoleInstantiation` entries
+- `npara:` = `<http://purl.org/nanopub/admin/roleassign/>` — subject for `gen:hasRole` (role-attachment) entries
+- `nparo:` = `<http://purl.org/nanopub/admin/role/>` — subject for `gen:SpaceMemberRole` entries
+- `npainv:` = `<http://purl.org/nanopub/admin/invalidation/>` — subject for `npa:Invalidation` entries
+
+Each entry carries `npa:viaNanopub <originatingNP>` to link back to the source; the stamped load number goes on that nanopub IRI so all of a nanopub's emitted entries share one stamp:
 
 ```turtle
   <thisNP> npa:hasLoadNumber <N> .
@@ -92,13 +99,16 @@ Trust seeding is per space ref, so in the rootless transition case each declarat
 For every `gen:Space` nanopub carrying one or more `gen:hasAdmin` triples in its assertion, additionally emit one `gen:RoleInstantiation` entry covering all asserted admins as multi-valued `npa:forAgent`:
 
 ```turtle
-  <thisNP> a gen:RoleInstantiation ;
-           npa:forSpace        <spaceIRI> ;
-           npa:regularProperty gen:hasAdmin ;
-           npa:forAgent        <adminAgent1>, <adminAgent2> ;
-           npx:signedBy        <publishingAgent> ;
-           npa:pubkeyHash      "<pubkeyHash>" .
+  npari:<artifactCode> a gen:RoleInstantiation ;
+                       npa:forSpace        <spaceIRI> ;
+                       npa:regularProperty gen:hasAdmin ;
+                       npa:forAgent        <adminAgent1>, <adminAgent2> ;
+                       npa:viaNanopub      <thisNP> ;
+                       npx:signedBy        <publishingAgent> ;
+                       npa:pubkeyHash      "<pubkeyHash>" .
 ```
+
+where `<artifactCode>` is the trusty-URI artifact code of `<thisNP>`.
 
 So admins asserted in any `gen:Space` nanopub (root or update) show up in the same SPARQL pattern consumers use for ordinary admin role instantiations.
 
@@ -118,11 +128,12 @@ All attachments are emitted into `npa:spacesGraph`; validation (publisher must b
 
 ```turtle
 GRAPH npa:spacesGraph {
-  <thisNP> a gen:RoleAssignment ;
-           npa:forSpace    <spaceIRI> ;
-           gen:hasRole     <roleIri> ;
-           npx:signedBy    <publishingAgent> ;
-           npa:pubkeyHash  "<pubkeyHash>" .
+  npara:<artifactCode> a gen:RoleAssignment ;
+                       npa:forSpace    <spaceIRI> ;
+                       gen:hasRole     <roleIri> ;
+                       npa:viaNanopub  <thisNP> ;
+                       npx:signedBy    <publishingAgent> ;
+                       npa:pubkeyHash  "<pubkeyHash>" .
 }
 ```
 
@@ -130,24 +141,25 @@ Prefix: `npx:` = `<http://purl.org/nanopub/x/>`. `npa:forSpace` points to the Sp
 
 ### Triples added per `gen:SpaceMemberRole` nanopub
 
-Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The existing assertion triples are copied verbatim; a single `npa:embeddedIn` triple provides the provenance link.
+Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The role-defining triples are copied into `npa:spacesGraph` under a dedicated subject:
 
 ```turtle
 GRAPH npa:spacesGraph {
-  <roleIri> a gen:SpaceMemberRole, <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
-            gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
-            gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
-            npa:embeddedIn         <thisNP> .
+  nparo:<artifactCode> a gen:SpaceMemberRole, <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
+                       npa:role               <roleIri> ;
+                       gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
+                       gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
+                       npa:viaNanopub         <thisNP> .
 }
 ```
 
-Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`.
+Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`. `npa:role` carries the actual role IRI for consumer JOINs.
 
 The tier `rdf:type` triple (`gen:MaintainerRole`, `gen:MemberRole`, or `gen:ObserverRole`) is copied from the assertion alongside the `gen:SpaceMemberRole` type. If no tier is declared, default to `gen:ObserverRole`.
 
 **Embedding must be checked:** only emit these triples if `<roleIri>` starts with `<thisNP>`'s IRI (i.e. the role is genuinely embedded in this nanopub). Otherwise ignore — a role IRI outside the nanopub's namespace is not a valid embedded mint.
 
-Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:embeddedIn` or by matching the `<roleIri>` directly against the raw assertion graph.
+Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:viaNanopub` or by matching the `<roleIri>` directly against the raw assertion graph.
 
 ### Triples added per `gen:RoleInstantiation` nanopub
 
@@ -155,14 +167,15 @@ All instantiations are emitted into `npa:spacesGraph`; validation happens in the
 
 ```turtle
 GRAPH npa:spacesGraph {
-  <thisNP> a gen:RoleInstantiation ;
-           npa:forSpace        <spaceIri> ;
-           npa:regularProperty <regularPropIRI> ;   # iff regular direction was used
-           # OR
-           npa:inverseProperty <inversePropIRI> ;   # iff inverse direction was used
-           npa:forAgent        <agent> ;
-           npx:signedBy        <publishingAgent> ;
-           npa:pubkeyHash      "<pubkeyHash>" .
+  npari:<artifactCode> a gen:RoleInstantiation ;
+                       npa:forSpace        <spaceIri> ;
+                       npa:regularProperty <regularPropIRI> ;   # iff regular direction was used
+                       # OR
+                       npa:inverseProperty <inversePropIRI> ;   # iff inverse direction was used
+                       npa:forAgent        <agent> ;
+                       npa:viaNanopub      <thisNP> ;
+                       npx:signedBy        <publishingAgent> ;
+                       npa:pubkeyHash      "<pubkeyHash>" .
 }
 ```
 
@@ -176,10 +189,11 @@ Each invalidation is loaded as an add-only event into `npa:spacesGraph`, stamped
 
 ```turtle
 GRAPH npa:spacesGraph {
-  <invalidatingNP> a npa:Invalidation ;
-                   npa:invalidates  <invalidatedNP> ;
-                   npx:signedBy     <publishingAgent> ;
-                   npa:pubkeyHash   "<pubkeyHash>" .
+  npainv:<artifactCode> a npa:Invalidation ;
+                        npa:invalidates  <invalidatedNP> ;
+                        npa:viaNanopub   <invalidatingNP> ;
+                        npx:signedBy     <publishingAgent> ;
+                        npa:pubkeyHash   "<pubkeyHash>" .
 }
 ```
 
@@ -198,7 +212,7 @@ GRAPH npa:graph {
 The graph contains two parts:
 
 1. **Mirrored trust state** — copy of the approved + non-contested `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. Inline rather than federated so per-tier UPDATEs join purely locally.
-2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Derived triples use the originating `<thisNP>` as subject, so invalidation cleanup is a single `DELETE WHERE { ?invalidatedNP ?p ?o }`.
+2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Each entry keeps its `npari:` / `npara:` subject IRI and carries `npa:viaNanopub <originatingNP>`, so invalidation cleanup matches entries by their originating nanopub.
 
 Progress counter for incremental updates:
 
@@ -228,17 +242,21 @@ Triggered by a trust-state flip (the trust repo's `npa:hasCurrentTrustState` poi
 
 Triggered by a space-relevant nanopub load or invalidation (which bumps `currentLoadCounter`). Runs as a single cycle bounded by `(processedUpTo, currentLoadCounter]`:
 
-1. Apply invalidation DELETEs:
+1. Apply invalidation DELETEs — for each new `npa:Invalidation` entry, remove the space-state entry whose `npa:viaNanopub` points at the invalidated nanopub:
    ```sparql
-   DELETE { GRAPH npass:<ts> { ?invalidatedNP ?p ?o . } }
+   DELETE { GRAPH npass:<ts> { ?entry ?p ?o . } }
    WHERE {
      GRAPH npa:spacesGraph {
        ?inv a npa:Invalidation ;
             npa:invalidates ?invalidatedNP ;
-            npa:hasLoadNumber ?ln .
+            npa:viaNanopub ?invalidatingNP .
+       ?invalidatingNP npa:hasLoadNumber ?ln .
        FILTER (?ln > ?lastProcessed)
      }
-     GRAPH npass:<ts> { ?invalidatedNP ?p ?o . }
+     GRAPH npass:<ts> {
+       ?entry npa:viaNanopub ?invalidatedNP ;
+              ?p ?o .
+     }
    }
    ```
 2. Apply the tier INSERTs, each scoped by `FILTER(?ln > ?lastProcessed)` on the raw triple's `npa:hasLoadNumber` and `FILTER NOT EXISTS` against the current space-state contents. Iterate to fixed point within the cycle.
