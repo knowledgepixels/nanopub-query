@@ -170,7 +170,9 @@ Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per ins
 
 ### Triples added per invalidation
 
-Invalidations are loaded as add-only events into `npa:spacesGraph`, stamped with the load number like any other extraction:
+No independent space-relevance check on invalidators. `NanopubLoader.java:578-586` already runs a per-invalidator loop that looks up the invalidated nanopub's types from the `meta` repo (`NPX.HAS_NANOPUB_TYPE`) and propagates into each type-specific repo. Hook into that loop: if any of the target's types is space-relevant, emit an `npa:Invalidation` entry. Detection of the invalidator itself is by the `npx:invalidates` / `npx:retracts` / `npx:supersedes` predicate in the assertion.
+
+Each invalidation is loaded as an add-only event into `npa:spacesGraph`, stamped with the load number like any other extraction:
 
 ```turtle
 graph npa:spacesGraph {
