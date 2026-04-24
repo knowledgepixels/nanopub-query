@@ -517,6 +517,12 @@ public class MainVerticle extends AbstractVerticle {
             // we already have.
             TrustStateLoader.bootstrap();
 
+            // Drop any npass:* graph that isn't the current-pointer target —
+            // leftovers from builds interrupted by a crash.
+            if (FeatureFlags.spacesEnabled()) {
+                AuthorityResolver.get().cleanOrphans();
+            }
+
             // Start periodic nanopub loading
             log.info("Starting periodic nanopub loading...");
             var executor = Executors.newSingleThreadScheduledExecutor();
@@ -526,6 +532,25 @@ public class MainVerticle extends AbstractVerticle {
                     JellyNanopubLoader.UPDATES_POLL_INTERVAL,
                     TimeUnit.MILLISECONDS
             );
+
+            // Periodic authority-resolver tick: detects trust-state flips and
+            // runs a full rebuild of the space-state graph when needed. Same
+            // cadence as the nanopub-loading poll.
+            if (FeatureFlags.spacesEnabled()) {
+                var spacesExecutor = Executors.newSingleThreadScheduledExecutor();
+                spacesExecutor.scheduleWithFixedDelay(
+                        () -> {
+                            try {
+                                AuthorityResolver.get().tick();
+                            } catch (Exception ex) {
+                                log.warn("AuthorityResolver tick failed", ex);
+                            }
+                        },
+                        JellyNanopubLoader.UPDATES_POLL_INTERVAL,
+                        JellyNanopubLoader.UPDATES_POLL_INTERVAL,
+                        TimeUnit.MILLISECONDS
+                );
+            }
         }).start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
