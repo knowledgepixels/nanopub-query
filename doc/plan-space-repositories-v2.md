@@ -367,14 +367,14 @@ On first deployment, scan `meta` / `full` for the predefined types, load each ma
 
 | File | Role |
 |------|------|
-| `NanopubLoader.java` | Type-match + full-nanopub write + trigger rebuild |
+| `NanopubLoader.java` | Type-match + full-nanopub write + extraction into `npa:spacesGraph` + load-number stamping + trigger the materializer |
 | `TripleStore.java` | `spaces` repo init |
 | `MainVerticle.java` | `/spaces` route, `for-space` redirect |
-| `MetricsCollector.java` | Rebuild / link-count gauges |
-| **New:** `AuthorityResolver.java` | Closures, evidence classification, publisher-agent resolution, atomic rebuild |
+| `MetricsCollector.java` | Rebuild duration, delta size, `processedUpTo` lag |
+| **New:** `AuthorityResolver.java` | Mirror step, per-tier SPARQL UPDATE loops on load-number deltas, first-build on trust-state flips, pointer flip and old-graph drop |
 
 ## Verification
 
-- Unit: closures, evidence classification, rebuild idempotence.
-- Integration: space definition, admin chain depth ≥ 2, role definition + assignment, supersession, trust-state flip, root retraction.
-- End-to-end: Space page renders from `spaces` alone, no `SERVICE` to `trust`.
+- Unit: closures, incremental delta correctness (same result as a full rebuild), invalidation cleanup (sticky, non-cascading), rebuild idempotence.
+- Integration: space definition, admin chain depth ≥ 2, role definition + attachment + instantiation, supersession, trust-state flip (full rebuild + pointer flip + old-graph drop), root retraction.
+- End-to-end: Space page renders from `spaces` alone; steady-state reads do not `SERVICE`-join to `trust` (the mirror step runs at trust-state-flip time via Java-level cross-repo copy, not at read time).
