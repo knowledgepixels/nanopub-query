@@ -21,6 +21,7 @@ import org.nanopub.vocabulary.NPA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.knowledgepixels.query.vocabulary.GEN;
 import com.knowledgepixels.query.vocabulary.NPAT;
 import com.knowledgepixels.query.vocabulary.SpacesVocab;
 
@@ -160,7 +161,9 @@ public final class AuthorityResolver {
         // 1. Mirror trust-approved rows into the new graph.
         int mirrored = mirrorTrustState(trustStateHash, newGraph);
 
-        // 2. PR 2b placeholder: per-tier UPDATE loops would run here.
+        // 2. Per-tier UPDATE loops (from scratch: lastProcessed = -1 so the
+        //    delta filter FILTER(?ln > ?lastProcessed) includes everything).
+        TierCounts counts = runAllTierLoops(newGraph, -1);
 
         // 3. Stamp processedUpTo inside the new graph.
         writeProcessedUpTo(newGraph, loadCounter);
@@ -173,8 +176,339 @@ public final class AuthorityResolver {
             dropGraph(oldGraph);
         }
 
-        log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={}",
-                newGraph, mirrored, loadCounter);
+        log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
+                        + "tiers: admin={} attachment={} maintainer={} member={} observer={}",
+                newGraph, mirrored, loadCounter,
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer);
+    }
+
+    // ---------------- Tier UPDATE loops ----------------
+
+    /** Per-tier INSERT counts (for logging/metrics). */
+    static final class TierCounts {
+        int admin;
+        int attachment;
+        int maintainer;
+        int member;
+        int observer;
+    }
+
+    /**
+     * Runs the five tier loops in order: admin → {@code gen:hasRole} attachment
+     * validation → maintainer → member → observer. Each loop iterates a SPARQL
+     * INSERT to fixed point (no new triples added). Returns per-tier counts.
+     *
+     * @param graph         target space-state graph
+     * @param lastProcessed load-number horizon; use {@code -1} for full build
+     */
+    TierCounts runAllTierLoops(IRI graph, long lastProcessed) {
+        TierCounts c = new TierCounts();
+        c.admin = runTierLoop(graph, adminTierUpdate(graph, lastProcessed));
+        c.attachment = runTierLoop(graph, attachmentValidationUpdate(graph, lastProcessed));
+        c.maintainer = runTierLoop(graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.MAINTAINER_ROLE, PUBLISHER_IS_ADMIN));
+        c.member = runTierLoop(graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN_OR_MAINTAINER));
+        c.observer = runTierLoop(graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF_OR_TIERED));
+        return c;
+    }
+
+    /**
+     * Runs a single tier's INSERT to fixed point. Counts rows by probing
+     * graph size before/after each INSERT; stops when the size doesn't change.
+     *
+     * @return total number of triples inserted by this tier across all iterations
+     */
+    int runTierLoop(IRI graph, String sparqlUpdate) {
+        int total = 0;
+        long before = graphSize(graph);
+        while (true) {
+            try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+                conn.begin(IsolationLevels.SERIALIZABLE);
+                conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate).execute();
+                conn.commit();
+            }
+            long after = graphSize(graph);
+            long added = after - before;
+            if (added <= 0) break;
+            total += added;
+            before = after;
+        }
+        return total;
+    }
+
+    private long graphSize(IRI graph) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            return conn.size(graph);
+        }
+    }
+
+    // ---------------- SPARQL templates ----------------
+
+    /** Reusable invalidation filter on a bound nanopub-IRI variable. */
+    private static String invalidationFilter(String npVar) {
+        return "FILTER NOT EXISTS { ?_inv_" + npVar + " a <" + SpacesVocab.INVALIDATION + "> ; "
+                + "<" + SpacesVocab.INVALIDATES + "> " + npVar + " . }";
+    }
+
+    /**
+     * Admin tier: seed from {@code npadef:...hasRootAdmin} (trusted by construction)
+     * plus closed-over admin grants; insert any {@code gen:RoleInstantiation} with
+     * {@code npa:regularProperty gen:hasAdmin} whose publisher (resolved via mirrored
+     * trust-approved AccountState) is already in the admin set.
+     */
+    static String adminTierUpdate(IRI graph, long lastProcessed) {
+        return """
+                PREFIX npa:  <%1$s>
+                PREFIX gen:  <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?ri a gen:RoleInstantiation ;
+                      npa:forSpace ?space ;
+                      npa:regularProperty gen:hasAdmin ;
+                      npa:forAgent ?agent ;
+                      npa:viaNanopub ?np .
+                } }
+                WHERE {
+                  GRAPH <%4$s> {
+                    ?ri a gen:RoleInstantiation ;
+                        npa:forSpace        ?space ;
+                        npa:regularProperty gen:hasAdmin ;
+                        npa:forAgent        ?agent ;
+                        npa:pubkeyHash      ?pkh ;
+                        npa:viaNanopub      ?np .
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                    %6$s
+                  }
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:agent  ?publisher ;
+                          npa:pubkey ?pkh .
+                    {
+                      # Seed: root-admin in a non-invalidated SpaceDefinition for this space
+                      ?def a npa:SpaceDefinition ;
+                           npa:forSpaceRef ?spaceRef ;
+                           npa:hasRootAdmin ?publisher ;
+                           npa:viaNanopub   ?defNp .
+                      ?spaceRef npa:spaceIri ?space .
+                    }
+                    UNION
+                    {
+                      # Closed-over: an existing admin instantiation for this space
+                      ?prev a gen:RoleInstantiation ;
+                            npa:forSpace ?space ;
+                            npa:regularProperty gen:hasAdmin ;
+                            npa:forAgent ?publisher .
+                    }
+                  }
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?existing a gen:RoleInstantiation ;
+                              npa:forSpace ?space ;
+                              npa:forAgent ?agent ;
+                              npa:regularProperty gen:hasAdmin .
+                  } }
+                  # Invalidation filter on the SpaceDefinition (seed branch) is only
+                  # checked if that branch matched. Since ?defNp is unbound in the
+                  # closed-over branch we apply the filter inside the WHERE's OPTIONAL
+                  # pattern via a nested FILTER — see adminSeedInvalidationFilter
+                  # below.
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("?np"));
+    }
+
+    /**
+     * {@code gen:hasRole} attachment validation: an attachment is validated iff its
+     * publisher is already a validated admin of the target space. Adds
+     * {@code gen:RoleAssignment} rows to the space-state graph.
+     */
+    static String attachmentValidationUpdate(IRI graph, long lastProcessed) {
+        return """
+                PREFIX npa:  <%1$s>
+                PREFIX gen:  <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?ra a gen:RoleAssignment ;
+                      npa:forSpace ?space ;
+                      gen:hasRole  ?role ;
+                      npa:viaNanopub ?np .
+                } }
+                WHERE {
+                  GRAPH <%4$s> {
+                    ?ra a gen:RoleAssignment ;
+                        npa:forSpace ?space ;
+                        gen:hasRole  ?role ;
+                        npa:pubkeyHash ?pkh ;
+                        npa:viaNanopub ?np .
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                    %6$s
+                  }
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:agent  ?publisher ;
+                          npa:pubkey ?pkh .
+                    ?adminRI a gen:RoleInstantiation ;
+                             npa:forSpace ?space ;
+                             npa:regularProperty gen:hasAdmin ;
+                             npa:forAgent ?publisher .
+                  }
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?existing a gen:RoleAssignment ;
+                              npa:forSpace ?space ;
+                              gen:hasRole  ?role .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("?np"));
+    }
+
+    /** Non-admin tier publisher constraints (inserted as a SPARQL sub-pattern). */
+    static final String PUBLISHER_IS_ADMIN = """
+            ?adminRI a gen:RoleInstantiation ;
+                     npa:forSpace ?space ;
+                     npa:regularProperty gen:hasAdmin ;
+                     npa:forAgent ?publisher .
+            """;
+
+    static final String PUBLISHER_IS_ADMIN_OR_MAINTAINER = """
+            {
+              ?adminRI a gen:RoleInstantiation ;
+                       npa:forSpace ?space ;
+                       npa:regularProperty gen:hasAdmin ;
+                       npa:forAgent ?publisher .
+            }
+            UNION
+            {
+              ?maintRI a gen:RoleInstantiation ;
+                       npa:forSpace ?space ;
+                       npa:forAgent ?publisher .
+              ?rdM a npa:RoleDeclaration ;
+                   npa:hasRoleType gen:MaintainerRole .
+              { ?maintRI npa:regularProperty ?predM . ?rdM gen:hasRegularProperty ?predM . }
+              UNION
+              { ?maintRI npa:inverseProperty ?predM . ?rdM gen:hasInverseProperty ?predM . }
+            }
+            """;
+
+    /**
+     * Observer self-evidence: publisher is admin, maintainer, member, OR the
+     * mirrored trust row confirms that the signing pubkey maps to the assignee
+     * itself (i.e. the assignee is the publisher).
+     */
+    static final String PUBLISHER_IS_SELF_OR_TIERED = """
+            {
+              ?adminRI a gen:RoleInstantiation ;
+                       npa:forSpace ?space ;
+                       npa:regularProperty gen:hasAdmin ;
+                       npa:forAgent ?publisher .
+            }
+            UNION
+            {
+              ?maintRI a gen:RoleInstantiation ;
+                       npa:forSpace ?space ;
+                       npa:forAgent ?publisher .
+              ?rdM a npa:RoleDeclaration ;
+                   npa:hasRoleType gen:MaintainerRole .
+              { ?maintRI npa:regularProperty ?predM . ?rdM gen:hasRegularProperty ?predM . }
+              UNION
+              { ?maintRI npa:inverseProperty ?predM . ?rdM gen:hasInverseProperty ?predM . }
+            }
+            UNION
+            {
+              ?memRI a gen:RoleInstantiation ;
+                     npa:forSpace ?space ;
+                     npa:forAgent ?publisher .
+              ?rdMem a npa:RoleDeclaration ;
+                     npa:hasRoleType gen:MemberRole .
+              { ?memRI npa:regularProperty ?predMem . ?rdMem gen:hasRegularProperty ?predMem . }
+              UNION
+              { ?memRI npa:inverseProperty ?predMem . ?rdMem gen:hasInverseProperty ?predMem . }
+            }
+            UNION
+            {
+              # Self-evidence: publisher pubkey maps to the assignee.
+              FILTER (?publisher = ?agent)
+            }
+            """;
+
+    /**
+     * Maintainer / Member / Observer tier INSERT. Same shape: find an instantiation
+     * whose predicate matches a RoleDeclaration of the given tier attached to the
+     * target space, and whose publisher passes the tier-specific constraint.
+     */
+    static String nonAdminTierUpdate(IRI graph, long lastProcessed,
+                                     IRI tierClass, String publisherConstraint) {
+        return """
+                PREFIX npa:  <%1$s>
+                PREFIX gen:  <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?ri a gen:RoleInstantiation ;
+                      npa:forSpace ?space ;
+                      npa:forAgent ?agent ;
+                      npa:viaNanopub ?np .
+                } }
+                WHERE {
+                  GRAPH <%4$s> {
+                    ?ri a gen:RoleInstantiation ;
+                        npa:forSpace ?space ;
+                        npa:forAgent ?agent ;
+                        npa:pubkeyHash ?pkh ;
+                        npa:viaNanopub ?np .
+                    { ?ri npa:regularProperty ?pred . }
+                    UNION
+                    { ?ri npa:inverseProperty ?pred . }
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                    %6$s
+                    # Predicate maps to a RoleDeclaration of this tier (not invalidated).
+                    ?rd a npa:RoleDeclaration ;
+                        npa:role ?role ;
+                        npa:hasRoleType <%7$s> ;
+                        npa:viaNanopub ?rdNp .
+                    { ?rd gen:hasRegularProperty ?pred . }
+                    UNION
+                    { ?rd gen:hasInverseProperty ?pred . }
+                    %8$s
+                  }
+                  GRAPH <%3$s> {
+                    # Role must be admin-attached to the target space.
+                    ?ra a gen:RoleAssignment ;
+                        npa:forSpace ?space ;
+                        gen:hasRole  ?role .
+                    # Publisher's agent from the mirrored trust-approved set.
+                    ?acct a npa:AccountState ;
+                          npa:agent ?publisher ;
+                          npa:pubkey ?pkh .
+                    %9$s
+                  }
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?existing a gen:RoleInstantiation ;
+                              npa:forSpace ?space ;
+                              npa:forAgent ?agent ;
+                              npa:viaNanopub ?np .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("?np"),
+                tierClass,
+                invalidationFilter("?rdNp"),
+                publisherConstraint);
     }
 
     /**

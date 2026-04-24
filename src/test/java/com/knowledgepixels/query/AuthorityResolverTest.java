@@ -53,4 +53,66 @@ class AuthorityResolverTest {
                 "tick() must not seed a hash when none is available");
     }
 
+    // ---------------- SPARQL template structure ----------------
+
+    private static final org.eclipse.rdf4j.model.IRI TEST_GRAPH =
+            com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceState(
+                    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", 42L);
+
+    @Test
+    void adminTierUpdate_containsSeedAndClosedOverBranches() {
+        String sparql = AuthorityResolver.adminTierUpdate(TEST_GRAPH, 17);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        assertTrue(sparql.contains("npa:regularProperty gen:hasAdmin"),
+                "pinned admin predicate");
+        assertTrue(sparql.contains("npa:hasRootAdmin"),
+                "seed branch references hasRootAdmin");
+        assertTrue(sparql.contains("UNION"),
+                "seed + closed-over branches joined by UNION");
+        assertTrue(sparql.contains("FILTER (?ln > 17)"),
+                "load-number delta filter with lastProcessed substituted");
+        assertTrue(sparql.contains("FILTER NOT EXISTS"),
+                "existence + invalidation filters");
+        assertTrue(sparql.contains("npa:AccountState"),
+                "mirrored-row join");
+    }
+
+    @Test
+    void attachmentValidationUpdate_requiresAdminPublisher() {
+        String sparql = AuthorityResolver.attachmentValidationUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("gen:RoleAssignment"),
+                "attachment-type inserted");
+        assertTrue(sparql.contains("gen:hasRole"), "gen:hasRole predicate copied");
+        assertTrue(sparql.contains("npa:regularProperty gen:hasAdmin"),
+                "publisher-is-admin check");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on attachment nanopub");
+    }
+
+    @Test
+    void maintainerTierUpdate_pinsMaintainerRoleAndAdminConstraint() {
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 0,
+                com.knowledgepixels.query.vocabulary.GEN.MAINTAINER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_ADMIN);
+        assertTrue(sparql.contains("gen:hasRegularProperty") || sparql.contains("gen:hasInverseProperty"),
+                "maps predicate to a RoleDeclaration property direction");
+        assertTrue(sparql.contains(
+                com.knowledgepixels.query.vocabulary.GEN.MAINTAINER_ROLE.stringValue()),
+                "tier class is substituted");
+        assertTrue(sparql.contains("gen:RoleAssignment"),
+                "attachment gate present");
+    }
+
+    @Test
+    void observerTierUpdate_allowsSelfEvidence() {
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 0,
+                com.knowledgepixels.query.vocabulary.GEN.OBSERVER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_SELF_OR_TIERED);
+        // Self-evidence: publisher agent (from mirrored rows) matches the assignee.
+        assertTrue(sparql.contains("?publisher = ?agent"),
+                "observer tier accepts self-evidence");
+    }
+
 }
