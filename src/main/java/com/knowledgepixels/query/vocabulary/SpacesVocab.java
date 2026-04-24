@@ -112,6 +112,9 @@ public final class SpacesVocab {
     /** Repo-wide counter tracking the highest load number seen by the extractor. */
     public static final IRI CURRENT_LOAD_COUNTER = vf.createIRI(NPA.NAMESPACE, "currentLoadCounter");
 
+    /** Load-number horizon that a given space-state graph has been brought up to. */
+    public static final IRI PROCESSED_UP_TO = vf.createIRI(NPA.NAMESPACE, "processedUpTo");
+
     // -------- Subject-minting helpers --------
 
     /** Mints {@code npas:<spaceRef>} for an aggregate space-ref entry. */
@@ -142,6 +145,17 @@ public final class SpacesVocab {
     /** Mints {@code npainv:<artifactCode>} for an invalidation entry. */
     public static IRI forInvalidation(String artifactCode) {
         return vf.createIRI(NPAINV_NAMESPACE, artifactCode);
+    }
+
+    /**
+     * Mints {@code npass:<trustStateHash>_<loadCounterAtBuildStart>} for a space-state graph.
+     *
+     * @param trustStateHash       the source trust-state hash
+     * @param loadCounterAtBuildStart the value of {@code npa:currentLoadCounter} when the build kicked off
+     * @return the graph IRI
+     */
+    public static IRI forSpaceState(String trustStateHash, long loadCounterAtBuildStart) {
+        return vf.createIRI(NPASS_NAMESPACE, trustStateHash + "_" + loadCounterAtBuildStart);
     }
 
     private SpacesVocab() {
