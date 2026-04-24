@@ -60,8 +60,6 @@ Two things in one repo:
 
 3. **One space-state graph**, `npass:<trustStateHash>`, holding the validated closures under the current trust state (see [Space state graph](#space-state-graph)). Rebuilt incrementally via SPARQL UPDATE driven by load-number deltas.
 
-Profile fields stay in the raw nanopub assertions; consumers JOIN from extraction triples to raw assertion graphs via the nanopub IRI.
-
 Every extraction uses a dedicated subject IRI per entry — derived from the originating nanopub's artifact code so subjects never collide with user nanopub IRIs, role IRIs, or anything else a nanopub might declare types on. Prefixes:
 
 - `npari:` = `<http://purl.org/nanopub/admin/roleinst/>` — subject for `gen:RoleInstantiation` entries
@@ -99,7 +97,7 @@ For update nanopubs `<rootNP>` equals the original root (not `<thisNP>`), consis
 
 Each loaded `gen:Space` nanopub contributes its own `npx:signedBy` and `npa:pubkeyHash` values, so multiple defining nanopubs (root + updates) accumulate multiple signer/pubkey pairs on the same `npas:<spaceRef>` — consumers can check validity of each declaration by matching signer/pubkey against the trust repo.
 
-Trust seeding is per space ref, so in the rootless transition case each declaration becomes its own root and creates its own space ref. During the transition, Nanodash can default to surfacing the earliest- or latest-defined space ref per Space IRI.
+Trust seeding is per space ref, so in the rootless transition case each declaration becomes its own root and creates its own space ref. When multiple space refs exist for the same Space IRI, Nanodash resolves to the one whose root nanopub has the earliest `dct:created` — first-root-wins, deterministic across time. Pattern: `ORDER BY ?created LIMIT 1` on `?spaceRef npa:spaceIri <…>; npa:rootNanopub ?root. ?root dct:created ?created`.
 
 For every `gen:Space` nanopub carrying one or more `gen:hasAdmin` triples in its assertion, additionally emit one `gen:RoleInstantiation` entry covering all asserted admins as multi-valued `npa:forAgent`:
 
@@ -126,8 +124,6 @@ If the loaded nanopub is additionally the space's root — detectable by `npa:ro
 
 These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref.
 
-Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw nanopub's assertion graph — consumers JOIN via `npa:hasDefinition`.
-
 ### Triples added per `gen:hasRole` nanopub
 
 All attachments are emitted into `npa:spacesGraph`; validation (publisher must be in the admin closure of the target space) happens in the space-state-graph materialization step.
@@ -145,6 +141,8 @@ GRAPH npa:spacesGraph {
 ```
 
 Prefix: `npx:` = `<http://purl.org/nanopub/x/>`. `npa:forSpace` points to the Space IRI (not the space-ref form), as used in the source nanopub's assertion. The attached `<roleIri>` is the IRI of a role instance defined in some `gen:SpaceMemberRole` nanopub; consumers JOIN against that def for the role's predicates and tier.
+
+A single role (one `gen:SpaceMemberRole` nanopub) may be attached to multiple spaces via separate `gen:hasRole` nanopubs — each attachment is independent, gated by the respective space's admin closure, and produces its own `npa:RoleAssignment` entry.
 
 ### Triples added per `gen:SpaceMemberRole` nanopub
 
