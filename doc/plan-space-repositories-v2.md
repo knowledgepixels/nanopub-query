@@ -56,9 +56,19 @@ Two things in one repo:
    - `<https://w3id.org/kpxl/gen/terms/hasTeamMember>`
    - `<https://w3id.org/kpxl/gen/terms/plansToAttend>`
 
-2. **One validated-links graph**, `npa:spacesGraph`, holding the authority closures and validated role assignments that hold under the current trust state. Each entry carries `npa:viaNanopub` and the resolved publisher agent, so consumers never `SERVICE`-join to `trust`.
+2. **One extraction graph**, `npa:spacesGraph`, holding add-only summary triples for each loaded space-relevant nanopub and each invalidation. No validation happens at this layer — everything that matches a predefined type is written here, load-number-stamped.
 
-Profile fields stay in the raw assertions; `npa:spacesGraph` holds pointers + validated links only.
+3. **One space-state graph**, `npass:<trustStateHash>`, holding the validated closures under the current trust state (see [Space state graph](#space-state-graph)). Rebuilt incrementally via SPARQL UPDATE driven by load-number deltas.
+
+Profile fields stay in the raw nanopub assertions; consumers JOIN from extraction triples to raw assertion graphs via the nanopub IRI.
+
+Every extraction, in addition to its content-specific triples, stamps the originating nanopub with its load number:
+
+```turtle
+  <thisNP> npa:hasLoadNumber <N> .
+```
+
+where `N` is the nanopub-query load counter at extraction time. The `spaces` repo's `npa:graph` also tracks `npa:thisRepo npa:currentLoadCounter <N>` so the materializer knows the current horizon.
 
 ### Triples added per `gen:Space` nanopub
 
@@ -104,7 +114,7 @@ Profile fields (description, dates, alt IDs, declared subtypes) stay in the raw 
 
 ### Triples added per `gen:hasRole` nanopub
 
-Only validated attachments are emitted (publisher must resolve to an admin of the target space at materialization time); a nanopub that fails this check produces no triples in `npa:spacesGraph`.
+All attachments are emitted into `npa:spacesGraph`; validation (publisher must be in the admin closure of the target space) happens in the space-state-graph materialization step.
 
 ```turtle
 graph npa:spacesGraph {
@@ -141,7 +151,7 @@ Label / name / title / assignment-template pointer stay in the raw assertion; co
 
 ### Triples added per `gen:RoleInstantiation` nanopub
 
-Only validated instantiations are emitted; a nanopub that fails policy produces no triples in `npa:spacesGraph` (the raw nanopub stays in the repo regardless).
+All instantiations are emitted into `npa:spacesGraph`; validation happens in the space-state-graph materialization step.
 
 ```turtle
 graph npa:spacesGraph {
@@ -158,26 +168,98 @@ graph npa:spacesGraph {
 
 Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per instantiation, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `gen:SpaceMemberRole` def (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
 
+### Triples added per invalidation
+
+Invalidations are loaded as add-only events into `npa:spacesGraph`, stamped with the load number like any other extraction:
+
+```turtle
+graph npa:spacesGraph {
+  <invalidatingNP> a npa:Invalidation ;
+                   npa:invalidates  <invalidatedNP> ;
+                   npx:signedBy     <publishingAgent> ;
+                   npa:pubkeyHash   "<pubkeyHash>" .
+}
+```
+
+Second-order invalidations are ignored — an invalidation whose target is itself already invalidated has no effect.
+
+## Space state graph
+
+A single `npass:<trustStateHash>` graph (prefix `npass:` = `<http://purl.org/nanopub/admin/spacestate/>`) holds the current validated state. Current-state pointer in `npa:graph`:
+
+```turtle
+GRAPH npa:graph {
+  npa:thisRepo npa:hasCurrentSpaceState npass:<trustStateHash> .
+}
+```
+
+The graph contains two parts:
+
+1. **Mirrored trust state** — copy of the approved + non-contested `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. Inline rather than federated so per-tier UPDATEs join purely locally.
+2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Derived triples use the originating `<thisNP>` as subject, so invalidation cleanup is a single `DELETE WHERE { ?invalidatedNP ?p ?o }`.
+
+Progress counter for incremental updates:
+
+```turtle
+npass:<trustStateHash> npa:processedUpTo <N> .
+```
+
 ## Update flow
 
-One path. Rebuild the validated-links graph atomically on any trigger:
-- Raw nanopub of a predefined type loaded or invalidated.
-- Trust-state pointer flips.
+Incremental and add-only at the raw layer; incremental at the space-state layer too, with full rebuild only on trust-state flips.
 
-Triggers coalesce into a pending-rebuild flag; a worker drains it. Each rebuild: `CLEAR GRAPH` + bulk insert in one serializable transaction. Readers see either the old full graph or the new one.
+### First build (new trust state)
 
-No fast/slow split. No per-space graphs. No historical materializations.
+Triggered by a trust-state flip (the trust repo's `npa:hasCurrentTrustState` pointer changes to a new hash). Sequence:
 
-## Authority
+1. Mirror approved + non-contested rows from `npat:<newHash>` into a fresh `npass:<newHash>` graph.
+2. Run the per-tier UPDATE loops from scratch (processedUpTo = 0):
+   - **Admin**: seed from `npa:hasRootAdmin`; fixed-point INSERT every `gen:RoleInstantiation` with `npa:regularProperty gen:hasAdmin` whose `npa:pubkeyHash` resolves (via the mirrored rows) to an agent already in the admin set for that space.
+   - **`gen:hasRole` validation**: INSERT every `gen:RoleAssignment` whose publisher is in the admin set of the target space. These validated attachments define which role predicates are active per space.
+   - **Maintainer**: INSERT every `gen:RoleInstantiation` whose predicate is the `gen:hasRegularProperty` (or `gen:hasInverseProperty`) of a `gen:MaintainerRole`-typed role attached to the target space, and whose publisher is in the admin set (or existing maintainer set). Fixed-point.
+   - **Member / Observer**: same pattern, tiered publisher constraints. Observer also accepts self-evidence (publisher = assignee).
+3. Set `processedUpTo` to the current `currentLoadCounter`.
+4. Flip the current-space-state pointer to `npass:<newHash>`.
+5. `DROP GRAPH npass:<oldHash>`.
 
-Admin closure seeded by the root's `gen:hasAdmin`; maintainer closure over registered `gen:MaintainerRole`-typed predicates, seeded by admin grants. Each matched nanopub classified as `authorityEvidence` and/or `selfEvidence`. Policy table decides per tier which kinds suffice; applied at materialization time.
+### Incremental update (same trust state, new raw activity)
+
+Triggered by a space-relevant nanopub load or invalidation (which bumps `currentLoadCounter`). Runs as a single cycle bounded by `(processedUpTo, currentLoadCounter]`:
+
+1. Apply invalidation DELETEs:
+   ```sparql
+   DELETE { GRAPH npass:<ts> { ?invalidatedNP ?p ?o . } }
+   WHERE {
+     GRAPH npa:spacesGraph {
+       ?inv a npa:Invalidation ;
+            npa:invalidates ?invalidatedNP ;
+            npa:hasLoadNumber ?ln .
+       FILTER (?ln > ?lastProcessed)
+     }
+     GRAPH npass:<ts> { ?invalidatedNP ?p ?o . }
+   }
+   ```
+2. Apply the tier INSERTs, each scoped by `FILTER(?ln > ?lastProcessed)` on the raw triple's `npa:hasLoadNumber` and `FILTER NOT EXISTS` against the current space-state contents. Iterate to fixed point within the cycle.
+3. Bump `processedUpTo` to the max load number consumed.
+
+Loader and materializer decouple: the loader keeps appending raw triples with incrementing load numbers, the materializer processes deltas in small cycles. No global CLEAR.
+
+Triggers coalesce into a pending-rebuild flag; if a trigger arrives mid-cycle, the flag re-fires and another cycle runs after commit.
+
+### Revocation semantics
+
+Sticky and non-cascading: invalidating a grant removes only the derivation keyed on that nanopub. Other grants to the same agent persist. Second-order invalidations are ignored.
+
+### Trust-state flip always means full rebuild
+
+Load-number incremental only applies *within* a trust state. A flip changes which pubkeys map to which agents, invalidating all derivations. `processedUpTo` restarts at 0 on the new graph.
 
 ## Implementation phases
 
-1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces`.
-2. **Materialization** — new `AuthorityResolver` owns closures, evidence classification, atomic rebuild.
-3. **Routes/metrics/invalidation** — `/spaces` listing, `for-space` redirect, gauges, invalidation-triggered rebuild.
-4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query against `spaces`; drop `isAdminPubkey` gate and pinned templates/queries.
+1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps.
+2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full first-build on trust-state flips, manages the `npass:<trustStateHash>` pointer and old-graph cleanup.
+3. **Routes/metrics/invalidation** — `/spaces` listing, `for-space` redirect, gauges (rebuild duration, delta size, `processedUpTo` lag).
+4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query against the current `npass:*` graph; drop `isAdminPubkey` gate and pinned templates/queries.
 
 ## Bootstrap
 
