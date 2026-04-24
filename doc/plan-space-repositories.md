@@ -311,7 +311,7 @@ Concurrency: readers keep hitting the old graph (via the pointer) throughout ste
 
 ### Incremental update (same trust state, new raw activity)
 
-Triggered by a space-relevant nanopub load or invalidation (which bumps `currentLoadCounter`). Runs as a single cycle bounded by `(processedUpTo, currentLoadCounter]`:
+Triggered by a space-relevant nanopub load or invalidation (which bumps `currentLoadCounter`). Runs as a single cycle bounded by `(processedUpTo, currentLoadCounter]`. In the SPARQL sketches below, `<ts>` stands for the current space-state graph IRI (resolved via `npa:hasCurrentSpaceState` at cycle start).
 
 1. Apply invalidation DELETEs — for each new `npa:Invalidation` entry, remove the space-state entry whose `npa:viaNanopub` points at the invalidated nanopub:
    ```sparql
@@ -330,7 +330,7 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
      }
    }
    ```
-2. Apply the tier INSERTs. Each INSERT joins the candidate extraction entry to its originating nanopub's load number via `npa:viaNanopub` and filters by `FILTER(?ln > ?lastProcessed)`, plus a `FILTER NOT EXISTS` against the current space-state contents. Iterate to fixed point within the cycle. Sketch (admin tier):
+2. Apply the tier INSERTs in the same order as the full build — admin → `gen:hasRole` validation → maintainer → member → observer. Each INSERT joins the candidate extraction entry to its originating nanopub's load number via `npa:viaNanopub` and filters by `FILTER(?ln > ?lastProcessed)`, plus a `FILTER NOT EXISTS` against the current space-state contents. Iterate to fixed point within the cycle. Sketch (admin tier):
    ```sparql
    INSERT { GRAPH npass:<ts> { ?ri a gen:RoleInstantiation ;
                                    npa:forSpace ?space ;
@@ -382,7 +382,7 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
 
 Loader and materializer decouple: the loader keeps appending raw triples with incrementing load numbers, the materializer processes deltas in small cycles. No global CLEAR.
 
-Triggers coalesce into a pending-rebuild flag; if a trigger arrives mid-cycle, the flag re-fires and another cycle runs after commit.
+Triggers coalesce into a pending-cycle flag (distinct from `npa:needsFullRebuild`); if a trigger arrives mid-cycle, the flag re-fires and another cycle runs after commit.
 
 ### Revocation semantics
 
