@@ -257,6 +257,16 @@ All tier checks (authority evidence for admin/maintainer/member; self-evidence f
 
 Since the registry's trust calculation flags any pubkey that claims multiple agents as `npa:contested` (and contested rows are not in the mirrored set), a trust-approved pubkey in `npass:<ts>` resolves to exactly one agent. No multi-agent ambiguity to handle at validation time.
 
+**Invalidation filter (applies to every read from `npa:spacesGraph`).** Tier INSERTs, the admin-seed query, and `gen:hasRole` attachment validation all add:
+
+```sparql
+FILTER NOT EXISTS {
+  ?inv a npa:Invalidation ; npa:invalidates ?np .
+}
+```
+
+where `?np` is the source nanopub of the candidate being considered (`?entry npa:viaNanopub ?np`, or `?def npa:viaNanopub ?np` for the admin-seed query). This keeps `npa:spacesGraph` purely add-only — invalidations add an `npa:Invalidation` record but never delete prior extractions — while ensuring no query ever admits a candidate whose source has been retracted, regardless of arrival order. Covers the out-of-order case where an invalidation lands before its target.
+
 ### Mirror step
 
 Executed in Java by `AuthorityResolver`, not via SPARQL SERVICE. Open a `RepositoryConnection` on each side; read trust-approved account-state rows from `npat:<trustStateHash>` in the `trust` repo; write the filtered rows into the new `npass:<trustStateHash>_<loadCounterAtBuildStart>` graph in the `spaces` repo, inside one spaces-side transaction:
@@ -336,6 +346,8 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
            npa:viaNanopub      ?np .
        ?np npa:hasLoadNumber ?ln .
        FILTER (?ln > ?lastProcessed)
+       # Invalidation filter (per Validation rule)
+       FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?np . }
      }
      # Authority evidence: publisher resolves to an existing admin of ?space
      GRAPH npass:<ts> {
@@ -347,7 +359,9 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
          GRAPH npa:spacesGraph {
            ?def a npa:SpaceDefinition ;
                 npa:forSpaceRef [ npa:spaceIri ?space ] ;
-                npa:hasRootAdmin ?publisher .
+                npa:hasRootAdmin ?publisher ;
+                npa:viaNanopub   ?defNp .
+           FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?defNp . }
          }
        }
        UNION
@@ -374,7 +388,9 @@ Triggers coalesce into a pending-rebuild flag; if a trigger arrives mid-cycle, t
 
 Sticky and non-cascading: invalidating a grant removes only the derivation keyed on that nanopub. Other grants to the same agent persist. Second-order invalidations are ignored.
 
-Invalidating a `gen:SpaceMemberRole` nanopub removes its `npa:RoleDeclaration` from `npass:<ts>` via the standard per-`npa:viaNanopub` DELETE. Previously-derived instantiations under that role stay (sticky); new instantiations can no longer be derived because the JOIN against `npa:RoleDeclaration` fails.
+Invalidating a `gen:SpaceMemberRole` nanopub removes its `npa:RoleDeclaration` from `npass:<ts>` via the standard per-`npa:viaNanopub` DELETE. Previously-derived instantiations under that role stay (sticky); new instantiations can no longer be derived because either the JOIN against `npa:RoleDeclaration` fails (at full rebuild, when the declaration-reading query applies the invalidation filter) or the filter directly excludes instantiations whose source was retracted.
+
+`npa:spacesGraph` stays purely add-only: invalidations add `npa:Invalidation` records but never delete prior extraction entries. Cleanup happens only in `npass:<ts>` (DELETE-on-viaNanopub) and via the invalidation filter on every extraction-graph read (per [Validation rule](#validation-rule)).
 
 ### Trust-state flip always means full rebuild
 
@@ -394,6 +410,18 @@ Incremental updates cover pure addition cleanly, but invalidations of *structura
 - A periodic worker (configurable interval, default in the 5–15 min range, roughly aligned with trust-state-flip cadence) checks the flag. If set: run the full-build procedure above (same trust state, fresh `npass:<T>_<M>` with `M = currentLoadCounter`), flip the pointer, drop the old graph, clear the flag.
 
 Readers are never blocked: during the worker's build the pointer still references the previous graph; the swap is atomic. Wasted incremental work during the rebuild is bounded by rebuild duration.
+
+### Operational details
+
+**Flag-setting for `npa:needsFullRebuild`.** Run the invalidation step as three separate DELETE sub-queries, one per structural kind (admin-tier `gen:RoleInstantiation`, `gen:RoleAssignment`, `npa:RoleDeclaration`). Precede each with an `ASK` using the same WHERE clause; if the ASK is true, set `npa:needsFullRebuild true` in `npa:graph` after the DELETE commits. Leaf-tier instantiation DELETEs do not set the flag.
+
+**Rebuild serialization.** All full rebuilds (trust-state flip, periodic flag) run one at a time under a single materializer mutex. A trigger arriving during a build is coalesced: it either waits for the in-progress rebuild to commit or re-fires afterward.
+
+**Crash recovery.** On startup, the materializer drops any `npass:*` graph that `npa:hasCurrentSpaceState` does not point at. Orphan graphs from interrupted builds are cleaned without manual intervention.
+
+**Load-counter invariant.** `npa:thisRepo npa:currentLoadCounter` is expected to persist monotonically across process restarts (nanopub-query guarantees this today); `processedUpTo` values rely on it. If the invariant ever breaks, incremental cycles may skip deltas silently.
+
+**Trust-state flip detection.** The materializer reads `npa:thisRepo npa:hasCurrentTrustState` in the `trust` repo at each rebuild-worker wakeup. A changed hash triggers the full-build path; no dedicated notification channel is needed.
 
 ## Implementation phases
 
