@@ -277,10 +277,10 @@ public final class AuthorityResolver {
      * trust-approved AccountState) is already in the admin set.
      */
     static String adminTierUpdate(IRI graph, long lastProcessed) {
-        // The seed branch reads SpaceDefinition entries from npa:spacesGraph (that's
-        // where they live). The closed-over branch reads existing admin instantiations
-        // from the current space-state graph. Both branches must establish ?publisher
-        // before joining to the mirrored AccountState row (which resolves ?pkh).
+        // npa:hasLoadNumber lives in the admin graph (NPA.GRAPH), NOT in
+        // npa:spacesGraph — NanopubLoader writes the stamp there. Every tier
+        // template below joins the delta filter via a separate GRAPH <npa:graph>
+        // block. Invalidation entries DO live in npa:spacesGraph.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
@@ -299,9 +299,11 @@ public final class AuthorityResolver {
                         npa:forAgent        ?agent ;
                         npa:pubkeyHash      ?pkh ;
                         npa:viaNanopub      ?np .
+                    %6$s
+                  }
+                  GRAPH <%8$s> {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
-                    %6$s
                   }
                   {
                     # Seed branch: root-admin in a non-invalidated SpaceDefinition.
@@ -343,7 +345,8 @@ public final class AuthorityResolver {
                 SpacesVocab.SPACES_GRAPH,
                 lastProcessed,
                 invalidationFilter("np"),
-                invalidationFilter("defNp"));
+                invalidationFilter("defNp"),
+                NPA.GRAPH);
     }
 
     /**
@@ -368,9 +371,11 @@ public final class AuthorityResolver {
                         gen:hasRole  ?role ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
+                    %6$s
+                  }
+                  GRAPH <%7$s> {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
-                    %6$s
                   }
                   GRAPH <%3$s> {
                     ?acct a npa:AccountState ;
@@ -393,7 +398,8 @@ public final class AuthorityResolver {
                 graph,
                 SpacesVocab.SPACES_GRAPH,
                 lastProcessed,
-                invalidationFilter("np"));
+                invalidationFilter("np"),
+                NPA.GRAPH);
     }
 
     /** Non-admin tier publisher constraints (inserted as a SPARQL sub-pattern). */
@@ -491,8 +497,6 @@ public final class AuthorityResolver {
                     { ?ri npa:regularProperty ?pred . }
                     UNION
                     { ?ri npa:inverseProperty ?pred . }
-                    ?np npa:hasLoadNumber ?ln .
-                    FILTER (?ln > %5$d)
                     %6$s
                     # Predicate maps to a RoleDeclaration of this tier (not invalidated).
                     ?rd a npa:RoleDeclaration ;
@@ -503,6 +507,10 @@ public final class AuthorityResolver {
                     UNION
                     { ?rd gen:hasInverseProperty ?pred . }
                     %8$s
+                  }
+                  GRAPH <%10$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
                   }
                   GRAPH <%3$s> {
                     # Role must be admin-attached to the target space.
@@ -531,7 +539,8 @@ public final class AuthorityResolver {
                 invalidationFilter("np"),
                 tierClass,
                 invalidationFilter("rdNp"),
-                publisherConstraint);
+                publisherConstraint,
+                NPA.GRAPH);
     }
 
     /**
