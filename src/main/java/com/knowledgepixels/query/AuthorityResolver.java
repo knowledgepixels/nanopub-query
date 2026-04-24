@@ -203,15 +203,26 @@ public final class AuthorityResolver {
      */
     TierCounts runAllTierLoops(IRI graph, long lastProcessed) {
         TierCounts c = new TierCounts();
-        c.admin = runTierLoop(graph, adminTierUpdate(graph, lastProcessed));
-        c.attachment = runTierLoop(graph, attachmentValidationUpdate(graph, lastProcessed));
-        c.maintainer = runTierLoop(graph, nonAdminTierUpdate(graph, lastProcessed,
+        c.admin = runTierLabeled("admin", graph, adminTierUpdate(graph, lastProcessed));
+        c.attachment = runTierLabeled("attachment", graph,
+                attachmentValidationUpdate(graph, lastProcessed));
+        c.maintainer = runTierLabeled("maintainer", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.MAINTAINER_ROLE, PUBLISHER_IS_ADMIN));
-        c.member = runTierLoop(graph, nonAdminTierUpdate(graph, lastProcessed,
+        c.member = runTierLabeled("member", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN_OR_MAINTAINER));
-        c.observer = runTierLoop(graph, nonAdminTierUpdate(graph, lastProcessed,
+        c.observer = runTierLabeled("observer", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF_OR_TIERED));
         return c;
+    }
+
+    /** Wraps {@link #runTierLoop} with tier-name context for logs/exceptions. */
+    private int runTierLabeled(String tier, IRI graph, String sparqlUpdate) {
+        try {
+            return runTierLoop(graph, sparqlUpdate);
+        } catch (RuntimeException ex) {
+            log.error("AuthorityResolver: tier={} failed with SPARQL UPDATE:\n{}\n", tier, sparqlUpdate, ex);
+            throw ex;
+        }
     }
 
     /**
@@ -246,10 +257,17 @@ public final class AuthorityResolver {
 
     // ---------------- SPARQL templates ----------------
 
-    /** Reusable invalidation filter on a bound nanopub-IRI variable. */
-    private static String invalidationFilter(String npVar) {
-        return "FILTER NOT EXISTS { ?_inv_" + npVar + " a <" + SpacesVocab.INVALIDATION + "> ; "
-                + "<" + SpacesVocab.INVALIDATES + "> " + npVar + " . }";
+    /**
+     * Reusable invalidation filter on a bound nanopub-IRI variable. Pass the bare
+     * variable name (no leading {@code ?}); e.g. {@code invalidationFilter("np")}
+     * produces {@code FILTER NOT EXISTS { ?_inv_np a npa:Invalidation ; npa:invalidates ?np . }}.
+     * Variable names must match {@code [A-Za-z0-9_]+} per SPARQL grammar — embedding
+     * a {@code ?} inside {@code ?_inv_?np} would yield a parse error.
+     */
+    private static String invalidationFilter(String bareVarName) {
+        return "FILTER NOT EXISTS { ?_inv_" + bareVarName
+                + " a <" + SpacesVocab.INVALIDATION + "> ; "
+                + "<" + SpacesVocab.INVALIDATES + "> ?" + bareVarName + " . }";
     }
 
     /**
@@ -259,6 +277,10 @@ public final class AuthorityResolver {
      * trust-approved AccountState) is already in the admin set.
      */
     static String adminTierUpdate(IRI graph, long lastProcessed) {
+        // The seed branch reads SpaceDefinition entries from npa:spacesGraph (that's
+        // where they live). The closed-over branch reads existing admin instantiations
+        // from the current space-state graph. Both branches must establish ?publisher
+        // before joining to the mirrored AccountState row (which resolves ?pkh).
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
@@ -281,26 +303,31 @@ public final class AuthorityResolver {
                     FILTER (?ln > %5$d)
                     %6$s
                   }
-                  GRAPH <%3$s> {
-                    ?acct a npa:AccountState ;
-                          npa:agent  ?publisher ;
-                          npa:pubkey ?pkh .
-                    {
-                      # Seed: root-admin in a non-invalidated SpaceDefinition for this space
+                  {
+                    # Seed branch: root-admin in a non-invalidated SpaceDefinition.
+                    GRAPH <%4$s> {
                       ?def a npa:SpaceDefinition ;
                            npa:forSpaceRef ?spaceRef ;
                            npa:hasRootAdmin ?publisher ;
                            npa:viaNanopub   ?defNp .
                       ?spaceRef npa:spaceIri ?space .
+                      %7$s
                     }
-                    UNION
-                    {
-                      # Closed-over: an existing admin instantiation for this space
+                  }
+                  UNION
+                  {
+                    # Closed-over branch: an existing admin in this space-state graph.
+                    GRAPH <%3$s> {
                       ?prev a gen:RoleInstantiation ;
                             npa:forSpace ?space ;
                             npa:regularProperty gen:hasAdmin ;
                             npa:forAgent ?publisher .
                     }
+                  }
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:agent  ?publisher ;
+                          npa:pubkey ?pkh .
                   }
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
@@ -308,11 +335,6 @@ public final class AuthorityResolver {
                               npa:forAgent ?agent ;
                               npa:regularProperty gen:hasAdmin .
                   } }
-                  # Invalidation filter on the SpaceDefinition (seed branch) is only
-                  # checked if that branch matched. Since ?defNp is unbound in the
-                  # closed-over branch we apply the filter inside the WHERE's OPTIONAL
-                  # pattern via a nested FILTER — see adminSeedInvalidationFilter
-                  # below.
                 }
                 """.formatted(
                 NPA.NAMESPACE,
@@ -320,7 +342,8 @@ public final class AuthorityResolver {
                 graph,
                 SpacesVocab.SPACES_GRAPH,
                 lastProcessed,
-                invalidationFilter("?np"));
+                invalidationFilter("np"),
+                invalidationFilter("defNp"));
     }
 
     /**
@@ -370,7 +393,7 @@ public final class AuthorityResolver {
                 graph,
                 SpacesVocab.SPACES_GRAPH,
                 lastProcessed,
-                invalidationFilter("?np"));
+                invalidationFilter("np"));
     }
 
     /** Non-admin tier publisher constraints (inserted as a SPARQL sub-pattern). */
@@ -505,9 +528,9 @@ public final class AuthorityResolver {
                 graph,
                 SpacesVocab.SPACES_GRAPH,
                 lastProcessed,
-                invalidationFilter("?np"),
+                invalidationFilter("np"),
                 tierClass,
-                invalidationFilter("?rdNp"),
+                invalidationFilter("rdNp"),
                 publisherConstraint);
     }
 
