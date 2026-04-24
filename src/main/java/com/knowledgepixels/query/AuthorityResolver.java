@@ -214,15 +214,11 @@ public final class AuthorityResolver {
                 GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN));
         c.member += runTierLabeled("member(maint-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.MEMBER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
-        // Observer tier: admin OR maintainer OR member publisher OR self-evidence — four
-        // simple updates instead of one 4-branch UNION, which HTTP-timed out in practice.
-        c.observer = runTierLabeled("observer(admin-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
-                GEN.OBSERVER_ROLE, PUBLISHER_IS_ADMIN));
-        c.observer += runTierLabeled("observer(maint-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
-                GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
-        c.observer += runTierLabeled("observer(member-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
-                GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MEMBER_ROLE)));
-        c.observer += runTierLabeled("observer(self)", graph, nonAdminTierUpdate(graph, lastProcessed,
+        // Observer tier: self-evidence only per the plan's policy table
+        // (gen:ObserverRole = self). Authority-publisher sub-tiers were overreach;
+        // the three of them have been removed, so an observer instantiation is
+        // validated iff the assignee's own pubkey signed it.
+        c.observer = runTierLabeled("observer(self)", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
         return c;
     }
