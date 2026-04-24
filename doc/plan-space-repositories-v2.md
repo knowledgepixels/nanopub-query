@@ -66,7 +66,7 @@ Every extraction uses a dedicated subject IRI per entry — derived from the ori
 
 - `npari:` = `<http://purl.org/nanopub/admin/roleinst/>` — subject for `gen:RoleInstantiation` entries
 - `npara:` = `<http://purl.org/nanopub/admin/roleassign/>` — subject for `gen:hasRole` (role-attachment) entries
-- `nparo:` = `<http://purl.org/nanopub/admin/role/>` — subject for `gen:SpaceMemberRole` entries
+- `npard:` = `<http://purl.org/nanopub/admin/roledecl/>` — subject for `npa:RoleDeclaration` entries (extracted from `gen:SpaceMemberRole` nanopubs)
 - `npainv:` = `<http://purl.org/nanopub/admin/invalidation/>` — subject for `npa:Invalidation` entries
 
 Each entry carries `npa:viaNanopub <originatingNP>` to link back to the source; the stamped load number goes on that nanopub IRI so all of a nanopub's emitted entries share one stamp:
@@ -141,21 +141,22 @@ Prefix: `npx:` = `<http://purl.org/nanopub/x/>`. `npa:forSpace` points to the Sp
 
 ### Triples added per `gen:SpaceMemberRole` nanopub
 
-Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The role-defining triples are copied into `npa:spacesGraph` under a dedicated subject:
+Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The role-defining triples are summarized into `npa:spacesGraph` as an `npa:RoleDeclaration` entry:
 
 ```turtle
 GRAPH npa:spacesGraph {
-  nparo:<artifactCode> a gen:SpaceMemberRole, <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
+  npard:<artifactCode> a npa:RoleDeclaration ;
                        npa:role               <roleIri> ;
+                       npa:hasRoleType        <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
                        gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
                        gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
                        npa:viaNanopub         <thisNP> .
 }
 ```
 
-Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`. `npa:role` carries the actual role IRI for consumer JOINs.
+Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`. `npa:role` carries the actual role IRI for consumer JOINs; `npa:hasRoleType` carries the tier class.
 
-The tier `rdf:type` triple (`gen:MaintainerRole`, `gen:MemberRole`, or `gen:ObserverRole`) is copied from the assertion alongside the `gen:SpaceMemberRole` type. If no tier is declared, default to `gen:ObserverRole`.
+The tier value for `npa:hasRoleType` comes from whatever subclass of `gen:SpaceMemberRole` (`gen:MaintainerRole`, `gen:MemberRole`, or `gen:ObserverRole`) the role is typed as in the source assertion. If the assertion declares none, default to `gen:ObserverRole`.
 
 **Embedding must be checked:** only emit these triples if `<roleIri>` starts with `<thisNP>`'s IRI (i.e. the role is genuinely embedded in this nanopub). Otherwise ignore — a role IRI outside the nanopub's namespace is not a valid embedded mint.
 
@@ -179,7 +180,7 @@ GRAPH npa:spacesGraph {
 }
 ```
 
-Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per instantiation, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `gen:SpaceMemberRole` def (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
+Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per instantiation, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `npa:RoleDeclaration` (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
 
 ### Triples added per invalidation
 
@@ -232,7 +233,7 @@ Triggered by a trust-state flip (the trust repo's `npa:hasCurrentTrustState` poi
 2. Run the per-tier UPDATE loops from scratch (processedUpTo = 0):
    - **Admin**: seed from `npa:hasRootAdmin`; fixed-point INSERT every `gen:RoleInstantiation` with `npa:regularProperty gen:hasAdmin` whose `npa:pubkeyHash` resolves (via the mirrored rows) to an agent already in the admin set for that space.
    - **`gen:hasRole` validation**: INSERT every `gen:RoleAssignment` whose publisher is in the admin set of the target space. These validated attachments define which role predicates are active per space.
-   - **Maintainer**: INSERT every `gen:RoleInstantiation` whose predicate is the `gen:hasRegularProperty` (or `gen:hasInverseProperty`) of a `gen:MaintainerRole`-typed role attached to the target space, and whose publisher is in the admin set (or existing maintainer set). Fixed-point.
+   - **Maintainer**: INSERT every `gen:RoleInstantiation` whose predicate is the `gen:hasRegularProperty` (or `gen:hasInverseProperty`) of an `npa:RoleDeclaration` with `npa:hasRoleType gen:MaintainerRole` attached to the target space, and whose publisher is in the admin set (or existing maintainer set). Fixed-point.
    - **Member / Observer**: same pattern, tiered publisher constraints. Observer also accepts self-evidence (publisher = assignee).
 3. Set `processedUpTo` to the current `currentLoadCounter`.
 4. Flip the current-space-state pointer to `npass:<newHash>`.
