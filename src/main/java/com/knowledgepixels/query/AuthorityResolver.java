@@ -208,11 +208,40 @@ public final class AuthorityResolver {
                 attachmentValidationUpdate(graph, lastProcessed));
         c.maintainer = runTierLabeled("maintainer", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.MAINTAINER_ROLE, PUBLISHER_IS_ADMIN));
-        c.member = runTierLabeled("member", graph, nonAdminTierUpdate(graph, lastProcessed,
-                GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN_OR_MAINTAINER));
-        c.observer = runTierLabeled("observer", graph, nonAdminTierUpdate(graph, lastProcessed,
-                GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF_OR_TIERED));
+        // Member tier: admin OR maintainer publisher — split into two simpler updates
+        // so the query planner doesn't struggle with the UNION.
+        c.member = runTierLabeled("member(admin-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN));
+        c.member += runTierLabeled("member(maint-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.MEMBER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
+        // Observer tier: admin OR maintainer OR member publisher OR self-evidence — four
+        // simple updates instead of one 4-branch UNION, which HTTP-timed out in practice.
+        c.observer = runTierLabeled("observer(admin-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, PUBLISHER_IS_ADMIN));
+        c.observer += runTierLabeled("observer(maint-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
+        c.observer += runTierLabeled("observer(member-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MEMBER_ROLE)));
+        c.observer += runTierLabeled("observer(self)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
         return c;
+    }
+
+    /**
+     * Builds a publisher constraint requiring the publisher to be a validated holder
+     * of the given tier's role (maintainer or member) in the target space.
+     */
+    private static String publisherIsTieredRole(IRI tierClass) {
+        return """
+                ?tierRI a gen:RoleInstantiation ;
+                        npa:forSpace ?space ;
+                        npa:forAgent ?publisher .
+                ?rdT a npa:RoleDeclaration ;
+                     npa:hasRoleType <%1$s> .
+                { ?tierRI npa:regularProperty ?predT . ?rdT gen:hasRegularProperty ?predT . }
+                UNION
+                { ?tierRI npa:inverseProperty ?predT . ?rdT gen:hasInverseProperty ?predT . }
+                """.formatted(tierClass);
     }
 
     /** Wraps {@link #runTierLoop} with tier-name context for logs/exceptions. */
@@ -415,65 +444,9 @@ public final class AuthorityResolver {
                      npa:forAgent ?publisher .
             """;
 
-    static final String PUBLISHER_IS_ADMIN_OR_MAINTAINER = """
-            {
-              ?adminRI a gen:RoleInstantiation ;
-                       npa:forSpace ?space ;
-                       npa:regularProperty gen:hasAdmin ;
-                       npa:forAgent ?publisher .
-            }
-            UNION
-            {
-              ?maintRI a gen:RoleInstantiation ;
-                       npa:forSpace ?space ;
-                       npa:forAgent ?publisher .
-              ?rdM a npa:RoleDeclaration ;
-                   npa:hasRoleType gen:MaintainerRole .
-              { ?maintRI npa:regularProperty ?predM . ?rdM gen:hasRegularProperty ?predM . }
-              UNION
-              { ?maintRI npa:inverseProperty ?predM . ?rdM gen:hasInverseProperty ?predM . }
-            }
-            """;
-
-    /**
-     * Observer self-evidence: publisher is admin, maintainer, member, OR the
-     * mirrored trust row confirms that the signing pubkey maps to the assignee
-     * itself (i.e. the assignee is the publisher).
-     */
-    static final String PUBLISHER_IS_SELF_OR_TIERED = """
-            {
-              ?adminRI a gen:RoleInstantiation ;
-                       npa:forSpace ?space ;
-                       npa:regularProperty gen:hasAdmin ;
-                       npa:forAgent ?publisher .
-            }
-            UNION
-            {
-              ?maintRI a gen:RoleInstantiation ;
-                       npa:forSpace ?space ;
-                       npa:forAgent ?publisher .
-              ?rdM a npa:RoleDeclaration ;
-                   npa:hasRoleType gen:MaintainerRole .
-              { ?maintRI npa:regularProperty ?predM . ?rdM gen:hasRegularProperty ?predM . }
-              UNION
-              { ?maintRI npa:inverseProperty ?predM . ?rdM gen:hasInverseProperty ?predM . }
-            }
-            UNION
-            {
-              ?memRI a gen:RoleInstantiation ;
-                     npa:forSpace ?space ;
-                     npa:forAgent ?publisher .
-              ?rdMem a npa:RoleDeclaration ;
-                     npa:hasRoleType gen:MemberRole .
-              { ?memRI npa:regularProperty ?predMem . ?rdMem gen:hasRegularProperty ?predMem . }
-              UNION
-              { ?memRI npa:inverseProperty ?predMem . ?rdMem gen:hasInverseProperty ?predMem . }
-            }
-            UNION
-            {
-              # Self-evidence: publisher pubkey maps to the assignee.
-              FILTER (?publisher = ?agent)
-            }
+    /** Observer self-evidence: the assignee is the publisher. */
+    static final String PUBLISHER_IS_SELF = """
+            FILTER (?publisher = ?agent)
             """;
 
     /**

@@ -109,10 +109,10 @@ class AuthorityResolverTest {
         String sparql = AuthorityResolver.nonAdminTierUpdate(
                 TEST_GRAPH, 0,
                 com.knowledgepixels.query.vocabulary.GEN.OBSERVER_ROLE,
-                AuthorityResolver.PUBLISHER_IS_SELF_OR_TIERED);
+                AuthorityResolver.PUBLISHER_IS_SELF);
         // Self-evidence: publisher agent (from mirrored rows) matches the assignee.
         assertTrue(sparql.contains("?publisher = ?agent"),
-                "observer tier accepts self-evidence");
+                "observer tier (self branch) accepts self-evidence");
     }
 
 }
