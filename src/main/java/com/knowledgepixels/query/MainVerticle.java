@@ -53,7 +53,7 @@ public class MainVerticle extends AbstractVerticle {
         }
         if (!FeatureFlags.spacesEnabled()) {
             log.warn("Spaces feature disabled via NANOPUB_QUERY_ENABLE_SPACES=false — "
-                    + "no space-defining nanopubs will be registered, no extracts will be written, "
+                    + "no space-relevant nanopubs will be extracted into npa:spacesGraph, "
                     + "and the 'spaces' repo will not be auto-created.");
         }
         if (!FeatureFlags.fullRepoEnabled()) {
@@ -516,13 +516,6 @@ public class MainVerticle extends AbstractVerticle {
             // periodic poll begins, so the first tick doesn't re-materialize state
             // we already have.
             TrustStateLoader.bootstrap();
-
-            // Seed the SpaceRegistry from any persisted (spaceRef, spaceIri) pairs
-            // so previously-known spaces survive a restart, then catch up on any
-            // gen:Space-typed nanopubs that were already loaded before persistence
-            // was wired up (so existing deployments don't need a fresh DB).
-            SpacesAdminStore.bootstrap(SpaceRegistry.get());
-            SpacesAdminStore.scanExistingSpaces(SpaceRegistry.get());
 
             // Start periodic nanopub loading
             log.info("Starting periodic nanopub loading...");

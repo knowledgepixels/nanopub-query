@@ -31,7 +31,6 @@ import org.nanopub.vocabulary.PAV;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.knowledgepixels.query.vocabulary.GEN;
 
 import java.security.GeneralSecurityException;
 import java.util.*;
@@ -266,9 +265,6 @@ public class NanopubLoader {
             // @ADMIN-TRIPLE-TABLE@ NANOPUB, npx:hasNanopubType, NANOPUB_TYPE, npa:graph, meta, type of NANOPUB
             literalFilter += " _type_" + Utils.createHash(typeIri);
         }
-        // Side-effecting call: populates SpaceRegistry as gen:Space-typed nanopubs flow through.
-        // Consumers of the registry (extraction, materialization) land in later steps of #62.
-        detectAndRegisterSpaces(np);
         String label = NanopubUtils.getLabel(np);
         if (label != null) {
             metaStatements.add(vf.createStatement(np.getUri(), RDFS.LABEL, vf.createLiteral(label), NPA.GRAPH));
@@ -734,49 +730,6 @@ public class NanopubLoader {
             if (st.getPredicate().equals(NPX.DECLARED_BY)) return true;
         }
         return false;
-    }
-
-    /**
-     * Detects whether the given nanopub is a Space-defining nanopub (typed
-     * {@code gen:Space}) and, if so, registers each space it declares (one per
-     * {@code <spaceIri> gen:hasRootDefinition <rootUri>} triple) in
-     * {@link SpaceRegistry}. Nanopubs missing the {@code gen:hasRootDefinition}
-     * triple are not recognized as space-defining — there is no transition fallback.
-     *
-     * @param np the nanopub to inspect
-     * @return the set of space refs registered from this nanopub (possibly empty);
-     *         currently used by tests to assert detection behavior. Production
-     *         callers invoke this for its side effect on {@link SpaceRegistry};
-     *         downstream consumers (extraction, materialization) follow in later
-     *         steps of #62.
-     */
-    static Set<String> detectAndRegisterSpaces(Nanopub np) {
-        if (!FeatureFlags.spacesEnabled()) return Collections.emptySet();
-        boolean isSpaceTyped = false;
-        for (IRI typeIri : NanopubUtils.getTypes(np)) {
-            if (typeIri.equals(GEN.SPACE)) {
-                isSpaceTyped = true;
-                break;
-            }
-        }
-        if (!isSpaceTyped) return Collections.emptySet();
-        Set<String> spaceRefs = new LinkedHashSet<>();
-        for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.HAS_ROOT_DEFINITION)) continue;
-            if (!(st.getSubject() instanceof IRI spaceIri)) continue;
-            if (!(st.getObject() instanceof IRI rootUri)) continue;
-            String rootNanopubId = TrustyUriUtils.getArtifactCode(rootUri.stringValue());
-            if (rootNanopubId == null || rootNanopubId.isEmpty()) {
-                log.warn("Ignoring space {}: gen:hasRootDefinition target is not a trusty URI: {}", spaceIri, rootUri);
-                continue;
-            }
-            SpaceRegistry.Registration registration = SpaceRegistry.get().registerSpace(rootNanopubId, spaceIri);
-            spaceRefs.add(registration.spaceRef());
-            if (registration.wasNew()) {
-                SpacesAdminStore.persistSpace(rootNanopubId, spaceIri);
-            }
-        }
-        return spaceRefs;
     }
 
     /**
