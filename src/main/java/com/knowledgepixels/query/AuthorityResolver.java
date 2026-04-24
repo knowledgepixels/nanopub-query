@@ -235,10 +235,15 @@ public final class AuthorityResolver {
         int total = 0;
         long before = graphSize(graph);
         while (true) {
+            // Note: no explicit transaction wrapping here. In tests we observed that
+            // HTTPRepository's RDF4J-transaction protocol silently no-op'd cross-graph
+            // SPARQL UPDATEs with UNION sub-patterns inside conn.begin()/commit(),
+            // while the same UPDATE POSTed directly to /statements applied correctly.
+            // A bare prepareUpdate().execute() takes the direct /statements path and
+            // runs the UPDATE atomically per SPARQL 1.1 semantics — which is all we
+            // need; there's nothing else to commit atomically alongside the UPDATE.
             try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-                conn.begin(IsolationLevels.SERIALIZABLE);
                 conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate).execute();
-                conn.commit();
             }
             long after = graphSize(graph);
             long added = after - before;
