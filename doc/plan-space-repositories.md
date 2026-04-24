@@ -2,210 +2,377 @@
 
 ## Context
 
-Today Nanodash computes Space membership client-side via a chain of API queries (`GET_ADMINS` → `GET_SPACE_MEMBER_ROLES` → `GET_SPACE_MEMBERS` → `GET_VIEW_DISPLAYS`) against `full`/`meta`. It's slow and puts the membership logic in the wrong place.
-
-This plan moves that calculation server-side. A single new repo `spaces` holds, per-space, a named graph of *derived* authority data: who's admin/maintainer, the resolved role assignments with evidence, the validated view displays, and the space's profile metadata. Source nanopubs continue to live in `full`/`meta`; the `spaces` repo is purely the projection. Consumers answer "who's an admin of S? what views apply to S?" with one SPARQL query against `spaces`, no `SERVICE` join needed.
+Today Nanodash computes Space membership client-side via a chain of API queries (`GET_ADMINS` → `GET_SPACE_MEMBER_ROLES` → `GET_SPACE_MEMBERS` → `GET_VIEW_DISPLAYS`) against `full`/`meta`. It's slow and puts the membership logic in the wrong place. This plan moves that calculation server-side, into a new `spaces` repo.
 
 ## Space Identity
 
-Prefixes used here: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`, `npa:` = `<http://purl.org/nanopub/admin/>`.
+Prefixes: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`, `npa:` = `<http://purl.org/nanopub/admin/>`.
 
 A space is identified by a **space ref** of the form `<NPID>_<SPACEIRIHASH>`:
-- **NPID** — the trusty-URI artifact code of the **root nanopub**.
-- **SPACEIRIHASH** — `Utils.createHash(<Space IRI>)`, same hashing pattern as `type_<HASH>`.
+- **NPID** — trusty-URI artifact code of the **root nanopub**.
+- **SPACEIRIHASH** — `Utils.createHash(<Space IRI>)`, same pattern as `type_<HASH>`.
 
-Globally unique by construction (artifact codes are content-addressed). Human-decodable by splitting on `_`. A single root nanopub can declare multiple Space IRIs.
+Every space-defining nanopub declares its root via `gen:hasRootDefinition` (self-referential for the root itself; pointing at the original root for any update).
 
-Within the `spaces` repo, each space has its own named graph. Sketch IRI: `<http://purl.org/nanopub/admin/space/<spaceRef>>` — pin the exact namespace at implementation time.
+For backwards compatibility during the transition phase, a `gen:Space`-typed nanopub *without* a `gen:hasRootDefinition` triple is still accepted: the declaration nanopub is treated as its own root. Each such declaration therefore produces its own space ref (per declaration, not shared across declarations for the same Space IRI). To be phased out once existing deployments have republished with explicit roots.
 
-### Root nanopub resolution
+## Role types
 
-Every space-defining nanopub (original or update) declares its root via `gen:hasRootDefinition` in the assertion:
-
-```turtle
-<spaceIRI> gen:hasRootDefinition <rootNanopubURI> .
-```
-
-For the root itself this is self-referential (resolved at trusty-URI minting); for any update it points back at the original root. **A `gen:Space`-typed nanopub without this triple is ignored** — no transition fallback. Self-describing: no chain walking, no ordering dependency.
-
-### Role types
-
-Four predefined `gen:SpaceMemberRole` subclasses form the authority hierarchy:
+Four `gen:SpaceMemberRole` subclasses:
 
 | Type | Predicate / how it's granted |
 |------|------------------------------|
-| `gen:AdminRole`      | Single hardcoded instance `<https://w3id.org/np/RA_eEJjQbxzSqYSwPzfjzOZi5sMPpUmHskFNsgJYSws8I/adminRole>`, which defines `gen:hasAdmin`. No other admin roles. |
+| `gen:AdminRole`      | Single hardcoded instance `<https://w3id.org/np/RA_eEJjQbxzSqYSwPzfjzOZi5sMPpUmHskFNsgJYSws8I/adminRole>`, defining `gen:hasAdmin`. No other admin roles. |
 | `gen:MaintainerRole` | User-defined predicates declared `rdf:type gen:MaintainerRole`. Nothing is hardcoded at this tier. |
 | `gen:MemberRole`     | User-defined predicates declared `rdf:type gen:MemberRole`. |
 | `gen:ObserverRole`   | User-defined predicates declared `rdf:type gen:ObserverRole`. **Default** when a role definition doesn't declare a type. |
 
-Per-tier privilege enforcement (`core`/`structure`/`content`/`comment`) is Nanodash's concern, out of scope here.
+Per-tier privilege enforcement is Nanodash's concern, out of scope here.
 
 ## What's In the `spaces` Repo
 
-Per space, in its named graph, the projection holds **only what's derived or extracted** — never raw nanopubs. Each entry carries `npa:viaNanopub` provenance back to the source in `full`.
+Two things in one repo:
 
-- **Space profile** — root NPID, Space IRI, description, dates, alt IDs, declared subtypes.
-- **Authority extracts** — the `gen:hasAdmin` triples and the triples using any registered `gen:MaintainerRole`-typed predicate, copied from source assertions and each tagged with the source nanopub and the publisher's resolved agent. These are the *inputs* the materializer iterates to compute closures.
-- **Role definitions** — for each user-defined role predicate registered for the space: predicate IRI, declared role type (defaulting to `gen:ObserverRole`), label, template URI, regular/inverse property metadata.
-- **`RoleAssignment` objects** — one per `(agent, role, space)` tuple, with one or more `npa:hasEvidence` links (see below).
-- **Validated view displays** — for each `gen:isDisplayFor` source whose publisher passes the view-display policy: display IRI, target resource, linked view (`gen:isDisplayOfView`), title, applies-to / applies-to-namespace / applies-to-instances-of rules, deactivation status (`gen:DeactivatedViewDisplay`), presentation hints (page size, display width, structural position), template URI, source nanopub. Defaults that fall through from the linked view are not duplicated — Nanodash already merges them.
+1. **Raw nanopubs** of the following predefined types, loaded whole (all four graphs) and kept indefinitely:
+   - `gen:Space`
+   - `gen:hasRole`
+   - `gen:SpaceMemberRole`
+   - `gen:RoleInstantiation` (new)
 
-**Explicitly not in the `spaces` repo**:
-- Source nanopubs themselves (in `full`).
-- `hasPinnedTemplate` / `hasPinnedQuery` — deprecated, dropped after the Nanodash migration.
-- A catch-all "any nanopub mentioning the space ref" — the extraction set above is the contract; new Nanodash needs are met by extending the materializer, not by hoarding raw data.
+   For backwards compatibility, nanopubs typed with any of the following currently-used properties are also treated as `gen:RoleInstantiation` nanopubs (temporary; to be dropped at a later point). The registry indexes single-triple-assertion nanopubs with their predicate IRI as an additional `npx:hasNanopubType`, so no separate assertion-predicate scan is needed — the standard type-based ingestion path delivers them:
 
-## Authority: evidence + policy
+   - `<http://www.wikidata.org/entity/P1344>`
+   - `<http://www.wikidata.org/entity/P463>`
+   - `<http://www.wikidata.org/entity/P710>`
+   - `<http://www.wikidata.org/entity/P823>`
+   - `<https://w3id.org/fair/3pff/has-event-assistant>`
+   - `<https://w3id.org/fair/3pff/has-event-facilitator>`
+   - `<https://w3id.org/fair/3pff/participatedAsFacilitatorAssistantIn>`
+   - `<https://w3id.org/fair/3pff/participatedAsImplementerAspirantIn>`
+   - `<https://w3id.org/fair/3pff/participatedAsParticipantIn>`
+   - `<https://w3id.org/kpxl/gen/terms/hasAdmin>`
+   - `<https://w3id.org/kpxl/gen/terms/hasObserver>`
+   - `<https://w3id.org/kpxl/gen/terms/hasProjectLead>`
+   - `<https://w3id.org/kpxl/gen/terms/hasTeamMember>`
+   - `<https://w3id.org/kpxl/gen/terms/plansToAttend>`
 
-Membership is the fixed-point closure of a delegation chain, validated against the trust-state mirror in the `trust` repo. Validated state is materialized into the space's graph as evidence-bearing assignment objects so consumers query plain SPARQL — no `SERVICE` join needed at read time.
+2. **One extraction graph**, `npa:spacesGraph`, holding add-only summary triples for each loaded space-relevant nanopub and each invalidation. No validation happens at this layer — everything that matches a predefined type is written here, load-number-stamped.
 
-### Closures (admin, then maintainer)
+3. **One space-state graph**, `npass:<trustStateHash>`, holding the validated closures under the current trust state (see [Space state graph](#space-state-graph)). Rebuilt incrementally via SPARQL UPDATE driven by load-number deltas.
 
-The **admin** closure starts from the root nanopub's `gen:hasAdmin` triples (trusted by construction — the root NPID is part of the space ref) and grows by accepting any further `gen:hasAdmin` declaration whose publisher pubkey resolves (via trust state) to an existing admin. Iterate to fixed point. The **maintainer** closure runs the same way over any registered `gen:MaintainerRole`-typed predicate, seeded from grants by closed admins, accepting further grants from admins or existing maintainers. Computed in Java (SPARQL 1.1 has no fixed-point recursion).
+Every extraction uses a dedicated subject IRI per entry — derived from the originating nanopub's artifact code so subjects never collide with user nanopub IRIs, role IRIs, or anything else a nanopub might declare types on. Prefixes:
 
-### Two evidence kinds
+- `npari:` = `<http://purl.org/nanopub/admin/roleinst/>` — subject for `gen:RoleInstantiation` entries
+- `npara:` = `<http://purl.org/nanopub/admin/roleassign/>` — subject for `gen:hasRole` (role-attachment) entries
+- `npard:` = `<http://purl.org/nanopub/admin/roledecl/>` — subject for `npa:RoleDeclaration` entries (extracted from `gen:SpaceMemberRole` nanopubs)
+- `npainv:` = `<http://purl.org/nanopub/admin/invalidation/>` — subject for `npa:Invalidation` entries
 
-Every nanopub matching a registered role property is classified into one or more:
-- **`npa:authorityEvidence`** — publisher resolves to an agent in the appropriate authority closure for that role tier.
-- **`npa:selfEvidence`** — publisher resolves to the assigned-member agent itself.
-
-Both can apply to the same nanopub. Nanopubs that match neither are *not* materialized.
-
-### Materialized shape
-
-In the space's graph: one `npa:RoleAssignment` per `(agent, role, space)` tuple, linking to one or more evidence objects. Each evidence object records both the source nanopub *and* the resolved publisher agent — so consumer queries don't need to touch the trust repo.
+Each entry carries `npa:viaNanopub <originatingNP>` to link back to the source; the stamped load number goes on that nanopub IRI so all of a nanopub's emitted entries share one stamp:
 
 ```turtle
-GRAPH <npa:space/spaceRef> {
-  _:r1 a npa:RoleAssignment ;
-       npa:forSpace          <spaceRef> ;
-       npa:role              <roleIri> ;       # gen:AdminRole, gen:MaintainerRole, or a user-defined role IRI
-       npa:agent             <agent> ;
-       npa:hasEvidence       _:e1, _:e2 .
-  _:e1 npa:evidenceKind      npa:authorityEvidence ;
-       npa:viaNanopub        <granting_np> ;
-       npa:viaPublisherAgent <publisherAgent> .  # resolved at materialization time
-  _:e2 npa:evidenceKind      npa:selfEvidence ;
-       npa:viaNanopub        <self_confirm_np> ;
-       npa:viaPublisherAgent <agent> .            # same as the assignee, by definition
+  <thisNP> npa:hasLoadNumber <N> .
+```
+
+where `N` is the nanopub-query load counter at extraction time. The `spaces` repo's `npa:graph` also tracks `npa:thisRepo npa:currentLoadCounter <N>` so the materializer knows the current horizon.
+
+In addition, every extraction entry carries a `dct:created` timestamp (prefix `dct:` = `<http://purl.org/dc/terms/>`) copied from the source nanopub's pubinfo `dct:created`, so consumers can sort entries chronologically without a JOIN to the raw nanopub. Matches the pattern already used in admin graphs of other repos.
+
+### Triples added per `gen:Space` nanopub
+
+Prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
+
+```turtle
+GRAPH npa:spacesGraph {
+  npas:<spaceRef> a npa:SpaceRef ;
+                  npa:spaceIri     <spaceIRI> ;
+                  npa:rootNanopub  <rootNP> ;    # object of gen:hasRootDefinition; <thisNP> if the triple is absent
+                  npa:hasDefinition <thisNP> ;
+                  npx:signedBy     <publishingAgent> ;
+                  npa:pubkeyHash   "<pubkeyHash>" ;
+                  dct:created      "<timestamp>"^^xsd:dateTime .
 }
 ```
 
-Predicate names are working titles — pin at implementation time. `RoleAssignment` and evidence IRIs are deterministic (e.g. derived from `space_ref + role + agent` and from `assignment + source_nanopub`) so fast-path and recompute writes are idempotent.
+For update nanopubs `<rootNP>` equals the original root (not `<thisNP>`), consistent with the root's own self-referential `gen:hasRootDefinition`; multiple contributing nanopubs thus share one `npa:rootNanopub` value on the same `npas:<spaceRef>`.
 
-Each per-space materialization also records which trust state it was computed against, in the `npa:graph` admin graph of the spaces repo:
+Each loaded `gen:Space` nanopub contributes its own `npx:signedBy` and `npa:pubkeyHash` values, so multiple defining nanopubs (root + updates) accumulate multiple signer/pubkey pairs on the same `npas:<spaceRef>` — consumers can check validity of each declaration by matching signer/pubkey against the trust repo.
+
+Trust seeding is per space ref, so in the rootless transition case each declaration becomes its own root and creates its own space ref. When multiple space refs exist for the same Space IRI, Nanodash resolves to the one whose root nanopub has the earliest `dct:created` — first-root-wins, deterministic across time. Pattern: `ORDER BY ?created LIMIT 1` on `?spaceRef npa:spaceIri <…>; npa:rootNanopub ?root. ?root dct:created ?created`.
+
+For every `gen:Space` nanopub carrying one or more `gen:hasAdmin` triples in its assertion, additionally emit one `gen:RoleInstantiation` entry covering all asserted admins as multi-valued `npa:forAgent`:
+
+```turtle
+  npari:<artifactCode> a gen:RoleInstantiation ;
+                       npa:forSpace        <spaceIRI> ;
+                       npa:regularProperty gen:hasAdmin ;
+                       npa:forAgent        <adminAgent1>, <adminAgent2> ;
+                       npa:viaNanopub      <thisNP> ;
+                       npx:signedBy        <publishingAgent> ;
+                       npa:pubkeyHash      "<pubkeyHash>" ;
+                       dct:created         "<timestamp>"^^xsd:dateTime .
+```
+
+where `<artifactCode>` is the trusty-URI artifact code of `<thisNP>`.
+
+So admins asserted in any `gen:Space` nanopub (root or update) show up in the same SPARQL pattern consumers use for ordinary admin role instantiations.
+
+If the loaded nanopub is additionally the space's root — detectable by `npa:rootNanopub` equalling `npa:hasDefinition` for the same space ref, i.e. `<thisNP> = <rootNP>` — also emit one triple per `gen:hasAdmin` target:
+
+```turtle
+  npas:<spaceRef> npa:hasRootAdmin <adminAgent> .
+```
+
+These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref.
+
+### Triples added per `gen:hasRole` nanopub
+
+All attachments are emitted into `npa:spacesGraph`; validation (publisher must be in the admin closure of the target space) happens in the space-state-graph materialization step.
+
+```turtle
+GRAPH npa:spacesGraph {
+  npara:<artifactCode> a gen:RoleAssignment ;
+                       npa:forSpace    <spaceIRI> ;
+                       gen:hasRole     <roleIri> ;
+                       npa:viaNanopub  <thisNP> ;
+                       npx:signedBy    <publishingAgent> ;
+                       npa:pubkeyHash  "<pubkeyHash>" ;
+                       dct:created     "<timestamp>"^^xsd:dateTime .
+}
+```
+
+Prefix: `npx:` = `<http://purl.org/nanopub/x/>`. `npa:forSpace` points to the Space IRI (not the space-ref form), as used in the source nanopub's assertion. The attached `<roleIri>` is the IRI of a role instance defined in some `gen:SpaceMemberRole` nanopub; consumers JOIN against that def for the role's predicates and tier.
+
+A single role (one `gen:SpaceMemberRole` nanopub) may be attached to multiple spaces via separate `gen:hasRole` nanopubs — each attachment is independent, gated by the respective space's admin closure, and produces its own `npa:RoleAssignment` entry.
+
+### Triples added per `gen:SpaceMemberRole` nanopub
+
+Role instances are *embedded* (not introduced) in their defining nanopub, so each one mints a new role IRI. The role-defining triples are summarized into `npa:spacesGraph` as an `npa:RoleDeclaration` entry:
+
+```turtle
+GRAPH npa:spacesGraph {
+  npard:<artifactCode> a npa:RoleDeclaration ;
+                       npa:role               <roleIri> ;
+                       npa:hasRoleType        <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
+                       gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
+                       gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
+                       npa:viaNanopub         <thisNP> ;
+                       dct:created            "<timestamp>"^^xsd:dateTime .
+}
+```
+
+Prefix: `gen:` = `<https://w3id.org/kpxl/gen/terms/>`. `npa:role` carries the actual role IRI for consumer JOINs; `npa:hasRoleType` carries the tier class.
+
+The tier value for `npa:hasRoleType` comes from whatever subclass of `gen:SpaceMemberRole` (`gen:MaintainerRole`, `gen:MemberRole`, or `gen:ObserverRole`) the role is typed as in the source assertion. If the assertion declares none, default to `gen:ObserverRole`.
+
+**No publisher-validation gate** — any nanopub with a valid embedded role IRI produces an `npa:RoleDeclaration`. A declaration is inert on its own and only becomes operative once attached to a space via a validated `gen:hasRole` nanopub.
+
+**Embedding must be checked:** only emit these triples if `<roleIri>` starts with `<thisNP>`'s IRI (i.e. the role is genuinely embedded in this nanopub). Otherwise ignore — a role IRI outside the nanopub's namespace is not a valid embedded mint.
+
+Label / name / title / assignment-template pointer stay in the raw assertion; consumers JOIN via `npa:viaNanopub` or by matching the `<roleIri>` directly against the raw assertion graph.
+
+### Triples added per `gen:RoleInstantiation` nanopub
+
+All instantiations are emitted into `npa:spacesGraph`; validation happens in the space-state-graph materialization step.
+
+```turtle
+GRAPH npa:spacesGraph {
+  npari:<artifactCode> a gen:RoleInstantiation ;
+                       npa:forSpace        <spaceIri> ;
+                       npa:regularProperty <regularPropIRI> ;   # iff regular direction was used
+                       # OR
+                       npa:inverseProperty <inversePropIRI> ;   # iff inverse direction was used
+                       npa:forAgent        <agent> ;
+                       npa:viaNanopub      <thisNP> ;
+                       npx:signedBy        <publishingAgent> ;
+                       npa:pubkeyHash      "<pubkeyHash>" ;
+                       dct:created         "<timestamp>"^^xsd:dateTime .
+}
+```
+
+Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per instantiation, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `npa:RoleDeclaration` (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
+
+### Triples added per invalidation
+
+No independent space-relevance check on invalidators. `NanopubLoader.java:578-586` already runs a per-invalidator loop that looks up the invalidated nanopub's types from the `meta` repo (`NPX.HAS_NANOPUB_TYPE`) and propagates into each type-specific repo. Hook into that loop: if any of the target's types is space-relevant, emit an `npa:Invalidation` entry. Detection of the invalidator itself is by the `npx:invalidates` / `npx:retracts` / `npx:supersedes` predicate in the assertion.
+
+Each invalidation is loaded as an add-only event into `npa:spacesGraph`, stamped with the load number like any other extraction:
+
+```turtle
+GRAPH npa:spacesGraph {
+  npainv:<artifactCode> a npa:Invalidation ;
+                        npa:invalidates  <invalidatedNP> ;
+                        npa:viaNanopub   <invalidatingNP> ;
+                        npx:signedBy     <publishingAgent> ;
+                        npa:pubkeyHash   "<pubkeyHash>" ;
+                        dct:created      "<timestamp>"^^xsd:dateTime .
+}
+```
+
+Second-order invalidations are ignored — an invalidation whose target is itself already invalidated has no effect.
+
+## Space state graph
+
+A single `npass:<trustStateHash>` graph (prefix `npass:` = `<http://purl.org/nanopub/admin/spacestate/>`) holds the current validated state. Current-state pointer in `npa:graph`:
 
 ```turtle
 GRAPH npa:graph {
-  npas:<spaceRef> npa:basedOnTrustState npat:<trustStateHash> .
+  npa:thisRepo npa:hasCurrentSpaceState npass:<trustStateHash> .
 }
 ```
 
-Updated atomically with each rematerialization. Consumers can compare it to the trust repo's `npa:thisRepo npa:hasCurrentTrustState …` pointer to detect a stale view (e.g. between a trust-state flip and the slow-path drain catching up). Normal queries don't need this — they read the materialized `viaPublisherAgent` directly — but it makes the eventual-consistency window observable.
+The graph contains two parts:
 
-### Policy table
+1. **Mirrored trust state** — copy of the trust-approved `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. "Trust-approved" means `npa:trustStatus` ∈ `{npa:loaded, npa:toLoad}` (the positive set per [design-trust-state-repos.md](design-trust-state-repos.md); `npa:contested`, `npa:skipped`, and the transient statuses are distinct values of the same `npa:trustStatus` predicate and are excluded automatically). Inline rather than federated so per-tier UPDATEs join purely locally.
+2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Each entry keeps its `npari:` / `npara:` subject IRI and carries `npa:viaNanopub <originatingNP>`, so invalidation cleanup matches entries by their originating nanopub.
 
-Applied at query time:
+Progress counter for incremental updates, stored inside the state graph itself so it drops atomically with `DROP GRAPH npass:<oldHash>` on trust-state flip:
 
-| Role tier | Required evidence (Phase 1) | Future tightening (example) |
-|-----------|-----------------------------|------------------------------|
-| `gen:AdminRole`      | authority   | authority + self |
-| `gen:MaintainerRole` | authority   | authority + self |
-| `gen:MemberRole`     | authority   | authority + self |
-| `gen:ObserverRole`   | self        | (unchanged) |
+```turtle
+GRAPH npass:<trustStateHash> {
+  npass:<trustStateHash> npa:processedUpTo <N> .
+}
+```
 
-Switching a tier to dual confirmation later is a SPARQL change in consumer queries — both kinds are already collected.
+### Validation rule
 
-### Decisions worth flagging
+All tier checks (authority evidence for admin/maintainer/member; self-evidence for observer) resolve the publisher via `(agent, pubkey)` pairs in the mirrored rows — i.e. the signing key on the extraction (`npa:pubkeyHash`) must match an `npa:AccountState` whose `npa:agent` is the agent being checked. `npx:signedBy` is informational only (self-declared from pubinfo) and never decides validity.
 
-- **Closure-based, not time-ordered.** A grant counts whenever the granter is *ever* established as admin, not only at publication time. Simpler; revisit if attacks appear.
-- **Sticky, non-cascading revocation.** Revoking A doesn't auto-revoke B (whom A admin'd). Cascading is a recurring source of surprise.
-- **Trust repo stays separate.** Different lifecycle (registry-mirrored, snapshotted) and different update cadence; merging would muddy the model. The materializer is the only piece that joins trust + spaces, in Java where the closure logic lives.
+Since the registry's trust calculation flags any pubkey that claims multiple agents as `npa:contested` (and contested rows are not in the mirrored set), a trust-approved pubkey in `npass:<ts>` resolves to exactly one agent. No multi-agent ambiguity to handle at validation time.
 
-## Implementation Phases
+### Mirror step
 
-### Phase 1 — Detection & Extraction
+Executed in Java by `AuthorityResolver`, not via SPARQL SERVICE. Open a `RepositoryConnection` on each side; read trust-approved account-state rows from `npat:<trustStateHash>` in the `trust` repo; write the filtered rows into `npass:<trustStateHash>` in the `spaces` repo, inside one spaces-side transaction:
 
-Done in `NanopubLoader` + a new `SpaceRegistry` (in-memory, persisted to the admin repo).
-
-- `SpaceRegistry`: tracks known space refs and the role properties learned per space; reverse index Space IRI → space refs. Loaded from admin repo on startup.
-- Detection in the loader (constructor / type-extraction site): identify nanopubs that contribute to a known space — `gen:Space` (with required `gen:hasRootDefinition`), `gen:hasAdmin`, triples using any registered `gen:MaintainerRole`-typed predicate, role definitions for known spaces, role-assignments matching learned role properties, `gen:isDisplayFor` referencing a known space ref, root-nanopub profile data.
-- For each detected nanopub, **extract** the relevant triples (not the whole nanopub) into the corresponding space graph in the `spaces` repo, tagged with `npa:viaNanopub` provenance. The extraction set is the schema in [What's In the `spaces` Repo](#whats-in-the-spaces-repo).
-- `TripleStore`: one-time `spaces` repo init (not a per-prefix branch). Lighter indexes are fine — the repo is small.
-
-### Phase 2 — Authority Materialization
-
-A new `AuthorityResolver` owns closure computation, evidence classification (including resolving publisher pubkey → agent via the trust repo), view-display validation, and the materialization write to the space's graph in `spaces`. Pure writer; consumers read with plain SPARQL.
-
-**Update flow.** Two paths cooperate:
-
-- **Fast path (in the loader, same transaction as the extraction write).** When an authority-relevant extract lands, classify it against the *current* materialized state and trust state and emit any evidence triple (with resolved publisher agent) it directly contributes. Covers all purely additive cases — admin-grants-maintainer, observer-self-assigns, admin-assigns-member, any self-evidence — so the new membership is visible inside the same load cycle.
-- **Slow path (worker thread, debounced).** The resolver maintains a `Set<spaceRef>` of dirty spaces. Loader writes (fast or otherwise) and invalidations call `markDirty(ref)`; trust-state pointer flips call `markAllDirty()`. A worker drains the set, running one full recompute per dirty space — clear all `RoleAssignment` + evidence + validated-view-display triples in the space graph, recompute closures, reclassify all evidence and re-validate displays, rewrite. One serializable transaction per recompute; idempotent; re-emits whatever the fast path wrote plus any transitive unlocks. If `markDirty` arrives mid-recompute, re-mark.
-
-The slow path is the source of truth — the fast path is an optimization that's allowed to be incomplete (e.g. it can't catch transitive admin-chain expansion or invalidation-driven shrinkage). Both write the same triple shape.
-
-### Phase 3 — Routes, Metrics, Invalidation, Unloading
-
-- `/spaces` listing endpoint: enumerates known spaces from `SpaceRegistry`. `for-space?ref=<spaceRef>` redirects to a query against the `spaces` repo, scoped to that space's named graph.
-- A `MetricsCollector` gauge for `#known spaces`.
-- Invalidation propagation: when a source nanopub is invalidated, look up its affected spaces in `SpaceRegistry`'s reverse index, remove its extracted triples from those space graphs, and `markDirty(ref)` for each. The slow-path recompute does the rest.
-- Unloading:
-  - **Member removal** — handled by standard invalidation; no extra logic.
-  - **Root supersession** — the new root carries `gen:hasRootDefinition` pointing back at the original, so it resolves to the same space ref. Same graph.
-  - **Space dissolution** — when a root is retracted with no superseder, mark the space dissolved in `SpaceRegistry`; a periodic job drops the space's graph (pattern similar to `last30d` cleanup).
-
-### Phase 4 — Nanodash Migration
-
-Two contracts to honor on Nanodash's side, then a query rewrite:
-
-- **Publishing:** space-defining nanopub templates must include `<spaceIRI> gen:hasRootDefinition <rootNanopubURI>` (self-referential for new spaces, original-root for updates). Pre-existing space nanopubs without this triple need to be republished to be picked up.
-- **Querying:** replace `Space.triggerSpaceDataUpdate()`'s 4-query chain with a single SPARQL query against `spaces`, scoped to the space's named graph. Replace `AbstractResourceWithProfile.GET_VIEW_DISPLAYS` with a query against the materialized validated-display triples — no admin-pubkey gate, no `SERVICE` join. Sketch:
-
-  ```sparql
-  SELECT ?display ?template WHERE {
-    GRAPH <npa:space/SPACE_REF> {
-      ?vd a npa:ValidatedViewDisplay ;
-          npa:displayIri ?display ;
-          npa:templateUri ?template .
+```java
+try (var trustConn = trustRepo.getConnection();
+     var spacesConn = spacesRepo.getConnection()) {
+    spacesConn.begin();
+    try (var rows = trustConn.getStatements(null, NPA.TRUST_STATUS, null, trustStateIri)) {
+        for (Statement s : rows) {
+            if (!APPROVED_SET.contains(s.getObject())) continue;  // {npa:loaded, npa:toLoad}
+            // copy (?accountState a npa:AccountState; npa:agent ...; npa:pubkey ...;
+            //       npa:trustStatus ?status) into npass:<trustStateHash>
+        }
     }
-  }
-  ```
+    spacesConn.commit();
+}
+```
 
-  Switching to dual confirmation later just adds a second `npa:hasEvidence` BGP triple in the relevant authority queries.
-- Drop the pinned-templates / pinned-queries calls; deprecated.
-- The `space.isAdminPubkey(pubkey)` gate goes away — query results from the `spaces` repo are pre-validated, so post-hoc filtering is unnecessary. For UI permission checks ("is the current user an admin of this space?"), Nanodash maps the logged-in user's pubkey → agent via the `trust` repo (cacheable per session) and matches against the space's admin set in `spaces`. Two cheap lookups, no `SERVICE` join required.
+Keeps the spaces-repo transaction local, avoids SERVICE fragility, and matches the existing `TrustStateLoader` pattern (also Java-side cross-source copy).
 
-## Bootstrap (existing deployments)
+## Update flow
 
-On first deployment with the `spaces` repo enabled, scan `meta` for `gen:Space`-typed nanopubs to discover roots, then scan `full` for nanopubs whose assertions contribute to each discovered space (the same detection logic as the loader uses). For each, extract into the corresponding space graph and run the materializer. Restartable; tracked in the admin repo.
+Incremental and add-only at the raw layer; incremental at the space-state layer too, with full rebuild only on trust-state flips.
 
-The same catch-up pattern handles the in-stream ordering case where a referencing nanopub arrives before the space-defining one: re-scan after each new space is discovered.
+### First build (new trust state)
 
-## Key Files
+Triggered by a trust-state flip (the trust repo's `npa:hasCurrentTrustState` pointer changes to a new hash). Sequence:
+
+1. Mirror the trust-approved rows (see [Mirror step](#mirror-step)) from `npat:<newHash>` into a fresh `npass:<newHash>` graph.
+2. Run the per-tier UPDATE loops from scratch (processedUpTo = 0):
+   - **Admin**: seed from `npa:hasRootAdmin`; fixed-point INSERT every `gen:RoleInstantiation` with `npa:regularProperty gen:hasAdmin` whose `npa:pubkeyHash` resolves (via the mirrored rows) to an agent already in the admin set for that space.
+   - **`gen:hasRole` validation**: INSERT every `gen:RoleAssignment` whose publisher is in the admin set of the target space. These validated attachments define which role predicates are active per space.
+   - **Maintainer**: INSERT every `gen:RoleInstantiation` whose predicate is the `gen:hasRegularProperty` (or `gen:hasInverseProperty`) of an `npa:RoleDeclaration` with `npa:hasRoleType gen:MaintainerRole` attached to the target space, and whose publisher is in the admin set (or existing maintainer set). Fixed-point.
+   - **Member / Observer**: same pattern, tiered publisher constraints. Observer additionally accepts **self-evidence**: the instantiation's `(npa:pubkeyHash, npa:forAgent)` pair matches an `npa:AccountState` in the mirrored rows — meaning the publisher truly is the assignee under the current trust state.
+3. Set `processedUpTo` to the current `currentLoadCounter`.
+4. Flip the current-space-state pointer to `npass:<newHash>`.
+5. `DROP GRAPH npass:<oldHash>`.
+
+### Incremental update (same trust state, new raw activity)
+
+Triggered by a space-relevant nanopub load or invalidation (which bumps `currentLoadCounter`). Runs as a single cycle bounded by `(processedUpTo, currentLoadCounter]`:
+
+1. Apply invalidation DELETEs — for each new `npa:Invalidation` entry, remove the space-state entry whose `npa:viaNanopub` points at the invalidated nanopub:
+   ```sparql
+   DELETE { GRAPH npass:<ts> { ?entry ?p ?o . } }
+   WHERE {
+     GRAPH npa:spacesGraph {
+       ?inv a npa:Invalidation ;
+            npa:invalidates ?invalidatedNP ;
+            npa:viaNanopub ?invalidatingNP .
+       ?invalidatingNP npa:hasLoadNumber ?ln .
+       FILTER (?ln > ?lastProcessed)
+     }
+     GRAPH npass:<ts> {
+       ?entry npa:viaNanopub ?invalidatedNP ;
+              ?p ?o .
+     }
+   }
+   ```
+2. Apply the tier INSERTs. Each INSERT joins the candidate extraction entry to its originating nanopub's load number via `npa:viaNanopub` and filters by `FILTER(?ln > ?lastProcessed)`, plus a `FILTER NOT EXISTS` against the current space-state contents. Iterate to fixed point within the cycle. Sketch (admin tier):
+   ```sparql
+   INSERT { GRAPH npass:<ts> { ?ri a gen:RoleInstantiation ;
+                                   npa:forSpace ?space ;
+                                   npa:forAgent ?agent ;
+                                   npa:viaNanopub ?np . } }
+   WHERE {
+     GRAPH npa:spacesGraph {
+       ?ri a gen:RoleInstantiation ;
+           npa:forSpace        ?space ;
+           npa:regularProperty gen:hasAdmin ;
+           npa:forAgent        ?agent ;
+           npa:pubkeyHash      ?pkh ;
+           npa:viaNanopub      ?np .
+       ?np npa:hasLoadNumber ?ln .
+       FILTER (?ln > ?lastProcessed)
+     }
+     # Authority evidence: publisher resolves to an existing admin of ?space
+     GRAPH npass:<ts> {
+       ?acct a npa:AccountState ;
+             npa:agent  ?publisher ;
+             npa:pubkey ?pkh .
+       { ?space (^npa:spaceIri)/npa:hasRootAdmin ?publisher . }   # seed
+       UNION
+       { ?prev a gen:RoleInstantiation ;
+               npa:forSpace ?space ;
+               npa:regularProperty gen:hasAdmin ;
+               npa:forAgent ?publisher . }                        # closed-over
+     }
+     FILTER NOT EXISTS { GRAPH npass:<ts> {
+       ?ri a gen:RoleInstantiation ; npa:forSpace ?space ; npa:forAgent ?agent .
+     } }
+   }
+   ```
+   For the admin closure's seed triples themselves (`npas:<spaceRef> npa:hasRootAdmin <agent>`), the load number isn't on `npas:<spaceRef>` directly — traverse via `npas:<spaceRef> npa:hasDefinition ?np. ?np npa:hasLoadNumber ?ln` to filter by delta. Maintainer / member / observer tiers follow the same shape: join `?entry npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)`, swap the tier-specific publisher constraints.
+3. Bump `processedUpTo` to the max load number consumed.
+
+Loader and materializer decouple: the loader keeps appending raw triples with incrementing load numbers, the materializer processes deltas in small cycles. No global CLEAR.
+
+Triggers coalesce into a pending-rebuild flag; if a trigger arrives mid-cycle, the flag re-fires and another cycle runs after commit.
+
+### Revocation semantics
+
+Sticky and non-cascading: invalidating a grant removes only the derivation keyed on that nanopub. Other grants to the same agent persist. Second-order invalidations are ignored.
+
+Invalidating a `gen:SpaceMemberRole` nanopub removes its `npa:RoleDeclaration` from `npass:<ts>` via the standard per-`npa:viaNanopub` DELETE. Previously-derived instantiations under that role stay (sticky); new instantiations can no longer be derived because the JOIN against `npa:RoleDeclaration` fails.
+
+### Trust-state flip always means full rebuild
+
+Load-number incremental only applies *within* a trust state. A flip changes which pubkeys map to which agents, invalidating all derivations. `processedUpTo` restarts at 0 on the new graph.
+
+## Implementation phases
+
+1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps.
+2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full first-build on trust-state flips, manages the `npass:<trustStateHash>` pointer and old-graph cleanup.
+3. **Routes/metrics/invalidation** — `/spaces` listing, `for-space` redirect, gauges (rebuild duration, delta size, `processedUpTo` lag).
+4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query against the current `npass:*` graph; drop `isAdminPubkey` gate and pinned templates/queries.
+
+## Bootstrap
+
+On first deployment, scan `meta` / `full` for the predefined types, load each matching nanopub whole into `spaces`, run one rebuild.
+
+## Key files
 
 | File | Role |
 |------|------|
-| `NanopubLoader.java`     | Detection + triple extraction into the `spaces` repo + invalidation propagation |
-| `TripleStore.java`       | One-time `spaces` repo init |
-| `MainVerticle.java`      | `/spaces` route, `for-space` redirect (graph-addressed) |
-| `MetricsCollector.java`  | Known-spaces gauge |
-| **New:** `SpaceRegistry.java`     | Known spaces + learned role properties + per-nanopub reverse index; admin-repo persistence |
-| **New:** `AuthorityResolver.java` | Closure computation, evidence classification (incl. publisher-agent resolution), view-display validation, materialization write |
-
-## Open / deferred
-
-- **Time-ordered authority enforcement** (vs. closure-based today).
-- **Cascading revocation** (vs. sticky).
-- **Cryptographic linking** of admin agents to intro nanopubs / pubkeys (currently agent IRIs are taken at face value; the trust-state mirror only validates the *publisher* of authority nanopubs).
-- **Dual-confirmation policies** per tier (the materialization already supports this; just flip the policy table and update consumer queries).
-- **Multi-registry support** — single registry source assumed.
-- **New consumer data needs** — extend the materializer's extraction set rather than reintroducing catch-all raw-nanopub loading. If the extraction set proves chronically incomplete, revisit the choice.
-- **Audit/history metadata on assignments** — assignment timestamps and grant-chain history aren't materialized today (Nanodash doesn't surface them). Add to evidence objects later if audit views become a need.
+| `NanopubLoader.java` | Type-match + full-nanopub write + extraction into `npa:spacesGraph` + load-number stamping + trigger the materializer |
+| `TripleStore.java` | `spaces` repo init |
+| `MainVerticle.java` | `/spaces` route, `for-space` redirect |
+| `MetricsCollector.java` | Rebuild duration, delta size, `processedUpTo` lag |
+| **New:** `AuthorityResolver.java` | Mirror step, per-tier SPARQL UPDATE loops on load-number deltas, first-build on trust-state flips, pointer flip and old-graph drop |
 
 ## Verification
 
-- Unit tests for `SpaceRegistry` and `AuthorityResolver` (closures, evidence classification, view-display validation, idempotence of rematerialize, fast-path correctness under concurrent extracts).
-- Integration tests with fixture nanopubs covering: space definition with `gen:hasRootDefinition`, admin chain depth ≥ 2, role definition + matching role assignment, ViewDisplay published by an admin vs. a non-admin (only the former materialized), supersession of an admin grant, trust-state pointer flip, root retraction + space dissolution.
-- End-to-end against a local `nanopub-registry`: confirm the `spaces` repo's space graph holds the expected `RoleAssignment` and `ValidatedViewDisplay` triples, with `npa:viaNanopub` and `npa:viaPublisherAgent` populated.
-- Nanodash side: a Space page renders correctly using only the new `spaces`-repo queries, with no `SERVICE` join to `trust`.
+- Unit: closures, incremental delta correctness (same result as a full rebuild), invalidation cleanup (sticky, non-cascading), rebuild idempotence.
+- Integration: space definition, admin chain depth ≥ 2, role definition + attachment + instantiation, supersession, trust-state flip (full rebuild + pointer flip + old-graph drop), root retraction.
+- End-to-end: Space page renders from `spaces` alone; steady-state reads do not `SERVICE`-join to `trust` (the mirror step runs at trust-state-flip time via Java-level cross-repo copy, not at read time).
