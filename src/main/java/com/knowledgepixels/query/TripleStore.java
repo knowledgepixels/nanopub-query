@@ -518,14 +518,17 @@ public class TripleStore {
 
     /**
      * Whether the given repo participates in the cumulative nanopub-count / XOR-checksum
-     * tracking. Repos that don't hold raw nanopubs skip the
-     * {@code npa:hasNanopubCount} and {@code npa:hasNanopubChecksum} initial triples —
-     * leaving them at {@code 0} and the empty-XOR placeholder forever would just be
-     * misleading. Currently excluded:
+     * tracking. Repos that don't produce their own content-addressed population
+     * skip the {@code npa:hasNanopubCount} and {@code npa:hasNanopubChecksum}
+     * initial triples — leaving them at {@code 0} and the empty-XOR placeholder
+     * forever would just be misleading. Currently excluded:
      * <ul>
      *   <li>{@code admin} — holds metadata only.</li>
      *   <li>{@code last30d} — content expires on a periodic cleanup.</li>
-     *   <li>{@code trust} and {@code spaces} — hold derived state, not raw nanopubs.</li>
+     *   <li>{@code trust} — holds derived trust state, mirrored from the registry.</li>
+     *   <li>{@code spaces} — holds space-relevant raw nanopubs (a filtered projection
+     *       of {@code full}) plus extraction triples; its XOR checksum over loaded
+     *       trusty URIs would diverge from {@code full}'s without adding value.</li>
      * </ul>
      */
     private static boolean tracksNanopubCountAndChecksum(String repoName) {
