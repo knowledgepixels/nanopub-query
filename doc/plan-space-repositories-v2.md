@@ -77,6 +77,8 @@ Each entry carries `npa:viaNanopub <originatingNP>` to link back to the source; 
 
 where `N` is the nanopub-query load counter at extraction time. The `spaces` repo's `npa:graph` also tracks `npa:thisRepo npa:currentLoadCounter <N>` so the materializer knows the current horizon.
 
+In addition, every extraction entry carries a `dct:created` timestamp (prefix `dct:` = `<http://purl.org/dc/terms/>`) copied from the source nanopub's pubinfo `dct:created`, so consumers can sort entries chronologically without a JOIN to the raw nanopub. Matches the pattern already used in admin graphs of other repos.
+
 ### Triples added per `gen:Space` nanopub
 
 Prefix: `npas:` = `<http://purl.org/nanopub/admin/space/>`. A space ref `<NPID>_<SPACEIRIHASH>` becomes the IRI `npas:<NPID>_<SPACEIRIHASH>`.
@@ -88,7 +90,8 @@ GRAPH npa:spacesGraph {
                   npa:rootNanopub  <rootNP> ;    # object of gen:hasRootDefinition; <thisNP> if the triple is absent
                   npa:hasDefinition <thisNP> ;
                   npx:signedBy     <publishingAgent> ;
-                  npa:pubkeyHash   "<pubkeyHash>" .
+                  npa:pubkeyHash   "<pubkeyHash>" ;
+                  dct:created      "<timestamp>"^^xsd:dateTime .
 }
 ```
 
@@ -107,7 +110,8 @@ For every `gen:Space` nanopub carrying one or more `gen:hasAdmin` triples in its
                        npa:forAgent        <adminAgent1>, <adminAgent2> ;
                        npa:viaNanopub      <thisNP> ;
                        npx:signedBy        <publishingAgent> ;
-                       npa:pubkeyHash      "<pubkeyHash>" .
+                       npa:pubkeyHash      "<pubkeyHash>" ;
+                       dct:created         "<timestamp>"^^xsd:dateTime .
 ```
 
 where `<artifactCode>` is the trusty-URI artifact code of `<thisNP>`.
@@ -135,7 +139,8 @@ GRAPH npa:spacesGraph {
                        gen:hasRole     <roleIri> ;
                        npa:viaNanopub  <thisNP> ;
                        npx:signedBy    <publishingAgent> ;
-                       npa:pubkeyHash  "<pubkeyHash>" .
+                       npa:pubkeyHash  "<pubkeyHash>" ;
+                       dct:created     "<timestamp>"^^xsd:dateTime .
 }
 ```
 
@@ -152,7 +157,8 @@ GRAPH npa:spacesGraph {
                        npa:hasRoleType        <gen:MaintainerRole | gen:MemberRole | gen:ObserverRole> ;
                        gen:hasRegularProperty <regularPropIRI> ;   # one per occurrence
                        gen:hasInverseProperty <inversePropIRI> ;   # optional, one per occurrence
-                       npa:viaNanopub         <thisNP> .
+                       npa:viaNanopub         <thisNP> ;
+                       dct:created            "<timestamp>"^^xsd:dateTime .
 }
 ```
 
@@ -180,7 +186,8 @@ GRAPH npa:spacesGraph {
                        npa:forAgent        <agent> ;
                        npa:viaNanopub      <thisNP> ;
                        npx:signedBy        <publishingAgent> ;
-                       npa:pubkeyHash      "<pubkeyHash>" .
+                       npa:pubkeyHash      "<pubkeyHash>" ;
+                       dct:created         "<timestamp>"^^xsd:dateTime .
 }
 ```
 
@@ -198,7 +205,8 @@ GRAPH npa:spacesGraph {
                         npa:invalidates  <invalidatedNP> ;
                         npa:viaNanopub   <invalidatingNP> ;
                         npx:signedBy     <publishingAgent> ;
-                        npa:pubkeyHash   "<pubkeyHash>" .
+                        npa:pubkeyHash   "<pubkeyHash>" ;
+                        dct:created      "<timestamp>"^^xsd:dateTime .
 }
 ```
 
@@ -293,7 +301,41 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
      }
    }
    ```
-2. Apply the tier INSERTs, each scoped by `FILTER(?ln > ?lastProcessed)` on the raw triple's `npa:hasLoadNumber` and `FILTER NOT EXISTS` against the current space-state contents. Iterate to fixed point within the cycle.
+2. Apply the tier INSERTs. Each INSERT joins the candidate extraction entry to its originating nanopub's load number via `npa:viaNanopub` and filters by `FILTER(?ln > ?lastProcessed)`, plus a `FILTER NOT EXISTS` against the current space-state contents. Iterate to fixed point within the cycle. Sketch (admin tier):
+   ```sparql
+   INSERT { GRAPH npass:<ts> { ?ri a gen:RoleInstantiation ;
+                                   npa:forSpace ?space ;
+                                   npa:forAgent ?agent ;
+                                   npa:viaNanopub ?np . } }
+   WHERE {
+     GRAPH npa:spacesGraph {
+       ?ri a gen:RoleInstantiation ;
+           npa:forSpace        ?space ;
+           npa:regularProperty gen:hasAdmin ;
+           npa:forAgent        ?agent ;
+           npa:pubkeyHash      ?pkh ;
+           npa:viaNanopub      ?np .
+       ?np npa:hasLoadNumber ?ln .
+       FILTER (?ln > ?lastProcessed)
+     }
+     # Authority evidence: publisher resolves to an existing admin of ?space
+     GRAPH npass:<ts> {
+       ?acct a npa:AccountState ;
+             npa:agent  ?publisher ;
+             npa:pubkey ?pkh .
+       { ?space (^npa:spaceIri)/npa:hasRootAdmin ?publisher . }   # seed
+       UNION
+       { ?prev a gen:RoleInstantiation ;
+               npa:forSpace ?space ;
+               npa:regularProperty gen:hasAdmin ;
+               npa:forAgent ?publisher . }                        # closed-over
+     }
+     FILTER NOT EXISTS { GRAPH npass:<ts> {
+       ?ri a gen:RoleInstantiation ; npa:forSpace ?space ; npa:forAgent ?agent .
+     } }
+   }
+   ```
+   For the admin closure's seed triples themselves (`npas:<spaceRef> npa:hasRootAdmin <agent>`), the load number isn't on `npas:<spaceRef>` directly — traverse via `npas:<spaceRef> npa:hasDefinition ?np. ?np npa:hasLoadNumber ?ln` to filter by delta. Maintainer / member / observer tiers follow the same shape: join `?entry npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)`, swap the tier-specific publisher constraints.
 3. Bump `processedUpTo` to the max load number consumed.
 
 Loader and materializer decouple: the loader keeps appending raw triples with incrementing load numbers, the materializer processes deltas in small cycles. No global CLEAR.
