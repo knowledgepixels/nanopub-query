@@ -110,9 +110,13 @@ class AuthorityResolverTest {
                 TEST_GRAPH, 0,
                 com.knowledgepixels.query.vocabulary.GEN.OBSERVER_ROLE,
                 AuthorityResolver.PUBLISHER_IS_SELF);
-        // Self-evidence: publisher agent (from mirrored rows) matches the assignee.
-        assertTrue(sparql.contains("?publisher = ?agent"),
-                "observer tier (self branch) accepts self-evidence");
+        // Self-evidence: AccountState's npa:agent is bound directly to ?agent
+        // (the assignee), so the (pkh, agent) row anchors the join — no
+        // separate ?publisher variable, no post-join equality filter.
+        assertTrue(sparql.contains("npa:agent  ?agent"),
+                "observer tier (self branch) binds AccountState agent to ?agent directly");
+        assertFalse(sparql.contains("?publisher = ?agent"),
+                "observer tier must not rely on a post-join equality filter");
     }
 
 }

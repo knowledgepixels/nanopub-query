@@ -226,9 +226,14 @@ public final class AuthorityResolver {
     /**
      * Builds a publisher constraint requiring the publisher to be a validated holder
      * of the given tier's role (maintainer or member) in the target space.
+     * Owns its own AccountState resolution so ?publisher is bound through the
+     * targeted (pkh → agent) lookup rather than enumerated.
      */
     private static String publisherIsTieredRole(IRI tierClass) {
         return """
+                ?acct a npa:AccountState ;
+                      npa:pubkey ?pkh ;
+                      npa:agent  ?publisher .
                 ?tierRI a gen:RoleInstantiation ;
                         npa:forSpace ?space ;
                         npa:forAgent ?publisher .
@@ -290,14 +295,26 @@ public final class AuthorityResolver {
     /**
      * Reusable invalidation filter on a bound nanopub-IRI variable. Pass the bare
      * variable name (no leading {@code ?}); e.g. {@code invalidationFilter("np")}
-     * produces {@code FILTER NOT EXISTS { ?_inv_np a npa:Invalidation ; npa:invalidates ?np . }}.
-     * Variable names must match {@code [A-Za-z0-9_]+} per SPARQL grammar — embedding
-     * a {@code ?} inside {@code ?_inv_?np} would yield a parse error.
+     * produces an outer-scoped {@code FILTER NOT EXISTS { GRAPH npa:spacesGraph
+     * { ?_inv_np a npa:Invalidation ; npa:invalidates ?np . } }}.
+     *
+     * <p>Important: this filter must be placed OUTSIDE the surrounding
+     * {@code GRAPH npa:spacesGraph { ... }} block, not nested inside it. When
+     * nested, RDF4J's planner couples the FILTER NOT EXISTS evaluation into the
+     * join order (per-row scan of {@code ?_inv a npa:Invalidation} multiplied by
+     * the candidate set), which we measured turning a 39ms query into a 60s+
+     * timeout on the live observer-tier data. Outside the GRAPH block, the
+     * planner defers the filter until {@code ?np}/{@code ?rdNp} are bound and
+     * does a targeted index lookup.
+     *
+     * <p>Variable names must match {@code [A-Za-z0-9_]+} per SPARQL grammar —
+     * embedding a {@code ?} inside {@code ?_inv_?np} would yield a parse error.
      */
     private static String invalidationFilter(String bareVarName) {
-        return "FILTER NOT EXISTS { ?_inv_" + bareVarName
+        return "FILTER NOT EXISTS { GRAPH <" + SpacesVocab.SPACES_GRAPH + "> {"
+                + " ?_inv_" + bareVarName
                 + " a <" + SpacesVocab.INVALIDATION + "> ; "
-                + "<" + SpacesVocab.INVALIDATES + "> ?" + bareVarName + " . }";
+                + "<" + SpacesVocab.INVALIDATES + "> ?" + bareVarName + " . } }";
     }
 
     /**
@@ -335,8 +352,8 @@ public final class AuthorityResolver {
                            npa:hasRootAdmin ?publisher ;
                            npa:viaNanopub   ?defNp .
                       ?spaceRef npa:spaceIri ?space .
-                      %7$s
                     }
+                    %7$s
                   }
                   UNION
                   {
@@ -362,8 +379,8 @@ public final class AuthorityResolver {
                         npa:forAgent        ?agent ;
                         npa:pubkeyHash      ?pkh ;
                         npa:viaNanopub      ?np .
-                    %6$s
                   }
+                  %6$s
                   # 4. Load-number filter on bound ?np.
                   GRAPH <%8$s> {
                     ?np npa:hasLoadNumber ?ln .
@@ -410,7 +427,6 @@ public final class AuthorityResolver {
                         gen:hasRole  ?role ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
-                    %6$s
                   }
                   GRAPH <%7$s> {
                     ?np npa:hasLoadNumber ?ln .
@@ -425,6 +441,7 @@ public final class AuthorityResolver {
                              npa:regularProperty gen:hasAdmin ;
                              npa:forAgent ?publisher .
                   }
+                  %6$s
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleAssignment ;
                               npa:forSpace ?space ;
@@ -441,17 +458,30 @@ public final class AuthorityResolver {
                 NPA.GRAPH);
     }
 
-    /** Non-admin tier publisher constraints (inserted as a SPARQL sub-pattern). */
+    /**
+     * Non-admin tier publisher constraints (inserted as a SPARQL sub-pattern).
+     * Each constraint owns the AccountState (pkh → agent) lookup so the join
+     * variable is bound through a targeted pattern. The observer-self variant
+     * binds {@code npa:agent ?agent} directly — no separate {@code ?publisher}
+     * variable, no post-join equality filter — which lets the planner anchor
+     * the AccountState lookup on the already-bound {@code ?agent} instead of
+     * enumerating all approved publishers and filtering at the end.
+     */
     static final String PUBLISHER_IS_ADMIN = """
+            ?acct a npa:AccountState ;
+                  npa:pubkey ?pkh ;
+                  npa:agent  ?publisher .
             ?adminRI a gen:RoleInstantiation ;
                      npa:forSpace ?space ;
                      npa:regularProperty gen:hasAdmin ;
                      npa:forAgent ?publisher .
             """;
 
-    /** Observer self-evidence: the assignee is the publisher. */
+    /** Observer self-evidence: the assignee's own pubkey signed the instantiation. */
     static final String PUBLISHER_IS_SELF = """
-            FILTER (?publisher = ?agent)
+            ?acct a npa:AccountState ;
+                  npa:pubkey ?pkh ;
+                  npa:agent  ?agent .
             """;
 
     /**
@@ -461,15 +491,21 @@ public final class AuthorityResolver {
      */
     static String nonAdminTierUpdate(IRI graph, long lastProcessed,
                                      IRI tierClass, String publisherConstraint) {
-        // Order tuned for RDF4J's evaluator (which executes BGPs roughly in order):
-        //   1. Anchor on the small, tier-pinned RoleDeclaration set (~tens of rows).
-        //   2. Pair the role-decl direction with the instantiation direction inside
-        //      one UNION so only valid (regular, regular)/(inverse, inverse) joins
-        //      are explored — not the 2x2 cross-product of independent UNIONs.
-        //   3. Match the candidate instantiation by the now-bound predicate.
-        //   4. Resolve load-number from the admin graph (now-bound subject).
-        //   5. Attachment + mirrored AccountState + publisher constraint, last.
-        //   6. Dedup at the end.
+        // Order tuned for RDF4J's evaluator (which executes BGPs roughly in order).
+        // The crucial choice is the *anchor*: instantiation-first plans send the
+        // planner exploring the full ~thousands of candidate RIs and only filter
+        // by tier at the very end. Attachment-first anchors on the small set of
+        // gen:RoleAssignment rows already validated in this space-state graph
+        // (~hundreds, often zero) and walks outward by bound (?role, ?space).
+        //
+        //   1. Anchor on RoleAssignments in this space-state graph (small).
+        //   2. Match the tier-pinned RoleDeclaration by ?role.
+        //   3. Pair role-decl direction to instantiation direction in one UNION
+        //      so only (reg, reg)/(inv, inv) combos are explored.
+        //   4. Targeted instantiation lookup — (?space, ?pred) are bound.
+        //   5. Publisher constraint (incl. AccountState resolution).
+        //   6. Load-number filter on bound ?np.
+        //   7. Dedup at the end.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
@@ -480,14 +516,19 @@ public final class AuthorityResolver {
                       npa:viaNanopub ?np .
                 } }
                 WHERE {
-                  # 1. Anchor: tier-pinned RoleDeclarations (small, selective).
+                  # 1. Anchor: validated attachments in this space-state graph.
+                  GRAPH <%3$s> {
+                    ?ra a gen:RoleAssignment ;
+                        gen:hasRole  ?role ;
+                        npa:forSpace ?space .
+                  }
+                  # 2. Tier-pinned RoleDeclaration (?role bound from the attachment).
                   GRAPH <%4$s> {
                     ?rd a npa:RoleDeclaration ;
                         npa:hasRoleType <%7$s> ;
                         npa:role        ?role ;
                         npa:viaNanopub  ?rdNp .
-                    %8$s
-                    # 2. Pair direction so the planner explores only matching combos.
+                    # 3. Pair direction so only matching combos are explored.
                     {
                       ?rd gen:hasRegularProperty ?pred .
                       ?ri npa:regularProperty    ?pred .
@@ -497,30 +538,27 @@ public final class AuthorityResolver {
                       ?rd gen:hasInverseProperty ?pred .
                       ?ri npa:inverseProperty    ?pred .
                     }
-                    # 3. Targeted instantiation lookup — ?pred is bound.
+                    # 4. Targeted instantiation lookup — (?space, ?pred) bound.
                     ?ri a gen:RoleInstantiation ;
                         npa:forSpace   ?space ;
                         npa:forAgent   ?agent ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
-                    %6$s
                   }
-                  # 4. Load-number filter on bound ?np.
+                  # 5. Publisher constraint (incl. AccountState resolution).
+                  GRAPH <%3$s> {
+                    %9$s
+                  }
+                  # 6. Load-number filter on bound ?np.
                   GRAPH <%10$s> {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 5. Attachment + AccountState + publisher constraint.
-                  GRAPH <%3$s> {
-                    ?ra a gen:RoleAssignment ;
-                        gen:hasRole  ?role ;
-                        npa:forSpace ?space .
-                    ?acct a npa:AccountState ;
-                          npa:pubkey ?pkh ;
-                          npa:agent  ?publisher .
-                    %9$s
-                  }
-                  # 6. Dedup last.
+                  # 7. Invalidation filters — outside the GRAPH block so the
+                  #    planner defers them until ?rdNp/?np are bound.
+                  %8$s
+                  %6$s
+                  # 8. Dedup last.
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
                               npa:forSpace ?space ;
