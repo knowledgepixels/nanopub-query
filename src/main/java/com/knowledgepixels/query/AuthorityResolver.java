@@ -307,10 +307,14 @@ public final class AuthorityResolver {
      * trust-approved AccountState) is already in the admin set.
      */
     static String adminTierUpdate(IRI graph, long lastProcessed) {
-        // npa:hasLoadNumber lives in the admin graph (NPA.GRAPH), NOT in
-        // npa:spacesGraph — NanopubLoader writes the stamp there. Every tier
-        // template below joins the delta filter via a separate GRAPH <npa:graph>
-        // block. Invalidation entries DO live in npa:spacesGraph.
+        // Order tuned for RDF4J's evaluator:
+        //   1. Anchor on the small (seed UNION closed-over) set to bind ?publisher
+        //      and ?space cheaply.
+        //   2. Resolve ?pkh from the mirrored AccountState row (?publisher bound).
+        //   3. Probe instantiations using the now-bound (?space, ?pkh) — targeted
+        //      lookup, not a full RoleInstantiation scan.
+        //   4. Load-number filter on bound ?np.
+        //   5. Dedup at the end.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
@@ -322,24 +326,12 @@ public final class AuthorityResolver {
                       npa:viaNanopub ?np .
                 } }
                 WHERE {
-                  GRAPH <%4$s> {
-                    ?ri a gen:RoleInstantiation ;
-                        npa:forSpace        ?space ;
-                        npa:regularProperty gen:hasAdmin ;
-                        npa:forAgent        ?agent ;
-                        npa:pubkeyHash      ?pkh ;
-                        npa:viaNanopub      ?np .
-                    %6$s
-                  }
-                  GRAPH <%8$s> {
-                    ?np npa:hasLoadNumber ?ln .
-                    FILTER (?ln > %5$d)
-                  }
+                  # 1. Anchor: who is already an admin of which space?
                   {
                     # Seed branch: root-admin in a non-invalidated SpaceDefinition.
                     GRAPH <%4$s> {
                       ?def a npa:SpaceDefinition ;
-                           npa:forSpaceRef ?spaceRef ;
+                           npa:forSpaceRef  ?spaceRef ;
                            npa:hasRootAdmin ?publisher ;
                            npa:viaNanopub   ?defNp .
                       ?spaceRef npa:spaceIri ?space .
@@ -351,16 +343,33 @@ public final class AuthorityResolver {
                     # Closed-over branch: an existing admin in this space-state graph.
                     GRAPH <%3$s> {
                       ?prev a gen:RoleInstantiation ;
-                            npa:forSpace ?space ;
+                            npa:forSpace        ?space ;
                             npa:regularProperty gen:hasAdmin ;
-                            npa:forAgent ?publisher .
+                            npa:forAgent        ?publisher .
                     }
                   }
+                  # 2. Mirror: resolve ?publisher → ?pkh via the trust-approved row.
                   GRAPH <%3$s> {
                     ?acct a npa:AccountState ;
                           npa:agent  ?publisher ;
                           npa:pubkey ?pkh .
                   }
+                  # 3. Targeted instantiation lookup by space + pubkey.
+                  GRAPH <%4$s> {
+                    ?ri a gen:RoleInstantiation ;
+                        npa:forSpace        ?space ;
+                        npa:regularProperty gen:hasAdmin ;
+                        npa:forAgent        ?agent ;
+                        npa:pubkeyHash      ?pkh ;
+                        npa:viaNanopub      ?np .
+                    %6$s
+                  }
+                  # 4. Load-number filter on bound ?np.
+                  GRAPH <%8$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  # 5. Dedup last.
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
                               npa:forSpace ?space ;
@@ -452,6 +461,15 @@ public final class AuthorityResolver {
      */
     static String nonAdminTierUpdate(IRI graph, long lastProcessed,
                                      IRI tierClass, String publisherConstraint) {
+        // Order tuned for RDF4J's evaluator (which executes BGPs roughly in order):
+        //   1. Anchor on the small, tier-pinned RoleDeclaration set (~tens of rows).
+        //   2. Pair the role-decl direction with the instantiation direction inside
+        //      one UNION so only valid (regular, regular)/(inverse, inverse) joins
+        //      are explored — not the 2x2 cross-product of independent UNIONs.
+        //   3. Match the candidate instantiation by the now-bound predicate.
+        //   4. Resolve load-number from the admin graph (now-bound subject).
+        //   5. Attachment + mirrored AccountState + publisher constraint, last.
+        //   6. Dedup at the end.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
@@ -462,41 +480,47 @@ public final class AuthorityResolver {
                       npa:viaNanopub ?np .
                 } }
                 WHERE {
+                  # 1. Anchor: tier-pinned RoleDeclarations (small, selective).
                   GRAPH <%4$s> {
+                    ?rd a npa:RoleDeclaration ;
+                        npa:hasRoleType <%7$s> ;
+                        npa:role        ?role ;
+                        npa:viaNanopub  ?rdNp .
+                    %8$s
+                    # 2. Pair direction so the planner explores only matching combos.
+                    {
+                      ?rd gen:hasRegularProperty ?pred .
+                      ?ri npa:regularProperty    ?pred .
+                    }
+                    UNION
+                    {
+                      ?rd gen:hasInverseProperty ?pred .
+                      ?ri npa:inverseProperty    ?pred .
+                    }
+                    # 3. Targeted instantiation lookup — ?pred is bound.
                     ?ri a gen:RoleInstantiation ;
-                        npa:forSpace ?space ;
-                        npa:forAgent ?agent ;
+                        npa:forSpace   ?space ;
+                        npa:forAgent   ?agent ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
-                    { ?ri npa:regularProperty ?pred . }
-                    UNION
-                    { ?ri npa:inverseProperty ?pred . }
                     %6$s
-                    # Predicate maps to a RoleDeclaration of this tier (not invalidated).
-                    ?rd a npa:RoleDeclaration ;
-                        npa:role ?role ;
-                        npa:hasRoleType <%7$s> ;
-                        npa:viaNanopub ?rdNp .
-                    { ?rd gen:hasRegularProperty ?pred . }
-                    UNION
-                    { ?rd gen:hasInverseProperty ?pred . }
-                    %8$s
                   }
+                  # 4. Load-number filter on bound ?np.
                   GRAPH <%10$s> {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
+                  # 5. Attachment + AccountState + publisher constraint.
                   GRAPH <%3$s> {
-                    # Role must be admin-attached to the target space.
                     ?ra a gen:RoleAssignment ;
-                        npa:forSpace ?space ;
-                        gen:hasRole  ?role .
-                    # Publisher's agent from the mirrored trust-approved set.
+                        gen:hasRole  ?role ;
+                        npa:forSpace ?space .
                     ?acct a npa:AccountState ;
-                          npa:agent ?publisher ;
-                          npa:pubkey ?pkh .
+                          npa:pubkey ?pkh ;
+                          npa:agent  ?publisher .
                     %9$s
                   }
+                  # 6. Dedup last.
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
                               npa:forSpace ?space ;
