@@ -21,6 +21,7 @@ import org.nanopub.vocabulary.NPA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.knowledgepixels.query.vocabulary.GEN;
 import com.knowledgepixels.query.vocabulary.NPAT;
 import com.knowledgepixels.query.vocabulary.SpacesVocab;
 
@@ -160,7 +161,9 @@ public final class AuthorityResolver {
         // 1. Mirror trust-approved rows into the new graph.
         int mirrored = mirrorTrustState(trustStateHash, newGraph);
 
-        // 2. PR 2b placeholder: per-tier UPDATE loops would run here.
+        // 2. Per-tier UPDATE loops (from scratch: lastProcessed = -1 so the
+        //    delta filter FILTER(?ln > ?lastProcessed) includes everything).
+        TierCounts counts = runAllTierLoops(newGraph, -1);
 
         // 3. Stamp processedUpTo inside the new graph.
         writeProcessedUpTo(newGraph, loadCounter);
@@ -173,8 +176,407 @@ public final class AuthorityResolver {
             dropGraph(oldGraph);
         }
 
-        log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={}",
-                newGraph, mirrored, loadCounter);
+        log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
+                        + "tiers: admin={} attachment={} maintainer={} member={} observer={}",
+                newGraph, mirrored, loadCounter,
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer);
+    }
+
+    // ---------------- Tier UPDATE loops ----------------
+
+    /** Per-tier INSERT counts (for logging/metrics). */
+    static final class TierCounts {
+        int admin;
+        int attachment;
+        int maintainer;
+        int member;
+        int observer;
+    }
+
+    /**
+     * Runs the five tier loops in order: admin → {@code gen:hasRole} attachment
+     * validation → maintainer → member → observer. Each loop iterates a SPARQL
+     * INSERT to fixed point (no new triples added). Returns per-tier counts.
+     *
+     * @param graph         target space-state graph
+     * @param lastProcessed load-number horizon; use {@code -1} for full build
+     */
+    TierCounts runAllTierLoops(IRI graph, long lastProcessed) {
+        TierCounts c = new TierCounts();
+        c.admin = runTierLabeled("admin", graph, adminTierUpdate(graph, lastProcessed));
+        c.attachment = runTierLabeled("attachment", graph,
+                attachmentValidationUpdate(graph, lastProcessed));
+        c.maintainer = runTierLabeled("maintainer", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.MAINTAINER_ROLE, PUBLISHER_IS_ADMIN));
+        // Member tier: admin OR maintainer publisher — split into two simpler updates
+        // so the query planner doesn't struggle with the UNION.
+        c.member = runTierLabeled("member(admin-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN));
+        c.member += runTierLabeled("member(maint-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.MEMBER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
+        // Observer tier: self-evidence only per the plan's policy table
+        // (gen:ObserverRole = self). Authority-publisher sub-tiers were overreach;
+        // the three of them have been removed, so an observer instantiation is
+        // validated iff the assignee's own pubkey signed it.
+        c.observer = runTierLabeled("observer(self)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
+        return c;
+    }
+
+    /**
+     * Builds a publisher constraint requiring the publisher to be a validated holder
+     * of the given tier's role (maintainer or member) in the target space.
+     * Owns its own AccountState resolution so ?publisher is bound through the
+     * targeted (pkh → agent) lookup rather than enumerated.
+     */
+    private static String publisherIsTieredRole(IRI tierClass) {
+        return """
+                ?acct a npa:AccountState ;
+                      npa:pubkey ?pkh ;
+                      npa:agent  ?publisher .
+                ?tierRI a gen:RoleInstantiation ;
+                        npa:forSpace ?space ;
+                        npa:forAgent ?publisher .
+                ?rdT a npa:RoleDeclaration ;
+                     npa:hasRoleType <%1$s> .
+                { ?tierRI npa:regularProperty ?predT . ?rdT gen:hasRegularProperty ?predT . }
+                UNION
+                { ?tierRI npa:inverseProperty ?predT . ?rdT gen:hasInverseProperty ?predT . }
+                """.formatted(tierClass);
+    }
+
+    /** Wraps {@link #runTierLoop} with tier-name context for logs/exceptions. */
+    private int runTierLabeled(String tier, IRI graph, String sparqlUpdate) {
+        try {
+            return runTierLoop(graph, sparqlUpdate);
+        } catch (RuntimeException ex) {
+            log.error("AuthorityResolver: tier={} failed with SPARQL UPDATE:\n{}\n", tier, sparqlUpdate, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * Runs a single tier's INSERT to fixed point. Counts rows by probing
+     * graph size before/after each INSERT; stops when the size doesn't change.
+     *
+     * @return total number of triples inserted by this tier across all iterations
+     */
+    int runTierLoop(IRI graph, String sparqlUpdate) {
+        int total = 0;
+        long before = graphSize(graph);
+        while (true) {
+            // Note: no explicit transaction wrapping here. In tests we observed that
+            // HTTPRepository's RDF4J-transaction protocol silently no-op'd cross-graph
+            // SPARQL UPDATEs with UNION sub-patterns inside conn.begin()/commit(),
+            // while the same UPDATE POSTed directly to /statements applied correctly.
+            // A bare prepareUpdate().execute() takes the direct /statements path and
+            // runs the UPDATE atomically per SPARQL 1.1 semantics — which is all we
+            // need; there's nothing else to commit atomically alongside the UPDATE.
+            try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+                conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate).execute();
+            }
+            long after = graphSize(graph);
+            long added = after - before;
+            if (added <= 0) break;
+            total += added;
+            before = after;
+        }
+        return total;
+    }
+
+    private long graphSize(IRI graph) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            return conn.size(graph);
+        }
+    }
+
+    // ---------------- SPARQL templates ----------------
+
+    /**
+     * Reusable invalidation filter on a bound nanopub-IRI variable. Pass the bare
+     * variable name (no leading {@code ?}); e.g. {@code invalidationFilter("np")}
+     * produces an outer-scoped {@code FILTER NOT EXISTS { GRAPH npa:spacesGraph
+     * { ?_inv_np a npa:Invalidation ; npa:invalidates ?np . } }}.
+     *
+     * <p>Important: this filter must be placed OUTSIDE the surrounding
+     * {@code GRAPH npa:spacesGraph { ... }} block, not nested inside it. When
+     * nested, RDF4J's planner couples the FILTER NOT EXISTS evaluation into the
+     * join order (per-row scan of {@code ?_inv a npa:Invalidation} multiplied by
+     * the candidate set), which we measured turning a 39ms query into a 60s+
+     * timeout on the live observer-tier data. Outside the GRAPH block, the
+     * planner defers the filter until {@code ?np}/{@code ?rdNp} are bound and
+     * does a targeted index lookup.
+     *
+     * <p>Variable names must match {@code [A-Za-z0-9_]+} per SPARQL grammar —
+     * embedding a {@code ?} inside {@code ?_inv_?np} would yield a parse error.
+     */
+    private static String invalidationFilter(String bareVarName) {
+        return "FILTER NOT EXISTS { GRAPH <" + SpacesVocab.SPACES_GRAPH + "> {"
+                + " ?_inv_" + bareVarName
+                + " a <" + SpacesVocab.INVALIDATION + "> ; "
+                + "<" + SpacesVocab.INVALIDATES + "> ?" + bareVarName + " . } }";
+    }
+
+    /**
+     * Admin tier: seed from {@code npadef:...hasRootAdmin} (trusted by construction)
+     * plus closed-over admin grants; insert any {@code gen:RoleInstantiation} with
+     * {@code npa:regularProperty gen:hasAdmin} whose publisher (resolved via mirrored
+     * trust-approved AccountState) is already in the admin set.
+     */
+    static String adminTierUpdate(IRI graph, long lastProcessed) {
+        // Order tuned for RDF4J's evaluator:
+        //   1. Anchor on the small (seed UNION closed-over) set to bind ?publisher
+        //      and ?space cheaply.
+        //   2. Resolve ?pkh from the mirrored AccountState row (?publisher bound).
+        //   3. Probe instantiations using the now-bound (?space, ?pkh) — targeted
+        //      lookup, not a full RoleInstantiation scan.
+        //   4. Load-number filter on bound ?np.
+        //   5. Dedup at the end.
+        return """
+                PREFIX npa:  <%1$s>
+                PREFIX gen:  <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?ri a gen:RoleInstantiation ;
+                      npa:forSpace ?space ;
+                      npa:regularProperty gen:hasAdmin ;
+                      npa:forAgent ?agent ;
+                      npa:viaNanopub ?np .
+                } }
+                WHERE {
+                  # 1. Anchor: who is already an admin of which space?
+                  {
+                    # Seed branch: root-admin in a non-invalidated SpaceDefinition.
+                    GRAPH <%4$s> {
+                      ?def a npa:SpaceDefinition ;
+                           npa:forSpaceRef  ?spaceRef ;
+                           npa:hasRootAdmin ?publisher ;
+                           npa:viaNanopub   ?defNp .
+                      ?spaceRef npa:spaceIri ?space .
+                    }
+                    %7$s
+                  }
+                  UNION
+                  {
+                    # Closed-over branch: an existing admin in this space-state graph.
+                    GRAPH <%3$s> {
+                      ?prev a gen:RoleInstantiation ;
+                            npa:forSpace        ?space ;
+                            npa:regularProperty gen:hasAdmin ;
+                            npa:forAgent        ?publisher .
+                    }
+                  }
+                  # 2. Mirror: resolve ?publisher → ?pkh via the trust-approved row.
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:agent  ?publisher ;
+                          npa:pubkey ?pkh .
+                  }
+                  # 3. Targeted instantiation lookup by space + pubkey.
+                  GRAPH <%4$s> {
+                    ?ri a gen:RoleInstantiation ;
+                        npa:forSpace        ?space ;
+                        npa:regularProperty gen:hasAdmin ;
+                        npa:forAgent        ?agent ;
+                        npa:pubkeyHash      ?pkh ;
+                        npa:viaNanopub      ?np .
+                  }
+                  %6$s
+                  # 4. Load-number filter on bound ?np.
+                  GRAPH <%8$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  # 5. Dedup last.
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?existing a gen:RoleInstantiation ;
+                              npa:forSpace ?space ;
+                              npa:forAgent ?agent ;
+                              npa:regularProperty gen:hasAdmin .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("np"),
+                invalidationFilter("defNp"),
+                NPA.GRAPH);
+    }
+
+    /**
+     * {@code gen:hasRole} attachment validation: an attachment is validated iff its
+     * publisher is already a validated admin of the target space. Adds
+     * {@code gen:RoleAssignment} rows to the space-state graph.
+     */
+    static String attachmentValidationUpdate(IRI graph, long lastProcessed) {
+        return """
+                PREFIX npa:  <%1$s>
+                PREFIX gen:  <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?ra a gen:RoleAssignment ;
+                      npa:forSpace ?space ;
+                      gen:hasRole  ?role ;
+                      npa:viaNanopub ?np .
+                } }
+                WHERE {
+                  GRAPH <%4$s> {
+                    ?ra a gen:RoleAssignment ;
+                        npa:forSpace ?space ;
+                        gen:hasRole  ?role ;
+                        npa:pubkeyHash ?pkh ;
+                        npa:viaNanopub ?np .
+                  }
+                  GRAPH <%7$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:agent  ?publisher ;
+                          npa:pubkey ?pkh .
+                    ?adminRI a gen:RoleInstantiation ;
+                             npa:forSpace ?space ;
+                             npa:regularProperty gen:hasAdmin ;
+                             npa:forAgent ?publisher .
+                  }
+                  %6$s
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?existing a gen:RoleAssignment ;
+                              npa:forSpace ?space ;
+                              gen:hasRole  ?role .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("np"),
+                NPA.GRAPH);
+    }
+
+    /**
+     * Non-admin tier publisher constraints (inserted as a SPARQL sub-pattern).
+     * Each constraint owns the AccountState (pkh → agent) lookup so the join
+     * variable is bound through a targeted pattern. The observer-self variant
+     * binds {@code npa:agent ?agent} directly — no separate {@code ?publisher}
+     * variable, no post-join equality filter — which lets the planner anchor
+     * the AccountState lookup on the already-bound {@code ?agent} instead of
+     * enumerating all approved publishers and filtering at the end.
+     */
+    static final String PUBLISHER_IS_ADMIN = """
+            ?acct a npa:AccountState ;
+                  npa:pubkey ?pkh ;
+                  npa:agent  ?publisher .
+            ?adminRI a gen:RoleInstantiation ;
+                     npa:forSpace ?space ;
+                     npa:regularProperty gen:hasAdmin ;
+                     npa:forAgent ?publisher .
+            """;
+
+    /** Observer self-evidence: the assignee's own pubkey signed the instantiation. */
+    static final String PUBLISHER_IS_SELF = """
+            ?acct a npa:AccountState ;
+                  npa:pubkey ?pkh ;
+                  npa:agent  ?agent .
+            """;
+
+    /**
+     * Maintainer / Member / Observer tier INSERT. Same shape: find an instantiation
+     * whose predicate matches a RoleDeclaration of the given tier attached to the
+     * target space, and whose publisher passes the tier-specific constraint.
+     */
+    static String nonAdminTierUpdate(IRI graph, long lastProcessed,
+                                     IRI tierClass, String publisherConstraint) {
+        // Order tuned for RDF4J's evaluator (which executes BGPs roughly in order).
+        // The crucial choice is the *anchor*: instantiation-first plans send the
+        // planner exploring the full ~thousands of candidate RIs and only filter
+        // by tier at the very end. Attachment-first anchors on the small set of
+        // gen:RoleAssignment rows already validated in this space-state graph
+        // (~hundreds, often zero) and walks outward by bound (?role, ?space).
+        //
+        //   1. Anchor on RoleAssignments in this space-state graph (small).
+        //   2. Match the tier-pinned RoleDeclaration by ?role.
+        //   3. Pair role-decl direction to instantiation direction in one UNION
+        //      so only (reg, reg)/(inv, inv) combos are explored.
+        //   4. Targeted instantiation lookup — (?space, ?pred) are bound.
+        //   5. Publisher constraint (incl. AccountState resolution).
+        //   6. Load-number filter on bound ?np.
+        //   7. Dedup at the end.
+        return """
+                PREFIX npa:  <%1$s>
+                PREFIX gen:  <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?ri a gen:RoleInstantiation ;
+                      npa:forSpace ?space ;
+                      npa:forAgent ?agent ;
+                      npa:viaNanopub ?np .
+                } }
+                WHERE {
+                  # 1. Anchor: validated attachments in this space-state graph.
+                  GRAPH <%3$s> {
+                    ?ra a gen:RoleAssignment ;
+                        gen:hasRole  ?role ;
+                        npa:forSpace ?space .
+                  }
+                  # 2. Tier-pinned RoleDeclaration (?role bound from the attachment).
+                  GRAPH <%4$s> {
+                    ?rd a npa:RoleDeclaration ;
+                        npa:hasRoleType <%7$s> ;
+                        npa:role        ?role ;
+                        npa:viaNanopub  ?rdNp .
+                    # 3. Pair direction so only matching combos are explored.
+                    {
+                      ?rd gen:hasRegularProperty ?pred .
+                      ?ri npa:regularProperty    ?pred .
+                    }
+                    UNION
+                    {
+                      ?rd gen:hasInverseProperty ?pred .
+                      ?ri npa:inverseProperty    ?pred .
+                    }
+                    # 4. Targeted instantiation lookup — (?space, ?pred) bound.
+                    ?ri a gen:RoleInstantiation ;
+                        npa:forSpace   ?space ;
+                        npa:forAgent   ?agent ;
+                        npa:pubkeyHash ?pkh ;
+                        npa:viaNanopub ?np .
+                  }
+                  # 5. Publisher constraint (incl. AccountState resolution).
+                  GRAPH <%3$s> {
+                    %9$s
+                  }
+                  # 6. Load-number filter on bound ?np.
+                  GRAPH <%10$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  # 7. Invalidation filters — outside the GRAPH block so the
+                  #    planner defers them until ?rdNp/?np are bound.
+                  %8$s
+                  %6$s
+                  # 8. Dedup last.
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?existing a gen:RoleInstantiation ;
+                              npa:forSpace ?space ;
+                              npa:forAgent ?agent ;
+                              npa:viaNanopub ?np .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("np"),
+                tierClass,
+                invalidationFilter("rdNp"),
+                publisherConstraint,
+                NPA.GRAPH);
     }
 
     /**
