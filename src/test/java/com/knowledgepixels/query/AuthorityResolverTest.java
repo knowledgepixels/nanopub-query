@@ -119,4 +119,56 @@ class AuthorityResolverTest {
                 "observer tier must not rely on a post-join equality filter");
     }
 
+    // ---------------- Invalidation DELETE templates (PR 2c) ----------------
+
+    @Test
+    void adminInvalidationDelete_pinsAdminPredicateAndDeltaFilter() {
+        String sparql = AuthorityResolver.adminInvalidationDelete(TEST_GRAPH, 17);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
+                "scoped to admin-pinned RoleInstantiations");
+        assertTrue(sparql.contains("npa:Invalidation"),
+                "joins the Invalidation extraction");
+        assertTrue(sparql.contains("npa:invalidates ?np"),
+                "links invalidation to the source nanopub");
+        assertTrue(sparql.contains("FILTER (?ln > 17)"),
+                "delta filter on the invalidator's load number");
+    }
+
+    @Test
+    void roleAssignmentInvalidationDelete_targetsRoleAssignmentRowsOnly() {
+        String sparql = AuthorityResolver.roleAssignmentInvalidationDelete(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("gen:RoleAssignment"),
+                "scoped to RoleAssignment rows");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the invalidator's load number");
+        assertFalse(sparql.contains("npa:inverseProperty gen:hasAdmin"),
+                "RoleAssignment delete must not pin the admin predicate");
+    }
+
+    @Test
+    void roleDeclarationInvalidationCheck_isAskOnly() {
+        // RoleDeclaration invalidation is ASK-only — RDs aren't materialized into
+        // the space-state graph, so there's nothing to DELETE here. The WHERE clause
+        // exists only to drive an ASK that flips needsFullRebuild.
+        String where = AuthorityResolver.roleDeclarationInvalidationCheckWhere(0);
+        assertTrue(where.contains("npa:RoleDeclaration"),
+                "scoped to RoleDeclaration rows in spacesGraph");
+        assertTrue(where.contains("npa:Invalidation"),
+                "joins the Invalidation extraction");
+        assertTrue(where.contains("FILTER (?ln > 0)"),
+                "delta filter on the invalidator's load number");
+    }
+
+    @Test
+    void leafTierInvalidationDelete_excludesAdminPinnedRows() {
+        String sparql = AuthorityResolver.leafTierInvalidationDelete(TEST_GRAPH, 0);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("gen:RoleInstantiation"),
+                "scoped to RoleInstantiation rows");
+        assertTrue(sparql.contains("FILTER NOT EXISTS { ?ri npa:inverseProperty gen:hasAdmin }"),
+                "must skip admin-pinned RIs (those are handled by adminInvalidationDelete)");
+    }
+
 }

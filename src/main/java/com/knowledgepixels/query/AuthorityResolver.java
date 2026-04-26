@@ -26,17 +26,29 @@ import com.knowledgepixels.query.vocabulary.NPAT;
 import com.knowledgepixels.query.vocabulary.SpacesVocab;
 
 /**
- * Drives the space-state materialization pipeline: detects trust-state flips,
- * mirrors the approved {@code (agent, pubkey)} rows from the {@code trust} repo
- * into a fresh {@code npass:<T>_<M>} graph in the {@code spaces} repo, runs the
- * per-tier validation loops (stubbed in PR 2a), flips the
- * {@code npa:hasCurrentSpaceState} pointer, and drops the previous graph. Also
- * cleans up orphan {@code npass:*} graphs on startup.
+ * Drives the space-state materialization pipeline. Three entry points scheduled
+ * by {@code MainVerticle}:
+ * <ul>
+ *   <li>{@link #tick()} — detects trust-state flips (full build) and otherwise
+ *       advances the current space-state graph by an {@link #runIncrementalCycle
+ *       incremental cycle} bounded by {@code (processedUpTo, currentLoadCounter]}.</li>
+ *   <li>{@link #periodicRebuildTick()} — checks the {@code npa:needsFullRebuild}
+ *       flag set by structural invalidations and re-runs the full build into a
+ *       fresh graph, atomically flips the pointer, drops the old graph.</li>
+ *   <li>{@link #cleanOrphans()} — startup cleanup of {@code npass:*} graphs the
+ *       pointer isn't referencing.</li>
+ * </ul>
+ *
+ * <p>Incremental cycle order: invalidation DELETEs (admin RI / RoleAssignment /
+ * non-admin RI) → mirror-step delta is implicit (rebuilt only on full build) →
+ * per-tier INSERTs (admin → attachment → maintainer → member → observer) →
+ * late-arrival sweep (re-run downstream tiers without the load-number filter
+ * iff this cycle added any structural rows). Sets {@code npa:needsFullRebuild}
+ * when an admin RI / RoleAssignment / RoleDeclaration was invalidated; periodic
+ * worker turns the flag into a from-scratch rebuild.
  *
  * <p>See {@code doc/plan-space-repositories.md} — this implements the "Full
- * build" procedure plus pointer management and the mirror step. Per-tier SPARQL
- * UPDATE loops, the incremental cycle, and the periodic-rebuild flag follow in
- * PRs 2b and 2c.
+ * build", "Incremental cycle", and "Periodic full rebuild" procedures.
  */
 public final class AuthorityResolver {
 
@@ -83,11 +95,14 @@ public final class AuthorityResolver {
     // ---------------- Public entry points ----------------
 
     /**
-     * Poll entry point: checks the current trust-state hash against the active
-     * space-state graph's hash component; if they differ (or no space-state graph
-     * exists yet), runs a full build. Safe to call repeatedly on a schedule —
-     * when the hashes match, it's a no-op. Gated by
-     * {@link FeatureFlags#spacesEnabled()}.
+     * Poll entry point. Behaviour:
+     * <ul>
+     *   <li>If no current space-state graph or the trust state has flipped → full build.</li>
+     *   <li>Otherwise → {@link #runIncrementalCycle incremental cycle} on the load-number
+     *       delta {@code (processedUpTo, currentLoadCounter]}. No-op if {@code
+     *       processedUpTo == currentLoadCounter}.</li>
+     * </ul>
+     * Safe to call repeatedly on a schedule. Gated by {@link FeatureFlags#spacesEnabled()}.
      */
     public void tick() {
         if (!FeatureFlags.spacesEnabled()) return;
@@ -96,14 +111,37 @@ public final class AuthorityResolver {
             log.debug("AuthorityResolver.tick: no current trust state yet — skipping");
             return;
         }
-        String currentGraphName = getCurrentSpaceStateGraphLocalName();
-        if (currentGraphName != null && currentGraphName.startsWith(trustStateHash + "_")) {
-            log.debug("AuthorityResolver.tick: already on trust state {}", abbrev(trustStateHash));
+        IRI currentGraph = getCurrentSpaceStateGraph();
+        String currentGraphName = (currentGraph == null) ? null
+                : currentGraph.stringValue().substring(SpacesVocab.NPASS_NAMESPACE.length());
+        if (currentGraphName == null || !currentGraphName.startsWith(trustStateHash + "_")) {
+            log.info("AuthorityResolver.tick: trust-state flip detected (now {}); running full build",
+                    abbrev(trustStateHash));
+            runFullBuild(trustStateHash);
             return;
         }
-        log.info("AuthorityResolver.tick: trust-state flip detected (now {}); running full build",
-                abbrev(trustStateHash));
+        runIncrementalCycle(currentGraph);
+    }
+
+    /**
+     * Periodic worker. If {@code npa:needsFullRebuild} was raised by an
+     * incremental cycle's structural DELETE, runs a from-scratch rebuild into
+     * a fresh space-state graph (using the current trust-state hash and load
+     * counter) and clears the flag. No-op when the flag is not set. Safe to
+     * call concurrently with {@link #tick()} when both are scheduled on the
+     * same single-threaded executor.
+     */
+    public void periodicRebuildTick() {
+        if (!FeatureFlags.spacesEnabled()) return;
+        if (!readNeedsFullRebuild()) return;
+        String trustStateHash = TrustStateRegistry.get().getCurrentHash().orElse(null);
+        if (trustStateHash == null) {
+            log.debug("AuthorityResolver.periodicRebuildTick: no current trust state — deferring");
+            return;
+        }
+        log.info("AuthorityResolver.periodicRebuildTick: needsFullRebuild flag set; rebuilding");
         runFullBuild(trustStateHash);
+        clearNeedsFullRebuild();
     }
 
     /**
@@ -180,6 +218,146 @@ public final class AuthorityResolver {
                         + "tiers: admin={} attachment={} maintainer={} member={} observer={}",
                 newGraph, mirrored, loadCounter,
                 counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer);
+    }
+
+    // ---------------- Incremental cycle ----------------
+
+    /**
+     * Single delta cycle on the current space-state graph. Bounded by
+     * {@code (processedUpTo, currentLoadCounter]}; no-op if the range is empty.
+     *
+     * <p>Order:
+     * <ol>
+     *   <li>Apply invalidation DELETEs (admin RI, RoleAssignment, non-admin RI)
+     *       and the RoleDeclaration ASK. Any DELETE on a structural kind sets
+     *       {@code npa:needsFullRebuild} to bound the staleness from sticky
+     *       downstream entries; the periodic worker turns that into a from-scratch
+     *       rebuild on its next pass.</li>
+     *   <li>Run per-tier INSERTs in the same order as the full build.</li>
+     *   <li>Late-arrival sweep: if any structural row was added, re-run downstream
+     *       tier INSERTs with {@code lastProcessed = -1} to catch candidates whose
+     *       enabling event landed in this same cycle. Dedup filters protect
+     *       against double-insert.</li>
+     *   <li>Bump {@code processedUpTo} to {@code currentLoadCounter}.</li>
+     * </ol>
+     */
+    synchronized void runIncrementalCycle(IRI graph) {
+        long currentLoadCounter = getCurrentLoadCounter();
+        long lastProcessed = readProcessedUpTo(graph);
+        if (lastProcessed < 0) {
+            log.warn("AuthorityResolver.runIncrementalCycle: missing processedUpTo on {}; skipping",
+                    graph);
+            return;
+        }
+        if (currentLoadCounter <= lastProcessed) {
+            log.debug("AuthorityResolver.runIncrementalCycle: caught up at load {} on {}",
+                    currentLoadCounter, graph);
+            return;
+        }
+
+        boolean structuralInvalidation = applyInvalidations(graph, lastProcessed);
+        TierCounts counts = runAllTierLoops(graph, lastProcessed);
+        boolean structuralAdds = (counts.admin > 0)
+                || (counts.attachment > 0)
+                || newRoleDeclarationsArrived(lastProcessed);
+        if (structuralAdds) {
+            // Late-arrival sweep: only the leaf tiers (attachment/maintainer/member/observer)
+            // can promote candidates whose enabling event arrived in this same cycle. Skip
+            // the admin tier — its only enabling event is the admin grant itself, already
+            // handled by the regular pass.
+            TierCounts lateCounts = runDownstreamWithoutLoadFilter(graph);
+            counts.attachment += lateCounts.attachment;
+            counts.maintainer += lateCounts.maintainer;
+            counts.member     += lateCounts.member;
+            counts.observer   += lateCounts.observer;
+        }
+
+        writeProcessedUpTo(graph, currentLoadCounter);
+
+        log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
+                        + "tiers: admin={} attachment={} maintainer={} member={} observer={} "
+                        + "structuralInvalidation={} structuralAdds={}",
+                graph, lastProcessed, currentLoadCounter,
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                structuralInvalidation, structuralAdds);
+    }
+
+    /**
+     * Runs the four invalidation-DELETE / ASK steps. Sets {@code npa:needsFullRebuild}
+     * when admin-RI, RoleAssignment, or RoleDeclaration invalidations matched (the
+     * three structural kinds). Leaf-tier RI deletes don't set the flag.
+     *
+     * @return true iff at least one structural kind was invalidated
+     */
+    boolean applyInvalidations(IRI graph, long lastProcessed) {
+        boolean structural = false;
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ true,
+                            adminInvalidationCheckWhere(graph, lastProcessed))) {
+            executeUpdate(adminInvalidationDelete(graph, lastProcessed));
+            structural = true;
+        }
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+                            roleAssignmentInvalidationCheckWhere(graph, lastProcessed))) {
+            executeUpdate(roleAssignmentInvalidationDelete(graph, lastProcessed));
+            structural = true;
+        }
+        // RoleDeclaration ASK only — RDs aren't materialized into the space-state
+        // graph, so there's nothing to DELETE here. The flag still flips because
+        // sticky downstream RIs derived from the now-invalidated RD need a
+        // from-scratch recompute.
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+                            roleDeclarationInvalidationCheckWhere(lastProcessed))) {
+            structural = true;
+        }
+        // Leaf-tier RI deletes — no flag.
+        executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
+        if (structural) setNeedsFullRebuild();
+        return structural;
+    }
+
+    /**
+     * Runs the four leaf tiers (attachment/maintainer/member/observer) with
+     * {@code lastProcessed = -1} so the load-number filter on the candidate
+     * side admits everything. Dedup filters in the tier templates prevent
+     * double-insert. Used by the late-arrival sweep.
+     */
+    TierCounts runDownstreamWithoutLoadFilter(IRI graph) {
+        TierCounts c = new TierCounts();
+        c.attachment = runTierLabeled("attachment(late)", graph,
+                attachmentValidationUpdate(graph, -1));
+        c.maintainer = runTierLabeled("maintainer(late)", graph,
+                nonAdminTierUpdate(graph, -1, GEN.MAINTAINER_ROLE, PUBLISHER_IS_ADMIN));
+        c.member = runTierLabeled("member(admin-pub,late)", graph,
+                nonAdminTierUpdate(graph, -1, GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN));
+        c.member += runTierLabeled("member(maint-pub,late)", graph,
+                nonAdminTierUpdate(graph, -1,
+                        GEN.MEMBER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
+        c.observer = runTierLabeled("observer(self,late)", graph,
+                nonAdminTierUpdate(graph, -1, GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
+        return c;
+    }
+
+    /**
+     * Cheap ASK: did any new {@code npa:RoleDeclaration} extraction land in the
+     * load-number delta {@code (lastProcessed, ∞)}? Used by the late-arrival
+     * trigger so an RD that arrives in the same cycle as a matching candidate
+     * still gets validated.
+     */
+    boolean newRoleDeclarationsArrived(long lastProcessed) {
+        String ask = String.format("""
+                PREFIX npa: <%1$s>
+                ASK {
+                  GRAPH <%2$s> {
+                    ?rd a npa:RoleDeclaration ;
+                        npa:viaNanopub ?np .
+                  }
+                  GRAPH <%3$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
+                  }
+                }
+                """, NPA.NAMESPACE, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+        return runAsk(ask);
     }
 
     // ---------------- Tier UPDATE loops ----------------
@@ -579,6 +757,169 @@ public final class AuthorityResolver {
                 NPA.GRAPH);
     }
 
+    // ---------------- Invalidation templates (incremental cycle) ----------------
+
+    /**
+     * WHERE clause shared by the admin-RI invalidation ASK precheck and the
+     * matching DELETE. Identifies admin-tier {@code gen:RoleInstantiation} rows
+     * in the space-state graph whose {@code npa:viaNanopub} equals the target
+     * of an {@code npa:Invalidation} that landed in {@code (lastProcessed, ∞)}.
+     */
+    static String adminInvalidationCheckWhere(IRI graph, long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?ri a gen:RoleInstantiation ;
+                        npa:inverseProperty gen:hasAdmin ;
+                        npa:viaNanopub ?np .
+                  }
+                  GRAPH <%2$s> {
+                    ?inv a npa:Invalidation ;
+                         npa:invalidates ?np ;
+                         npa:viaNanopub  ?invNp .
+                  }
+                  GRAPH <%3$s> {
+                    ?invNp npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
+                  }
+                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+    }
+
+    /** DELETE template for admin-tier RoleInstantiations whose source nanopub was invalidated. */
+    static String adminInvalidationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?ri ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?ri ?p ?o . }
+                %4$s
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                adminInvalidationCheckWhere(graph, lastProcessed));
+    }
+
+    /** WHERE clause for RoleAssignment invalidation. */
+    static String roleAssignmentInvalidationCheckWhere(IRI graph, long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?ra a gen:RoleAssignment ;
+                        npa:viaNanopub ?np .
+                  }
+                  GRAPH <%2$s> {
+                    ?inv a npa:Invalidation ;
+                         npa:invalidates ?np ;
+                         npa:viaNanopub  ?invNp .
+                  }
+                  GRAPH <%3$s> {
+                    ?invNp npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
+                  }
+                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+    }
+
+    /** DELETE template for RoleAssignments whose source nanopub was invalidated. */
+    static String roleAssignmentInvalidationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?ra ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?ra ?p ?o . }
+                %4$s
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                roleAssignmentInvalidationCheckWhere(graph, lastProcessed));
+    }
+
+    /**
+     * WHERE clause for RoleDeclaration invalidation. ASK-only (no DELETE):
+     * RoleDeclarations live in {@code npa:spacesGraph} and aren't materialized
+     * into the space-state graph, so there's nothing to remove from the
+     * space-state. The ASK still flips {@code npa:needsFullRebuild} because
+     * sticky downstream RIs that were derived under the now-invalidated RD
+     * need a from-scratch recompute.
+     */
+    static String roleDeclarationInvalidationCheckWhere(long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?rd a npa:RoleDeclaration ;
+                        npa:viaNanopub ?np .
+                    ?inv a npa:Invalidation ;
+                         npa:invalidates ?np ;
+                         npa:viaNanopub  ?invNp .
+                  }
+                  GRAPH <%2$s> {
+                    ?invNp npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %3$d)
+                  }
+                """, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+    }
+
+    /**
+     * DELETE template for non-admin (leaf-tier) RoleInstantiations whose source
+     * nanopub was invalidated. Identified as {@code gen:RoleInstantiation} rows
+     * lacking the admin-pinning {@code npa:inverseProperty gen:hasAdmin} triple.
+     * No flag is set; leaf-tier removals are recoverable on the next cycle.
+     */
+    static String leafTierInvalidationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?ri ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> {
+                    ?ri a gen:RoleInstantiation ;
+                        npa:viaNanopub ?np .
+                    FILTER NOT EXISTS { ?ri npa:inverseProperty gen:hasAdmin }
+                    ?ri ?p ?o .
+                  }
+                  GRAPH <%4$s> {
+                    ?inv a npa:Invalidation ;
+                         npa:invalidates ?np ;
+                         npa:viaNanopub  ?invNp .
+                  }
+                  GRAPH <%5$s> {
+                    ?invNp npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %6$d)
+                  }
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+    }
+
+    /** Wraps an ASK by joining the shared prefixes. */
+    private boolean wouldInvalidate(IRI graph, long lastProcessed,
+                                    boolean adminPinned, String whereClause) {
+        // adminPinned is informational only — kept to make call sites read clearly;
+        // the WHERE clause already encodes the kind via its own type predicates.
+        String ask = String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                ASK { %3$s }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, whereClause);
+        return runAsk(ask);
+    }
+
+    private boolean runAsk(String sparql) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            return conn.prepareBooleanQuery(QueryLanguage.SPARQL, sparql).evaluate();
+        }
+    }
+
+    private void executeUpdate(String sparqlUpdate) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate).execute();
+        }
+    }
+
+    // ---------------- Mirror step ----------------
+
     /**
      * Copies trust-approved {@code npa:AccountState} rows from {@code npat:<T>}
      * in the {@code trust} repo into {@code newGraph} in the {@code spaces} repo,
@@ -642,15 +983,6 @@ public final class AuthorityResolver {
             log.warn("AuthorityResolver: failed to read hasCurrentSpaceState pointer: {}", ex.toString());
             return null;
         }
-    }
-
-    /** Convenience: local-name of the current space-state graph IRI. */
-    private String getCurrentSpaceStateGraphLocalName() {
-        IRI iri = getCurrentSpaceStateGraph();
-        if (iri == null) return null;
-        String s = iri.stringValue();
-        if (!s.startsWith(SpacesVocab.NPASS_NAMESPACE)) return null;
-        return s.substring(SpacesVocab.NPASS_NAMESPACE.length());
     }
 
     long getCurrentLoadCounter() {
@@ -724,6 +1056,46 @@ public final class AuthorityResolver {
         } catch (Exception ex) {
             log.warn("AuthorityResolver: failed to read processedUpTo for {}: {}", graph, ex.toString());
             return -1;
+        }
+    }
+
+    /**
+     * Reads the {@code npa:needsFullRebuild} flag (boolean literal) from
+     * {@code npa:graph} in the {@code spaces} repo. Defaults to {@code false}
+     * when the triple is absent.
+     */
+    boolean readNeedsFullRebuild() {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            Value v = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO,
+                    SpacesVocab.NEEDS_FULL_REBUILD);
+            return v != null && Boolean.parseBoolean(v.stringValue());
+        } catch (Exception ex) {
+            log.warn("AuthorityResolver: failed to read needsFullRebuild: {}", ex.toString());
+            return false;
+        }
+    }
+
+    void setNeedsFullRebuild() {
+        writeNeedsFullRebuild(true);
+    }
+
+    void clearNeedsFullRebuild() {
+        writeNeedsFullRebuild(false);
+    }
+
+    private void writeNeedsFullRebuild(boolean value) {
+        String update = String.format("""
+                DELETE { GRAPH <%s> { <%s> <%s> ?old } }
+                INSERT { GRAPH <%s> { <%s> <%s> "%s"^^<http://www.w3.org/2001/XMLSchema#boolean> } }
+                WHERE  { OPTIONAL { GRAPH <%s> { <%s> <%s> ?old } } }
+                """,
+                NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.NEEDS_FULL_REBUILD,
+                NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.NEEDS_FULL_REBUILD, value,
+                NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.NEEDS_FULL_REBUILD);
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            conn.begin(IsolationLevels.SERIALIZABLE);
+            conn.prepareUpdate(QueryLanguage.SPARQL, update).execute();
+            conn.commit();
         }
     }
 
