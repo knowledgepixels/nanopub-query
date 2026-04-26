@@ -160,10 +160,11 @@ class SpacesExtractorTest {
         assertContains(out, defIri, HAS_ROOT_ADMIN, ADMIN_AGENT_1);
         assertContains(out, defIri, HAS_ROOT_ADMIN, ADMIN_AGENT_2);
 
-        // Admin RoleInstantiation (space-scoped, both admins, regular direction)
+        // Admin RoleInstantiation (space-scoped, both admins, inverse direction —
+        // <space> hasAdmin <agent> is space-centric, INVERSE under the publisher convention)
         assertContains(out, riIri, RDF.TYPE, GEN.ROLE_INSTANTIATION);
         assertContains(out, riIri, FOR_SPACE, SPACE_IRI_1);
-        assertContains(out, riIri, REGULAR_PROPERTY, GEN.HAS_ADMIN);
+        assertContains(out, riIri, INVERSE_PROPERTY, GEN.HAS_ADMIN);
         assertContains(out, riIri, FOR_AGENT, ADMIN_AGENT_1);
         assertContains(out, riIri, FOR_AGENT, ADMIN_AGENT_2);
         assertContains(out, riIri, VIA_NANOPUB, NP_URI);
@@ -298,7 +299,9 @@ class SpacesExtractorTest {
     // ---------------- gen:RoleInstantiation via backcompat ----------------
 
     @Test
-    void extract_backcompatRegularDirection_emitsRoleInstantiation() throws Exception {
+    void extract_backcompatInverseDirection_emitsRoleInstantiation() throws Exception {
+        // Space-centric source: <space> <predicate> <agent>. INVERSE under the publisher
+        // convention. hasTeamMember is classified INVERSE in BackcompatRolePredicates.
         IRI hasTeamMember = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasTeamMember");
         Nanopub np = creator()
                 // Single-triple assertion — this nanopub is detected as typed by the predicate
@@ -311,15 +314,16 @@ class SpacesExtractorTest {
 
         assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
         assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);        // subject of the assertion triple
-        assertContains(out, subject, REGULAR_PROPERTY, hasTeamMember);
+        assertContains(out, subject, INVERSE_PROPERTY, hasTeamMember);
         assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);       // object of the assertion triple
-        assertDoesNotContain(out, subject, INVERSE_PROPERTY, hasTeamMember);
+        assertDoesNotContain(out, subject, REGULAR_PROPERTY, hasTeamMember);
     }
 
     @Test
-    void extract_backcompatInverseDirection_swapsSpaceAndAgent() throws Exception {
+    void extract_backcompatRegularDirection_swapsSpaceAndAgent() throws Exception {
+        // Agent-centric source: <agent> <predicate> <space>. REGULAR under the publisher
+        // convention. plansToAttend is classified REGULAR in BackcompatRolePredicates.
         IRI plansToAttend = vf.createIRI("https://w3id.org/kpxl/gen/terms/plansToAttend");
-        // For inverse direction the assertion is <agent> <predicate> <space>.
         Nanopub np = creator()
                 .assertion(MEMBER_AGENT, plansToAttend, SPACE_IRI_1)
                 .finalizeNanopub();
@@ -329,9 +333,9 @@ class SpacesExtractorTest {
 
         assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
         assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);        // object side
-        assertContains(out, subject, INVERSE_PROPERTY, plansToAttend);
+        assertContains(out, subject, REGULAR_PROPERTY, plansToAttend);
         assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);       // subject side
-        assertDoesNotContain(out, subject, REGULAR_PROPERTY, plansToAttend);
+        assertDoesNotContain(out, subject, INVERSE_PROPERTY, plansToAttend);
     }
 
     // ---------------- Invalidation ----------------

@@ -212,7 +212,7 @@ public final class SpacesExtractor {
             IRI riIri = SpacesVocab.forRoleInstantiation(ctx.artifactCode());
             out.add(vf.createStatement(riIri, RDF.TYPE, GEN.ROLE_INSTANTIATION, GRAPH));
             out.add(vf.createStatement(riIri, SpacesVocab.FOR_SPACE, spaceIri, GRAPH));
-            out.add(vf.createStatement(riIri, SpacesVocab.REGULAR_PROPERTY, GEN.HAS_ADMIN, GRAPH));
+            out.add(vf.createStatement(riIri, SpacesVocab.INVERSE_PROPERTY, GEN.HAS_ADMIN, GRAPH));
             for (IRI adminAgent : adminAgents) {
                 out.add(vf.createStatement(riIri, SpacesVocab.FOR_AGENT, adminAgent, GRAPH));
             }
@@ -336,15 +336,18 @@ public final class SpacesExtractor {
     // ---------------- gen:RoleInstantiation (and backcompat) ----------------
 
     private static void extractRoleInstantiation(Nanopub np, Context ctx, List<Statement> out) {
-        // Find the assignment triple. Directionality:
-        //   REGULAR: <space> <predicate> <agent>  → npa:regularProperty.
-        //   INVERSE: <agent> <predicate> <space>  → npa:inverseProperty.
-        // gen:hasAdmin is hardcoded REGULAR. The 14 backwards-compat predicates are
-        // classified in {@link BackcompatRolePredicates#DIRECTIONS}. User-defined role
-        // predicates from gen:SpaceMemberRole nanopubs aren't resolvable here without
-        // the role-declaration registry; FIXME: the materializer in PR 2 should
-        // refine direction for the typed-but-unknown-predicate case. For now we emit
-        // only triples whose predicate we know the direction of.
+        // Find the assignment triple. Directionality (matches the publisher convention
+        // used by gen:hasRegularProperty / gen:hasInverseProperty in role-definition
+        // nanopubs):
+        //   REGULAR: <agent> <predicate> <space>  → npa:regularProperty.
+        //   INVERSE: <space> <predicate> <agent>  → npa:inverseProperty.
+        // gen:hasAdmin is hardcoded INVERSE (space-centric: <space> hasAdmin <agent>).
+        // The 14 backwards-compat predicates are classified in
+        // {@link BackcompatRolePredicates#DIRECTIONS}. User-defined role predicates from
+        // gen:SpaceMemberRole nanopubs aren't resolvable here without the role-declaration
+        // registry; FIXME: the materializer in PR 2 should refine direction for the
+        // typed-but-unknown-predicate case. For now we emit only triples whose predicate
+        // we know the direction of.
         for (Statement st : np.getAssertion()) {
             IRI predicate = st.getPredicate();
             BackcompatRolePredicates.Direction direction = directionFor(predicate);
@@ -355,11 +358,11 @@ public final class SpacesExtractor {
             IRI spaceSide;
             IRI agentSide;
             if (direction == BackcompatRolePredicates.Direction.REGULAR) {
+                agentSide = subjIri;
+                spaceSide = objIri;
+            } else {
                 spaceSide = subjIri;
                 agentSide = objIri;
-            } else {
-                spaceSide = objIri;
-                agentSide = subjIri;
             }
 
             // Deduplicate against the (possibly already emitted) admin instantiation
@@ -386,7 +389,7 @@ public final class SpacesExtractor {
     }
 
     private static BackcompatRolePredicates.Direction directionFor(IRI predicate) {
-        if (GEN.HAS_ADMIN.equals(predicate)) return BackcompatRolePredicates.Direction.REGULAR;
+        if (GEN.HAS_ADMIN.equals(predicate)) return BackcompatRolePredicates.Direction.INVERSE;
         return BackcompatRolePredicates.DIRECTIONS.get(predicate);
     }
 
