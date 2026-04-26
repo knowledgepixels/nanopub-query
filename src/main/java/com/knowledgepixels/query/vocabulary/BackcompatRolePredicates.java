@@ -19,18 +19,20 @@ import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
  * {@code doc/plan-space-repositories.md} for the current list.
  *
  * <p>Direction: each predicate is classified as either {@link Direction#REGULAR}
- * (space &rarr; agent) or {@link Direction#INVERSE} (agent &rarr; space),
- * which determines whether the extractor emits {@code npa:regularProperty} or
+ * (agent &rarr; space — the natural direction of a role from its bearer) or
+ * {@link Direction#INVERSE} (space &rarr; agent — the converse view), which
+ * determines whether the extractor emits {@code npa:regularProperty} or
  * {@code npa:inverseProperty} and which side of the assertion triple is the
- * space vs. the agent.
+ * space vs. the agent. Matches the convention used by published role-definition
+ * nanopubs ({@code gen:hasRegularProperty} / {@code gen:hasInverseProperty}).
  */
 public final class BackcompatRolePredicates {
 
     /** Triple-direction of an assignment predicate. */
     public enum Direction {
-        /** {@code <space> <predicate> <agent>}. */
+        /** {@code <agent> <predicate> <space>} — agent-centric, the role's natural direction. */
         REGULAR,
-        /** {@code <agent> <predicate> <space>}. */
+        /** {@code <space> <predicate> <agent>} — space-centric, the converse view. */
         INVERSE
     }
 
@@ -43,22 +45,22 @@ public final class BackcompatRolePredicates {
     /** Direction map for the backwards-compat predicates. */
     public static final Map<IRI, Direction> DIRECTIONS = Map.ofEntries(
             // Wikidata
-            Map.entry(iri("http://www.wikidata.org/entity/P1344"), Direction.INVERSE),   // "participant in"
-            Map.entry(iri("http://www.wikidata.org/entity/P463"),  Direction.INVERSE),   // "member of"
-            Map.entry(iri("http://www.wikidata.org/entity/P710"),  Direction.REGULAR),   // "participant"
-            Map.entry(iri("http://www.wikidata.org/entity/P823"),  Direction.REGULAR),   // "speaker"
+            Map.entry(iri("http://www.wikidata.org/entity/P1344"), Direction.REGULAR),   // "participant in" (agent → event)
+            Map.entry(iri("http://www.wikidata.org/entity/P463"),  Direction.REGULAR),   // "member of" (agent → space)
+            Map.entry(iri("http://www.wikidata.org/entity/P710"),  Direction.INVERSE),   // "participant" (event → agent)
+            Map.entry(iri("http://www.wikidata.org/entity/P823"),  Direction.INVERSE),   // "speaker" (event → agent)
             // FAIR 3pff
-            Map.entry(iri("https://w3id.org/fair/3pff/has-event-assistant"),                Direction.REGULAR),
-            Map.entry(iri("https://w3id.org/fair/3pff/has-event-facilitator"),              Direction.REGULAR),
-            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsFacilitatorAssistantIn"), Direction.INVERSE),
-            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsImplementerAspirantIn"),  Direction.INVERSE),
-            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsParticipantIn"),          Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/fair/3pff/has-event-assistant"),                Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/fair/3pff/has-event-facilitator"),              Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsFacilitatorAssistantIn"), Direction.REGULAR),
+            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsImplementerAspirantIn"),  Direction.REGULAR),
+            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsParticipantIn"),          Direction.REGULAR),
             // KPXL gen terms
-            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasAdmin"),       Direction.REGULAR),
-            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasObserver"),    Direction.REGULAR),
-            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasProjectLead"), Direction.REGULAR),
-            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasTeamMember"),  Direction.REGULAR),
-            Map.entry(iri("https://w3id.org/kpxl/gen/terms/plansToAttend"),  Direction.INVERSE));
+            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasAdmin"),       Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasObserver"),    Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasProjectLead"), Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasTeamMember"),  Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/kpxl/gen/terms/plansToAttend"),  Direction.REGULAR));
 
     /** Convenience set of just the predicate IRIs — useful for type-lookup membership tests. */
     public static final Set<IRI> ALL = DIRECTIONS.keySet();

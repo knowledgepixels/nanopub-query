@@ -320,7 +320,7 @@ public final class AuthorityResolver {
     /**
      * Admin tier: seed from {@code npadef:...hasRootAdmin} (trusted by construction)
      * plus closed-over admin grants; insert any {@code gen:RoleInstantiation} with
-     * {@code npa:regularProperty gen:hasAdmin} whose publisher (resolved via mirrored
+     * {@code npa:inverseProperty gen:hasAdmin} whose publisher (resolved via mirrored
      * trust-approved AccountState) is already in the admin set.
      */
     static String adminTierUpdate(IRI graph, long lastProcessed) {
@@ -338,7 +338,7 @@ public final class AuthorityResolver {
                 INSERT { GRAPH <%3$s> {
                   ?ri a gen:RoleInstantiation ;
                       npa:forSpace ?space ;
-                      npa:regularProperty gen:hasAdmin ;
+                      npa:inverseProperty gen:hasAdmin ;
                       npa:forAgent ?agent ;
                       npa:viaNanopub ?np .
                 } }
@@ -361,7 +361,7 @@ public final class AuthorityResolver {
                     GRAPH <%3$s> {
                       ?prev a gen:RoleInstantiation ;
                             npa:forSpace        ?space ;
-                            npa:regularProperty gen:hasAdmin ;
+                            npa:inverseProperty gen:hasAdmin ;
                             npa:forAgent        ?publisher .
                     }
                   }
@@ -375,7 +375,7 @@ public final class AuthorityResolver {
                   GRAPH <%4$s> {
                     ?ri a gen:RoleInstantiation ;
                         npa:forSpace        ?space ;
-                        npa:regularProperty gen:hasAdmin ;
+                        npa:inverseProperty gen:hasAdmin ;
                         npa:forAgent        ?agent ;
                         npa:pubkeyHash      ?pkh ;
                         npa:viaNanopub      ?np .
@@ -391,7 +391,7 @@ public final class AuthorityResolver {
                     ?existing a gen:RoleInstantiation ;
                               npa:forSpace ?space ;
                               npa:forAgent ?agent ;
-                              npa:regularProperty gen:hasAdmin .
+                              npa:inverseProperty gen:hasAdmin .
                   } }
                 }
                 """.formatted(
@@ -438,7 +438,7 @@ public final class AuthorityResolver {
                           npa:pubkey ?pkh .
                     ?adminRI a gen:RoleInstantiation ;
                              npa:forSpace ?space ;
-                             npa:regularProperty gen:hasAdmin ;
+                             npa:inverseProperty gen:hasAdmin ;
                              npa:forAgent ?publisher .
                   }
                   %6$s
@@ -473,7 +473,7 @@ public final class AuthorityResolver {
                   npa:agent  ?publisher .
             ?adminRI a gen:RoleInstantiation ;
                      npa:forSpace ?space ;
-                     npa:regularProperty gen:hasAdmin ;
+                     npa:inverseProperty gen:hasAdmin ;
                      npa:forAgent ?publisher .
             """;
 

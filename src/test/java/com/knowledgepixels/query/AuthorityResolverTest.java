@@ -63,7 +63,7 @@ class AuthorityResolverTest {
     void adminTierUpdate_containsSeedAndClosedOverBranches() {
         String sparql = AuthorityResolver.adminTierUpdate(TEST_GRAPH, 17);
         assertTrue(sparql.contains("INSERT"), "INSERT clause");
-        assertTrue(sparql.contains("npa:regularProperty gen:hasAdmin"),
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
                 "pinned admin predicate");
         assertTrue(sparql.contains("npa:hasRootAdmin"),
                 "seed branch references hasRootAdmin");
@@ -83,7 +83,7 @@ class AuthorityResolverTest {
         assertTrue(sparql.contains("gen:RoleAssignment"),
                 "attachment-type inserted");
         assertTrue(sparql.contains("gen:hasRole"), "gen:hasRole predicate copied");
-        assertTrue(sparql.contains("npa:regularProperty gen:hasAdmin"),
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
                 "publisher-is-admin check");
         assertTrue(sparql.contains("FILTER (?ln > 5)"),
                 "delta filter on attachment nanopub");
