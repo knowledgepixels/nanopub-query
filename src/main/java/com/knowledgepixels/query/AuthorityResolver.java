@@ -201,7 +201,7 @@ public final class AuthorityResolver {
 
         // 2. Per-tier UPDATE loops (from scratch: lastProcessed = -1 so the
         //    delta filter FILTER(?ln > ?lastProcessed) includes everything).
-        TierCounts counts = runAllTierLoops(newGraph, -1);
+        TierInsertedTriples counts = runAllTierLoops(newGraph, -1);
 
         // 3. Stamp processedUpTo inside the new graph.
         writeProcessedUpTo(newGraph, loadCounter);
@@ -214,9 +214,12 @@ public final class AuthorityResolver {
             dropGraph(oldGraph);
         }
 
+        TierSubjectTotals totals = computeTierSubjectTotals(newGraph);
         log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
-                        + "tiers: admin={} attachment={} maintainer={} member={} observer={}",
+                        + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
+                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={})",
                 newGraph, mirrored, loadCounter,
+                totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer);
     }
 
@@ -256,7 +259,7 @@ public final class AuthorityResolver {
         }
 
         boolean structuralInvalidation = applyInvalidations(graph, lastProcessed);
-        TierCounts counts = runAllTierLoops(graph, lastProcessed);
+        TierInsertedTriples counts = runAllTierLoops(graph, lastProcessed);
         boolean structuralAdds = (counts.admin > 0)
                 || (counts.attachment > 0)
                 || newRoleDeclarationsArrived(lastProcessed);
@@ -265,7 +268,7 @@ public final class AuthorityResolver {
             // can promote candidates whose enabling event arrived in this same cycle. Skip
             // the admin tier — its only enabling event is the admin grant itself, already
             // handled by the regular pass.
-            TierCounts lateCounts = runDownstreamWithoutLoadFilter(graph);
+            TierInsertedTriples lateCounts = runDownstreamWithoutLoadFilter(graph);
             counts.attachment += lateCounts.attachment;
             counts.maintainer += lateCounts.maintainer;
             counts.member     += lateCounts.member;
@@ -274,10 +277,13 @@ public final class AuthorityResolver {
 
         writeProcessedUpTo(graph, currentLoadCounter);
 
+        TierSubjectTotals totals = computeTierSubjectTotals(graph);
         log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
-                        + "tiers: admin={} attachment={} maintainer={} member={} observer={} "
+                        + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
+                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={}) "
                         + "structuralInvalidation={} structuralAdds={}",
                 graph, lastProcessed, currentLoadCounter,
+                totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
                 structuralInvalidation, structuralAdds);
     }
@@ -321,8 +327,8 @@ public final class AuthorityResolver {
      * side admits everything. Dedup filters in the tier templates prevent
      * double-insert. Used by the late-arrival sweep.
      */
-    TierCounts runDownstreamWithoutLoadFilter(IRI graph) {
-        TierCounts c = new TierCounts();
+    TierInsertedTriples runDownstreamWithoutLoadFilter(IRI graph) {
+        TierInsertedTriples c = new TierInsertedTriples();
         c.attachment = runTierLabeled("attachment(late)", graph,
                 attachmentValidationUpdate(graph, -1));
         c.maintainer = runTierLabeled("maintainer(late)", graph,
@@ -362,14 +368,31 @@ public final class AuthorityResolver {
 
     // ---------------- Tier UPDATE loops ----------------
 
-    /** Per-tier INSERT counts (for logging/metrics). */
-    static final class TierCounts {
+    /**
+     * Per-tier inserted-triple tallies for one build or cycle. Counts the sum
+     * of {@code (graphSize_after - graphSize_before)} across all iterations of
+     * each tier's fixed-point INSERT loop — i.e. inserted *triples*, not
+     * distinct subjects (a single RoleInstantiation insert writes 4–5 triples).
+     *
+     * <p>Used internally by the {@link #runIncrementalCycle structuralAdds}
+     * boolean check (we only care whether any tier inserted at all).
+     * Not what the log lines report: see {@link TierSubjectTotals} +
+     * {@link #computeTierSubjectTotals} for the distinct-subject totals
+     * surfaced to operators.
+     */
+    static final class TierInsertedTriples {
         int admin;
         int attachment;
         int maintainer;
         int member;
         int observer;
     }
+
+    /**
+     * Snapshot of distinct-subject totals in a space-state graph at a moment
+     * in time. Independent of which tier-loop added each subject.
+     */
+    record TierSubjectTotals(long adminRIs, long attachmentRAs, long nonAdminRIs) {}
 
     /**
      * Runs the five tier loops in order: admin → {@code gen:hasRole} attachment
@@ -379,8 +402,8 @@ public final class AuthorityResolver {
      * @param graph         target space-state graph
      * @param lastProcessed load-number horizon; use {@code -1} for full build
      */
-    TierCounts runAllTierLoops(IRI graph, long lastProcessed) {
-        TierCounts c = new TierCounts();
+    TierInsertedTriples runAllTierLoops(IRI graph, long lastProcessed) {
+        TierInsertedTriples c = new TierInsertedTriples();
         c.admin = runTierLabeled("admin", graph, adminTierUpdate(graph, lastProcessed));
         c.attachment = runTierLabeled("attachment", graph,
                 attachmentValidationUpdate(graph, lastProcessed));
@@ -465,6 +488,48 @@ public final class AuthorityResolver {
     private long graphSize(IRI graph) {
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
             return conn.size(graph);
+        }
+    }
+
+    /**
+     * Distinct-subject totals in the given space-state graph, broken down by
+     * RoleInstantiation kind (admin-pinned vs not) and RoleAssignment.
+     * Three SELECT-COUNT queries — cheap, called once per build/cycle for
+     * the user-facing log line. Returns zeros on failure (logged) so a flaky
+     * count read can't wedge the cycle.
+     */
+    TierSubjectTotals computeTierSubjectTotals(IRI graph) {
+        long adminRIs       = countDistinctSubjects(graph, """
+                ?ri a gen:RoleInstantiation ; npa:inverseProperty gen:hasAdmin .
+                """, "ri");
+        long attachmentRAs  = countDistinctSubjects(graph, """
+                ?ra a gen:RoleAssignment .
+                """, "ra");
+        long nonAdminRIs    = countDistinctSubjects(graph, """
+                ?ri a gen:RoleInstantiation .
+                FILTER NOT EXISTS { ?ri npa:inverseProperty gen:hasAdmin }
+                """, "ri");
+        return new TierSubjectTotals(adminRIs, attachmentRAs, nonAdminRIs);
+    }
+
+    private long countDistinctSubjects(IRI graph, String wherePattern, String varName) {
+        String query = String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                SELECT (COUNT(DISTINCT ?%3$s) AS ?n) WHERE {
+                  GRAPH <%4$s> {
+                    %5$s
+                  }
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, varName, graph, wherePattern);
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO);
+             TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+            if (!r.hasNext()) return 0;
+            return Long.parseLong(r.next().getBinding("n").getValue().stringValue());
+        } catch (Exception ex) {
+            log.warn("AuthorityResolver: countDistinctSubjects on {} failed: {}",
+                    graph, ex.toString());
+            return 0;
         }
     }
 
