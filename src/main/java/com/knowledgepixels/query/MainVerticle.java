@@ -534,8 +534,14 @@ public class MainVerticle extends AbstractVerticle {
             );
 
             // Periodic authority-resolver tick: detects trust-state flips and
-            // runs a full rebuild of the space-state graph when needed. Same
-            // cadence as the nanopub-loading poll.
+            // advances the current space-state graph by an incremental cycle on
+            // each load-number delta. Same cadence as the nanopub-loading poll.
+            //
+            // The same single-threaded executor also runs periodicRebuildTick
+            // every 10 min; that's the from-scratch rebuild triggered when an
+            // incremental cycle DELETEs a structural derivation and raises the
+            // npa:needsFullRebuild flag. Sharing one executor serialises the
+            // two ticks naturally — they never overlap.
             if (FeatureFlags.spacesEnabled()) {
                 var spacesExecutor = Executors.newSingleThreadScheduledExecutor();
                 spacesExecutor.scheduleWithFixedDelay(
@@ -549,6 +555,16 @@ public class MainVerticle extends AbstractVerticle {
                         JellyNanopubLoader.UPDATES_POLL_INTERVAL,
                         JellyNanopubLoader.UPDATES_POLL_INTERVAL,
                         TimeUnit.MILLISECONDS
+                );
+                spacesExecutor.scheduleWithFixedDelay(
+                        () -> {
+                            try {
+                                AuthorityResolver.get().periodicRebuildTick();
+                            } catch (Exception ex) {
+                                log.warn("AuthorityResolver periodic rebuild failed", ex);
+                            }
+                        },
+                        10, 10, TimeUnit.MINUTES
                 );
             }
         }).start();

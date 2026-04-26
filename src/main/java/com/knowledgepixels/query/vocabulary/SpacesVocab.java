@@ -115,6 +115,14 @@ public final class SpacesVocab {
     /** Load-number horizon that a given space-state graph has been brought up to. */
     public static final IRI PROCESSED_UP_TO = vf.createIRI(NPA.NAMESPACE, "processedUpTo");
 
+    /**
+     * Flag (boolean literal) set in {@code npa:graph} when an incremental cycle
+     * has DELETEd a structural derivation (admin-tier RoleInstantiation,
+     * RoleAssignment, or RoleDeclaration). Triggers the periodic full-rebuild
+     * worker on its next pass; cleared once the rebuild completes.
+     */
+    public static final IRI NEEDS_FULL_REBUILD = vf.createIRI(NPA.NAMESPACE, "needsFullRebuild");
+
     // -------- Subject-minting helpers --------
 
     /** Mints {@code npas:<spaceRef>} for an aggregate space-ref entry. */
