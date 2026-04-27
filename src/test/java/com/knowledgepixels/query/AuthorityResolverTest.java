@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
  * {@code sail-base:5.3.0} with {@code sail-memory:5.1.5} / {@code common-concurrent:5.1.5}
  * in a way that breaks pattern-delete and SPARQL UPDATE on both MemoryStore and
  * NativeStore in tests. Those paths are covered by the integration smoke test
- * against a live deployment (see {@code doc/plan-space-repositories.md} and the
+ * against a live deployment (see {@code doc/design-space-repositories.md} and the
  * live-instance spot-checks accompanying this PR).
  */
 class AuthorityResolverTest {
