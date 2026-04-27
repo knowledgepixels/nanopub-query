@@ -18,16 +18,18 @@ For backwards compatibility during the transition phase, a `gen:Space`-typed nan
 
 ## Role types
 
-Four `gen:SpaceMemberRole` subclasses:
+Four `gen:SpaceMemberRole` subclasses, each with a distinct grant rule. The grant rule names which publishers' role-instantiation nanopubs the materializer accepts as evidence for that tier:
 
-| Type | Predicate / how it's granted |
-|------|------------------------------|
-| `gen:AdminRole`      | Single hardcoded instance `<https://w3id.org/np/RA_eEJjQbxzSqYSwPzfjzOZi5sMPpUmHskFNsgJYSws8I/adminRole>`, defining `gen:hasAdmin`. No other admin roles. |
-| `gen:MaintainerRole` | User-defined predicates declared `rdf:type gen:MaintainerRole`. Nothing is hardcoded at this tier. |
-| `gen:MemberRole`     | User-defined predicates declared `rdf:type gen:MemberRole`. |
-| `gen:ObserverRole`   | User-defined predicates declared `rdf:type gen:ObserverRole`. **Default** when a role definition doesn't declare a type. |
+| Type | How it's granted (publisher of the RoleInstantiation) |
+|------|-------------------------------------------------------|
+| `gen:AdminRole`      | Single hardcoded instance `<https://w3id.org/np/RA_eEJjQbxzSqYSwPzfjzOZi5sMPpUmHskFNsgJYSws8I/adminRole>`, defining `gen:hasAdmin`. Granted by an existing admin (transitive admin chain seeded from the trust state's space-root admin list). No other admin roles. |
+| `gen:MaintainerRole` | Granted by an admin. |
+| `gen:MemberRole`     | Granted by an admin or a maintainer. |
+| `gen:ObserverRole`   | Granted by an admin, maintainer, or member; or self-attested by the agent. **Default** when a role definition doesn't declare a tier subclass. |
 
-Per-tier privilege enforcement is Nanodash's concern, out of scope here.
+Downward-only chain: each tier accepts grants from itself and any tier above it (admin > maintainer > member > observer). Self-attestation is unique to observer — it's the only tier where "publisher == agent" is a valid evidence path. This keeps observer accessible enough to be the safe default, while still admitting top-down grants so an admin's "X is the speaker" nanopub validates even when the speaker role didn't explicitly declare its tier.
+
+Per-tier privilege enforcement (what each tier may do *inside* a space) is Nanodash's concern, out of scope here. This table only describes grant-time evidence rules.
 
 ## What's In the `spaces` Repo
 
@@ -253,7 +255,9 @@ GRAPH npass:<trustStateHash>_<loadCounterAtBuildStart> {
 
 ### Validation rule
 
-All tier checks (authority evidence for admin/maintainer/member; self-evidence for observer) resolve the publisher via `(agent, pubkey)` pairs in the mirrored rows — i.e. the signing key on the extraction (`npa:pubkeyHash`) must match an `npa:AccountState` whose `npa:agent` is the agent being checked. `npx:signedBy` is informational only (self-declared from pubinfo) and never decides validity.
+All tier checks resolve the publisher via `(agent, pubkey)` pairs in the mirrored rows — i.e. the signing key on the extraction (`npa:pubkeyHash`) must match an `npa:AccountState` whose `npa:agent` is the publishing agent. `npx:signedBy` is informational only (self-declared from pubinfo) and never decides validity.
+
+A RoleInstantiation is admitted into the validated state graph iff *any* of the per-tier evidence paths in [Role types](#role-types) is satisfied. The materializer iterates the candidate paths from highest tier downward — admin first, then maintainer / member sub-tiers, then observer sub-tiers (admin / maintainer / member / self) — to fixed point. Dedup filters in each tier's INSERT prevent the same RI being inserted twice when multiple paths would have qualified it.
 
 Since the registry's trust calculation flags any pubkey that claims multiple agents as `npa:contested` (and contested rows are not in the mirrored set), a trust-approved pubkey in `npass:<ts>` resolves to exactly one agent. No multi-agent ambiguity to handle at validation time.
 
