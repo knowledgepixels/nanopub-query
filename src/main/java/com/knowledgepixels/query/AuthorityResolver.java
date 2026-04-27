@@ -47,7 +47,7 @@ import com.knowledgepixels.query.vocabulary.SpacesVocab;
  * when an admin RI / RoleAssignment / RoleDeclaration was invalidated; periodic
  * worker turns the flag into a from-scratch rebuild.
  *
- * <p>See {@code doc/plan-space-repositories.md} — this implements the "Full
+ * <p>See {@code doc/design-space-repositories.md} — this implements the "Full
  * build", "Incremental cycle", and "Periodic full rebuild" procedures.
  */
 public final class AuthorityResolver {

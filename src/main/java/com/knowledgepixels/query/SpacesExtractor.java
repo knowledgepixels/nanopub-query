@@ -32,7 +32,7 @@ import net.trustyuri.TrustyUriUtils;
 /**
  * Pure-logic extractor from a loaded {@link Nanopub} to the add-only summary
  * triples destined for {@code npa:spacesGraph}. Implements the per-type schema
- * from {@code doc/plan-space-repositories.md}.
+ * from {@code doc/design-space-repositories.md}.
  *
  * <p>Dispatch is by nanopub type — {@link NanopubUtils#getTypes(Nanopub)} returns
  * both {@code rdf:type} / {@code npx:hasNanopubType} declarations and, for

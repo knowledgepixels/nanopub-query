@@ -16,7 +16,7 @@ import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
  *
  * <p>Temporary — these should be dropped once existing deployments have moved
  * to publishing with {@link GEN#ROLE_INSTANTIATION}. See
- * {@code doc/plan-space-repositories.md} for the current list.
+ * {@code doc/design-space-repositories.md} for the current list.
  *
  * <p>Direction: each predicate is classified as either {@link Direction#REGULAR}
  * (agent &rarr; space — the natural direction of a role from its bearer) or

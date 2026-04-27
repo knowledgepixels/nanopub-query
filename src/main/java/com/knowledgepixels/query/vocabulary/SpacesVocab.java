@@ -7,7 +7,7 @@ import org.nanopub.vocabulary.NPA;
 
 /**
  * IRIs, prefixes and subject-minting helpers used by the space-extraction layer
- * (see {@code doc/plan-space-repositories.md}).
+ * (see {@code doc/design-space-repositories.md}).
  *
  * <p>Every extraction entry in {@code npa:spacesGraph} has a dedicated subject IRI
  * derived from the originating nanopub's trusty-URI artifact code, so subjects

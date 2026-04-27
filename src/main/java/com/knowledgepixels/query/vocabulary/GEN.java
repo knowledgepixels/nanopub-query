@@ -9,7 +9,7 @@ import org.nanopub.vocabulary.VocabUtils;
  * (<a href="https://w3id.org/kpxl/gen/terms/">https://w3id.org/kpxl/gen/terms/</a>).
  *
  * <p>Defines the subset needed by the space-extraction layer
- * (see {@code doc/plan-space-repositories.md}):
+ * (see {@code doc/design-space-repositories.md}):
  * the {@link #SPACE} type and {@link #HAS_ROOT_DEFINITION} predicate for space
  * declarations; {@link #SPACE_MEMBER_ROLE} and its tier subclasses
  * ({@link #MAINTAINER_ROLE}, {@link #MEMBER_ROLE}, {@link #OBSERVER_ROLE}) for
