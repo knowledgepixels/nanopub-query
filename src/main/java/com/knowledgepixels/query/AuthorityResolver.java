@@ -92,6 +92,27 @@ public final class AuthorityResolver {
     private AuthorityResolver() {
     }
 
+    // ---------------- Operational metrics snapshot ----------------
+    //
+    // Updated at the end of each runFullBuild / runIncrementalCycle, read by
+    // MetricsCollector via the get*() accessors below. volatile is enough —
+    // writers serialise via the synchronized methods, and readers (Prometheus
+    // scrapes) only need most-recent visibility, not transactional consistency
+    // across the snapshot. Defaults to zero values so a scrape that races a
+    // boot before the first cycle returns 0, not NaN.
+
+    private volatile TierSubjectTotals lastSubjectTotals = new TierSubjectTotals(0L, 0L, 0L);
+    private volatile long lastInsertedTriplesTotal;
+    private volatile long lastFullBuildDurationMs;
+    private volatile long lastIncrementalCycleDurationMs;
+    private volatile long lastProcessedUpToLag;
+
+    public TierSubjectTotals getLastSubjectTotals() { return lastSubjectTotals; }
+    public long getLastInsertedTriplesTotal() { return lastInsertedTriplesTotal; }
+    public long getLastFullBuildDurationMs() { return lastFullBuildDurationMs; }
+    public long getLastIncrementalCycleDurationMs() { return lastIncrementalCycleDurationMs; }
+    public long getLastProcessedUpToLag() { return lastProcessedUpToLag; }
+
     // ---------------- Public entry points ----------------
 
     /**
@@ -188,6 +209,7 @@ public final class AuthorityResolver {
      * {@code processedUpTo = M}, flips the pointer, drops the previous graph.
      */
     synchronized void runFullBuild(String trustStateHash) {
+        long startNanos = System.nanoTime();
         long loadCounter = getCurrentLoadCounter();
         IRI newGraph = SpacesVocab.forSpaceState(trustStateHash, loadCounter);
         IRI oldGraph = getCurrentSpaceStateGraph();
@@ -215,12 +237,20 @@ public final class AuthorityResolver {
         }
 
         TierSubjectTotals totals = computeTierSubjectTotals(newGraph);
+        long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        lastSubjectTotals = totals;
+        lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
+                + counts.maintainer + counts.member + counts.observer;
+        lastFullBuildDurationMs = durationMs;
+        lastProcessedUpToLag = 0L;
         log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={})",
+                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={}) "
+                        + "durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer);
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                durationMs);
     }
 
     // ---------------- Incremental cycle ----------------
@@ -245,6 +275,7 @@ public final class AuthorityResolver {
      * </ol>
      */
     synchronized void runIncrementalCycle(IRI graph) {
+        long startNanos = System.nanoTime();
         long currentLoadCounter = getCurrentLoadCounter();
         long lastProcessed = readProcessedUpTo(graph);
         if (lastProcessed < 0) {
@@ -252,6 +283,7 @@ public final class AuthorityResolver {
                     graph);
             return;
         }
+        lastProcessedUpToLag = currentLoadCounter - lastProcessed;
         if (currentLoadCounter <= lastProcessed) {
             log.debug("AuthorityResolver.runIncrementalCycle: caught up at load {} on {}",
                     currentLoadCounter, graph);
@@ -278,14 +310,19 @@ public final class AuthorityResolver {
         writeProcessedUpTo(graph, currentLoadCounter);
 
         TierSubjectTotals totals = computeTierSubjectTotals(graph);
+        long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        lastSubjectTotals = totals;
+        lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
+                + counts.maintainer + counts.member + counts.observer;
+        lastIncrementalCycleDurationMs = durationMs;
         log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={}) "
-                        + "structuralInvalidation={} structuralAdds={}",
+                        + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
-                structuralInvalidation, structuralAdds);
+                structuralInvalidation, structuralAdds, durationMs);
     }
 
     /**

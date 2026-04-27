@@ -1,5 +1,6 @@
 package com.knowledgepixels.query;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -41,6 +42,22 @@ class AuthorityResolverTest {
         AuthorityResolver b = AuthorityResolver.get();
         assertNotNull(a);
         assertSame(a, b, "get() must always return the same instance");
+    }
+
+    @Test
+    void snapshotMetrics_defaultsAreZeroBeforeFirstCycle() {
+        // Scrape-before-first-build must return 0, not NaN/null. Guards the
+        // MetricsCollector lambdas that dereference getLastSubjectTotals().
+        AuthorityResolver ar = AuthorityResolver.get();
+        AuthorityResolver.TierSubjectTotals totals = ar.getLastSubjectTotals();
+        assertNotNull(totals);
+        assertEquals(0L, totals.adminRIs());
+        assertEquals(0L, totals.attachmentRAs());
+        assertEquals(0L, totals.nonAdminRIs());
+        assertEquals(0L, ar.getLastInsertedTriplesTotal());
+        assertEquals(0L, ar.getLastFullBuildDurationMs());
+        assertEquals(0L, ar.getLastIncrementalCycleDurationMs());
+        assertEquals(0L, ar.getLastProcessedUpToLag());
     }
 
     @Test

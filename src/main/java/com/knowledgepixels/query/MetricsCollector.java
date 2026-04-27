@@ -68,6 +68,39 @@ public final class MetricsCollector {
                     .tag("status", status.name())
                     .register(meterRegistry);
         }
+
+        // Spaces / AuthorityResolver gauges. These read volatile fields kept
+        // by AuthorityResolver — no SPARQL on the scrape path. Each lambda
+        // re-fetches the singleton to match the lazy-init pattern used by
+        // the rest of the codebase.
+        Gauge.builder("registry.spaces.subjects.admin_ris",
+                        () -> (double) AuthorityResolver.get().getLastSubjectTotals().adminRIs())
+                .description("Distinct admin gen:RoleInstantiation subjects in the current space-state graph (last build/cycle observation)")
+                .register(meterRegistry);
+        Gauge.builder("registry.spaces.subjects.attachment_ras",
+                        () -> (double) AuthorityResolver.get().getLastSubjectTotals().attachmentRAs())
+                .description("Distinct gen:RoleAssignment subjects in the current space-state graph (last build/cycle observation)")
+                .register(meterRegistry);
+        Gauge.builder("registry.spaces.subjects.non_admin_ris",
+                        () -> (double) AuthorityResolver.get().getLastSubjectTotals().nonAdminRIs())
+                .description("Distinct non-admin gen:RoleInstantiation subjects in the current space-state graph (last build/cycle observation)")
+                .register(meterRegistry);
+        Gauge.builder("registry.spaces.delta.last_inserted_triples",
+                        () -> (double) AuthorityResolver.get().getLastInsertedTriplesTotal())
+                .description("Total inserted triples across all five tiers in the most recent full build or incremental cycle")
+                .register(meterRegistry);
+        Gauge.builder("registry.spaces.rebuild.last_duration_seconds",
+                        () -> AuthorityResolver.get().getLastFullBuildDurationMs() / 1000.0)
+                .description("Wall-clock duration of the most recent full space-state build")
+                .register(meterRegistry);
+        Gauge.builder("registry.spaces.cycle.last_duration_seconds",
+                        () -> AuthorityResolver.get().getLastIncrementalCycleDurationMs() / 1000.0)
+                .description("Wall-clock duration of the most recent incremental space-state cycle that did work")
+                .register(meterRegistry);
+        Gauge.builder("registry.spaces.processed_up_to_lag",
+                        () -> (double) AuthorityResolver.get().getLastProcessedUpToLag())
+                .description("currentLoadCounter - processedUpTo observed at the start of the most recent incremental cycle (0 after a full build)")
+                .register(meterRegistry);
     }
 
     /**
