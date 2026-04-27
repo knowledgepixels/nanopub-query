@@ -240,6 +240,10 @@ public class MainVerticle extends AbstractVerticle {
                      + "<li><a href=\"/pubkeys\">Pubkey Repos</a></li>"
                      + "<li><a href=\"/types\">Type Repos</a></li>"
                      + "</ul>"
+                     + (FeatureFlags.spacesEnabled()
+                             ? "<p>Spaces:</p>"
+                               + "<ul><li><a href=\"/spaces\">Spaces</a></li></ul>"
+                             : "")
                      + pinnedApiLinks
                      + "</body>\n"
                      + "</html>";
@@ -323,6 +327,31 @@ public class MainVerticle extends AbstractVerticle {
                 req.response().setStatusCode(500).end("Error: " + ex.getMessage());
             });
         });
+        io.vertx.core.Handler<RoutingContext> spacesHandler = req -> {
+            if (!FeatureFlags.spacesEnabled()) {
+                req.response().setStatusCode(404)
+                        .putHeader("content-type", "text/plain")
+                        .end("Spaces feature is disabled");
+                return;
+            }
+            // Path suffix wins over Accept header so /spaces.json is unambiguous.
+            boolean wantJson = req.normalizedPath().endsWith(".json")
+                    || "application/json".equalsIgnoreCase(req.request().getHeader("Accept"));
+            vertx.<String>executeBlocking(() -> {
+                var rows = SpacesListingRoute.fetchRows();
+                return wantJson
+                        ? SpacesListingRoute.renderJson(rows)
+                        : SpacesListingRoute.renderHtml(rows);
+            }, false).onSuccess(body -> {
+                req.response().putHeader(
+                        "content-type",
+                        wantJson ? "application/json" : "text/html").end(body);
+            }).onFailure(ex -> {
+                req.response().setStatusCode(500).end("Error: " + ex.getMessage());
+            });
+        };
+        proxyRouter.route(HttpMethod.GET, "/spaces").handler(spacesHandler);
+        proxyRouter.route(HttpMethod.GET, "/spaces.json").handler(spacesHandler);
         proxyRouter.route(HttpMethod.GET, "/style.css").handler(req -> {
             if (css == null) {
                 css = getResourceAsString("style.css");
