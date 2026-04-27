@@ -11,6 +11,7 @@ import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.FOAF;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.query.BindingSet;
 import org.eclipse.rdf4j.query.QueryLanguage;
@@ -1061,6 +1062,18 @@ public final class AuthorityResolver {
                     spacesConn.add(accountStateIri, NPA_PUBKEY, pubkey, newGraph);
                     spacesConn.add(accountStateIri, NPA_TRUST_STATUS, statusIri, newGraph);
                     count++;
+                }
+            }
+            // Mirror canonical foaf:name triples for approved agents. The trust
+            // loader emits one per agent (across approved keys, MAX(ratio) wins).
+            // Copying them into the space-state graph means consumers reading
+            // ?agent foaf:name ?n inside the state graph hit local data, with no
+            // cross-repo SERVICE.
+            try (RepositoryResult<Statement> nameRows = trustConn.getStatements(
+                    null, FOAF.NAME, null, trustStateIri)) {
+                while (nameRows.hasNext()) {
+                    Statement st = nameRows.next();
+                    spacesConn.add(st.getSubject(), st.getPredicate(), st.getObject(), newGraph);
                 }
             }
             spacesConn.commit();

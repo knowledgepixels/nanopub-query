@@ -40,7 +40,11 @@ public record TrustStateSnapshot(
      *
      * <p>{@code pathCount}, {@code ratio}, and {@code quota} can be {@code null}
      * for accounts with {@code status == "skipped"} (trust calculation rejected
-     * them, so those stats aren't meaningful). Boxed types preserve that.
+     * them, so those stats aren't meaningful). {@code name} and {@code nameCreatedAt}
+     * are {@code null} when the declaring intro nanopub asserted no
+     * {@code foaf:name} on the agent (or when running against a registry that
+     * predates the field — additive non-breaking schema). Boxed types preserve
+     * the absence.
      *
      * @param pubkey hex-encoded public key
      * @param agent agent IRI (typically an ORCID, but any IRI is allowed)
@@ -50,6 +54,11 @@ public record TrustStateSnapshot(
      * @param pathCount number of independent trust paths, or {@code null} for skipped accounts
      * @param ratio aggregated trust score, or {@code null} for skipped accounts
      * @param quota allocated upload quota, or {@code null} for skipped accounts
+     * @param name {@code foaf:name} from the declaring intro nanopub, or {@code null} if absent
+     * @param nameCreatedAt {@code dct:created} of the declaring intro, or {@code null} if absent.
+     *                      Used to break ties when multiple intros declare the same {@code (agent, pubkey)};
+     *                      consumers picking one canonical name per agent across keys typically use
+     *                      {@code MAX(ratio)} with this as a secondary tiebreaker.
      */
     public record AccountEntry(
             String pubkey,
@@ -58,7 +67,9 @@ public record TrustStateSnapshot(
             Integer depth,
             Integer pathCount,
             Double ratio,
-            Long quota
+            Long quota,
+            String name,
+            Instant nameCreatedAt
     ) {}
 
     /**
@@ -110,7 +121,9 @@ public record TrustStateSnapshot(
                     a.getInteger("depth"),
                     a.getInteger("pathCount"),
                     a.getDouble("ratio"),
-                    unwrapLongNullable(a, "quota")
+                    unwrapLongNullable(a, "quota"),
+                    a.getString("name"),
+                    unwrapDateNullable(a, "nameCreatedAt")
             ));
         }
 
@@ -137,6 +150,44 @@ public record TrustStateSnapshot(
             throw new IllegalArgumentException("Trust state envelope is missing required field: " + key);
         }
         return v;
+    }
+
+    /**
+     * Reads an optional date-typed field. Handles MongoDB extended JSON
+     * ({@code {"$date": "..."}} or {@code {"$date": {"$numberLong": "..."}}}),
+     * plain ISO-8601 strings, and JSON {@code null}/missing. Returns {@code null}
+     * for any of those last cases so the field is fully optional — consumers
+     * working with snapshots from a registry that predates the {@code nameCreatedAt}
+     * field still parse cleanly.
+     */
+    private static Instant unwrapDateNullable(JsonObject obj, String key) {
+        Object v = obj.getValue(key);
+        if (v == null) return null;
+        if (v instanceof JsonObject j) {
+            Object dateVal = j.getValue("$date");
+            if (dateVal instanceof String s) {
+                try {
+                    return Instant.parse(s);
+                } catch (Exception ex) {
+                    throw new IllegalArgumentException("Cannot parse " + key + " as ISO-8601 instant: " + s, ex);
+                }
+            }
+            if (dateVal instanceof JsonObject inner) {
+                String numberLong = inner.getString("$numberLong");
+                if (numberLong != null) return Instant.ofEpochMilli(Long.parseLong(numberLong));
+            }
+            if (dateVal instanceof Number n) return Instant.ofEpochMilli(n.longValue());
+            throw new IllegalArgumentException("Cannot unwrap " + key + " from extended JSON $date: " + j);
+        }
+        if (v instanceof String s) {
+            try {
+                return Instant.parse(s);
+            } catch (Exception ex) {
+                throw new IllegalArgumentException("Cannot parse " + key + " as ISO-8601 instant: " + s, ex);
+            }
+        }
+        if (v instanceof Number n) return Instant.ofEpochMilli(n.longValue());
+        throw new IllegalArgumentException("Cannot unwrap " + key + " as date: " + v);
     }
 
     /**

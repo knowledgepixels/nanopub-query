@@ -91,7 +91,7 @@ class TrustStateSnapshotTest {
         TrustStateSnapshot s = TrustStateSnapshot.parse(FIXTURE);
         assertThrows(UnsupportedOperationException.class,
                 () -> s.accounts().add(new TrustStateSnapshot.AccountEntry(
-                        "x", "y", "z", 0, 0, 0.0, 0L)));
+                        "x", "y", "z", 0, 0, 0.0, 0L, null, null)));
     }
 
     @Test
@@ -144,6 +144,77 @@ class TrustStateSnapshotTest {
                 "\"pubkey\": \"edf7482308e4e59fc3f658fbd1fe2a2a9a538de3adce2ec7ad6c5f804461d310\",",
                 "");
         assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(json));
+    }
+
+    @Test
+    void parse_extractsNameAndNameCreatedAtWhenPresent() {
+        // Registry-side change (#62): accounts may carry foaf:name + dct:created
+        // of the declaring intro. nameCreatedAt arrives as MongoDB extended JSON
+        // ({"$date": "..."}) when the registry serializes a Date; the parser
+        // must accept that shape as well as plain ISO-8601 strings.
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": {"$numberLong": "1"},
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": [
+                    {
+                      "pubkey": "abcdef",
+                      "agent": "https://orcid.org/0000-0002-1267-0234",
+                      "status": "loaded",
+                      "depth": 1,
+                      "pathCount": 1,
+                      "ratio": 0.5,
+                      "quota": 100,
+                      "name": "Tobias Kuhn",
+                      "nameCreatedAt": {"$date": "2025-11-12T10:30:00Z"}
+                    }
+                  ]
+                }
+                """;
+        TrustStateSnapshot s = TrustStateSnapshot.parse(json);
+        TrustStateSnapshot.AccountEntry a = s.accounts().get(0);
+        assertEquals("Tobias Kuhn", a.name());
+        assertEquals(Instant.parse("2025-11-12T10:30:00Z"), a.nameCreatedAt());
+    }
+
+    @Test
+    void parse_acceptsAccountWithoutNameFields() {
+        // Registry that predates the name field: no "name" / "nameCreatedAt"
+        // keys at all. Parser must treat them as null, not throw — the schema
+        // is additive and consumers must work against either registry version.
+        TrustStateSnapshot s = TrustStateSnapshot.parse(FIXTURE);
+        TrustStateSnapshot.AccountEntry a = s.accounts().get(0);
+        assertNull(a.name());
+        assertNull(a.nameCreatedAt());
+    }
+
+    @Test
+    void parse_acceptsPlainStringNameCreatedAt() {
+        // If the registry ever serializes nameCreatedAt as a plain ISO-8601
+        // string (no $date wrap), the parser must still accept it.
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": {"$numberLong": "1"},
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": [
+                    {
+                      "pubkey": "x",
+                      "agent": "https://example.org/agent",
+                      "status": "loaded",
+                      "depth": 1,
+                      "pathCount": 1,
+                      "ratio": 0.5,
+                      "quota": 100,
+                      "name": "Alice",
+                      "nameCreatedAt": "2025-06-15T09:00:00Z"
+                    }
+                  ]
+                }
+                """;
+        TrustStateSnapshot s = TrustStateSnapshot.parse(json);
+        assertEquals(Instant.parse("2025-06-15T09:00:00Z"), s.accounts().get(0).nameCreatedAt());
     }
 
     @Test
