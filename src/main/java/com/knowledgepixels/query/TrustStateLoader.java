@@ -4,8 +4,11 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -15,6 +18,7 @@ import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.FOAF;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.model.vocabulary.XSD;
 import org.eclipse.rdf4j.query.QueryLanguage;
@@ -250,6 +254,17 @@ public class TrustStateLoader {
                 }
             }
 
+            // 1b. Canonical foaf:name per agent. The registry stamps each account
+            // row with the foaf:name + dct:created of its declaring intro
+            // (see nanopub-registry#113). Per-agent canonical name is whichever
+            // approved row has the highest ratio (ties → MIN(name) lex). Emitted
+            // once per agent in the trust-state graph so consumers can read
+            // ?agent foaf:name ?n directly without a SERVICE join to /repo/full.
+            for (Map.Entry<String, String> e : resolveCanonicalNames(snapshot).entrySet()) {
+                conn.add(vf.createIRI(e.getKey()), FOAF.NAME,
+                        vf.createLiteral(e.getValue()), trustStateIri);
+            }
+
             // 2. Cross-state metadata in npa:graph
             conn.add(trustStateIri, RDF.TYPE, NPA_TRUST_STATE, NPA.GRAPH);
             conn.add(trustStateIri, NPA_HAS_TRUST_STATE_HASH,
@@ -330,6 +345,46 @@ public class TrustStateLoader {
     static String accountStateHash(String trustStateHash, TrustStateSnapshot.AccountEntry a) {
         String composite = trustStateHash + "|" + a.pubkey() + "|" + a.agent();
         return Hashing.sha256().hashString(composite, StandardCharsets.UTF_8).toString();
+    }
+
+    /** Trust-approved status set: rows with one of these {@code npa:trustStatus} values
+     *  are eligible to contribute the canonical agent name. Matches the set used by
+     *  {@code AuthorityResolver.mirrorTrustState}. */
+    private static final Set<String> APPROVED_STATUSES = Set.of("loaded", "toLoad");
+
+    /**
+     * Per-agent canonical name resolution. Returns a map from agent IRI to its
+     * canonical {@code foaf:name} literal, derived from the snapshot's per-account
+     * {@code name} field.
+     *
+     * <p>Policy: among an agent's account rows whose {@code status} is approved
+     * ({@code loaded} or {@code toLoad}) and whose {@code ratio} and {@code name}
+     * are both non-null, pick the row with the highest {@code ratio}. Ties break
+     * on lex-min {@code name} for determinism across rebuilds. Agents with no
+     * qualifying row are simply absent from the result map (no name emitted).
+     *
+     * <p>Per-{@code (agent, pubkey)} resolution (the latest declaring intro
+     * supplies that row's {@code name}) lives in the registry; this layer only
+     * folds across keys.
+     */
+    static Map<String, String> resolveCanonicalNames(TrustStateSnapshot snapshot) {
+        Map<String, TrustStateSnapshot.AccountEntry> chosen = new HashMap<>();
+        for (TrustStateSnapshot.AccountEntry a : snapshot.accounts()) {
+            if (!APPROVED_STATUSES.contains(a.status())) continue;
+            if (a.name() == null || a.ratio() == null) continue;
+            TrustStateSnapshot.AccountEntry incumbent = chosen.get(a.agent());
+            if (incumbent == null
+                    || a.ratio() > incumbent.ratio()
+                    || (a.ratio().equals(incumbent.ratio())
+                            && a.name().compareTo(incumbent.name()) < 0)) {
+                chosen.put(a.agent(), a);
+            }
+        }
+        Map<String, String> result = new HashMap<>(chosen.size());
+        for (Map.Entry<String, TrustStateSnapshot.AccountEntry> e : chosen.entrySet()) {
+            result.put(e.getKey(), e.getValue().name());
+        }
+        return result;
     }
 
 }
