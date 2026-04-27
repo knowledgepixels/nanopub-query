@@ -471,6 +471,105 @@ Two consequences of using this pattern:
 - A consumer never needs to know the trust-state hash or load counter — those are internal to the materializer.
 - There is no `for-space` HTTP redirect: it would have to resolve the pointer at request time and return a frozen graph IRI, reintroducing the same race the in-query pattern is designed to avoid.
 
+### What the state graph does and does not carry per RoleInstantiation
+
+Every validated `gen:RoleInstantiation` in the state graph carries:
+
+- `npa:forSpace` — the Space IRI
+- `npa:forAgent` — the agent IRI
+- `npa:viaNanopub` — the source nanopub
+- `npa:inverseProperty gen:hasAdmin` — *only* on admin-tier RIs (pinned)
+
+Non-admin RIs intentionally do not carry their role predicate or tier class in the state graph: those are dropped after validation, since the same RI subject can validate against multiple tier rules and only one row is written per nanopub.
+
+To recover the role predicate per-RI, join back to `npa:spacesGraph` on the same `?ri` IRI (the `npari:<artifactCode>` is shared across both graphs):
+
+```sparql
+GRAPH ?g { ?ri a gen:RoleInstantiation ; npa:forAgent ?agent . }    # state graph
+GRAPH npa:spacesGraph {
+  { ?ri npa:regularProperty ?pred } UNION { ?ri npa:inverseProperty ?pred }
+}
+```
+
+### Worked example — agents in a space, with names and approval status
+
+The materializer only writes *validated* RIs into the state graph. Some space-relevant nanopubs are extracted but never validate — typically because the publisher (or, for `PUBLISHER_IS_SELF`, the agent) has no `npa:AccountState` in the trust state. Consumers that want to surface those rows alongside the validated set (e.g. for a "people who self-declared but aren't approved yet" UI section) read the **universe** from `npa:spacesGraph` and tag rows by checking against the state graph.
+
+The recommended one-query pattern combines:
+
+1. Universe enumeration from the extraction graph (drives row generation).
+2. `EXISTS` checks against the state graph for `(space, agent)` validation and against the mirrored `AccountState` rows for trust visibility — `EXISTS` is critical here so per-agent flags don't multiply rows.
+3. A three-way status: `approved` / `tier-mismatch` / `agent-unknown`.
+4. Cross-repo `SERVICE` to `/repo/full` for `foaf:name` (the trust repo carries pubkey / status only, no human-readable names).
+
+```sparql
+PREFIX npa:  <http://purl.org/nanopub/admin/>
+PREFIX gen:  <https://w3id.org/kpxl/gen/terms/>
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+
+SELECT ?agent ?name ?status
+       (GROUP_CONCAT(DISTINCT ?role; separator=", ") AS ?roles)
+WHERE {
+  GRAPH <http://purl.org/nanopub/admin/graph> {
+    <http://purl.org/nanopub/admin/thisRepo> npa:hasCurrentSpaceState ?g .
+  }
+
+  # Universe: every extracted RoleInstantiation for the space, validated or not.
+  GRAPH npa:spacesGraph {
+    ?ri a gen:RoleInstantiation ;
+        npa:forSpace <SPACE_IRI> ;
+        npa:forAgent ?agent .
+    OPTIONAL {
+      { ?ri npa:regularProperty ?pred } UNION { ?ri npa:inverseProperty ?pred }
+    }
+  }
+  BIND(IF(BOUND(?pred), STR(?pred), "?") AS ?role)
+
+  # Per-agent flags via EXISTS so they don't multiply rows.
+  BIND(EXISTS {
+    GRAPH ?g {
+      ?riV a gen:RoleInstantiation ;
+           npa:forSpace <SPACE_IRI> ;
+           npa:forAgent ?agent .
+    }
+  } AS ?hasValidatedRI)
+  BIND(EXISTS {
+    GRAPH ?g { ?acct a npa:AccountState ; npa:agent ?agent . }
+  } AS ?hasAccountState)
+
+  BIND(IF(?hasValidatedRI, "approved",
+       IF(?hasAccountState, "tier-mismatch", "agent-unknown")) AS ?status)
+
+  SERVICE <http://query:9393/repo/full> {
+    OPTIONAL { ?agent foaf:name ?name }
+  }
+}
+GROUP BY ?agent ?name ?status
+ORDER BY ?status ?agent
+```
+
+Three-way status semantics:
+
+| status | meaning |
+|---|---|
+| `approved` | At least one of the agent's RIs in this space passed tier validation; the agent is a recognised member at some tier. |
+| `tier-mismatch` | The agent has an `AccountState` in the trust state (so they're a known account) but no RI for this space validated at any tier. Typical cause: a role was granted to them but the granting publisher's tier didn't qualify under the role's declared `hasRoleType`. |
+| `agent-unknown` | The agent has no `AccountState` at all — they're outside the trust state's reach. Self-declarations from such agents extract correctly but never validate. |
+
+Common UI filters as one-line additions before `GROUP BY`:
+
+| filter | clause |
+|---|---|
+| Validated only | `FILTER(?status = "approved")` |
+| Hide outside-the-trust-radius agents | `FILTER(?status != "agent-unknown")` |
+| Unapproved only | `FILTER(?status != "approved")` |
+
+### Operational notes for the query above
+
+- **Names live in `/repo/full`, not `/repo/trust`.** The trust repo only carries `npa:agent`, `npa:pubkey`, `npa:trustStatus`, `npa:depth`, `npa:ratio`, and similar admin metadata — there is no `foaf:name` there. Agent introduction nanopubs (which carry `foaf:name`) are indexed in `full` (and `meta`).
+- **`SERVICE` host: use the docker-compose service name, not `localhost`.** The `SERVICE` clause executes inside the RDF4J container, where `localhost` resolves to RDF4J itself — not to the nanopub-query proxy. Use `http://query:9393/repo/full` so the SERVICE call comes back through the proxy. Outside the docker network, replace with whatever DNS name reaches the proxy from RDF4J's perspective.
+- **Multi-name agents**: the `full` repo can hold multiple `foaf:name` claims for the same agent (variant capitalisations, name changes). The query above produces one row per `(agent, name, status)` triple; if you want exactly one row per `(agent, status)`, drop `?name` from `GROUP BY` and replace its projection with `(SAMPLE(?name) AS ?name)` or `(GROUP_CONCAT(DISTINCT ?name; separator=" / ") AS ?names)`.
+
 ## Verification
 
 - Unit: closures, incremental delta correctness (same result as a full rebuild), invalidation cleanup (sticky, non-cascading), rebuild idempotence.
