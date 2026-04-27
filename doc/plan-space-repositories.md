@@ -427,8 +427,8 @@ Readers are never blocked: during the worker's build the pointer still reference
 
 1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps.
 2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup.
-3. **Routes/metrics/invalidation** — `/spaces` listing, `for-space` redirect, gauges (rebuild duration, delta size, `processedUpTo` lag).
-4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query against the current `npass:*` graph; drop `isAdminPubkey` gate and pinned templates/queries.
+3. **Routes / metrics** — `/spaces` listing route (HTML + JSON), Prometheus gauges (rebuild duration, delta size, `processedUpTo` lag, distinct-subject totals).
+4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query that resolves the current `npass:*` graph from the pointer (see [Querying the current space-state graph](#querying-the-current-space-state-graph)); drop `isAdminPubkey` gate and pinned templates/queries.
 
 ## Bootstrap
 
@@ -440,9 +440,32 @@ On first deployment, scan `meta` / `full` for the predefined types, load each ma
 |------|------|
 | `NanopubLoader.java` | Type-match + full-nanopub write + extraction into `npa:spacesGraph` + load-number stamping + trigger the materializer |
 | `TripleStore.java` | `spaces` repo init |
-| `MainVerticle.java` | `/spaces` route, `for-space` redirect |
+| `MainVerticle.java` | `/spaces` listing route (HTML + JSON) |
 | `MetricsCollector.java` | Rebuild duration, delta size, `processedUpTo` lag |
 | **New:** `AuthorityResolver.java` | Mirror step, per-tier SPARQL UPDATE loops on load-number deltas, first-build on trust-state flips, pointer flip and old-graph drop |
+
+## Querying the current space-state graph
+
+Consumers (Nanodash, ad-hoc SPARQL users) resolve the live graph in-query by joining on the pointer in `npa:graph`:
+
+```sparql
+PREFIX npa: <http://purl.org/nanopub/admin/>
+SELECT ... WHERE {
+  GRAPH <http://purl.org/nanopub/admin/graph> {
+    <http://purl.org/nanopub/admin/thisRepo> npa:hasCurrentSpaceState ?g .
+  }
+  GRAPH ?g {
+    # actual space-state pattern here
+  }
+}
+```
+
+This is the *only* recommended pattern. Do **not** resolve the pointer in a separate request and then issue a second query against a frozen `npass:<hash>_<n>` IRI: a trust-state flip between the two requests will leave the second query reading an orphaned graph that is about to be dropped (or already gone). Resolving the pointer in the same SPARQL transaction as the actual read is atomic across flips.
+
+Two consequences of using this pattern:
+
+- A consumer never needs to know the trust-state hash or load counter — those are internal to the materializer.
+- There is no `for-space` HTTP redirect: it would have to resolve the pointer at request time and return a frozen graph IRI, reintroducing the same race the in-query pattern is designed to avoid.
 
 ## Verification
 
