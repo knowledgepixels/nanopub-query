@@ -122,6 +122,24 @@ class AuthorityResolverTest {
     }
 
     @Test
+    void observerTierUpdate_acceptsAdminPublishedGrant() {
+        // Permissive observer: admin-published grants of an ObserverRole-typed
+        // role validate at this tier without needing a separate self-attestation.
+        // Without this path, "admin assigned X the speaker role" silently no-ops
+        // when the speaker role didn't declare an explicit tier subclass and
+        // therefore defaulted to ObserverRole.
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 0,
+                com.knowledgepixels.query.vocabulary.GEN.OBSERVER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_ADMIN);
+        assertTrue(sparql.contains(
+                com.knowledgepixels.query.vocabulary.GEN.OBSERVER_ROLE.stringValue()),
+                "tier class is substituted to ObserverRole");
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
+                "admin publisher constraint pinned via gen:hasAdmin");
+    }
+
+    @Test
     void observerTierUpdate_allowsSelfEvidence() {
         String sparql = AuthorityResolver.nonAdminTierUpdate(
                 TEST_GRAPH, 0,

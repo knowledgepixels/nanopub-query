@@ -53,8 +53,12 @@ public final class BackcompatRolePredicates {
             Map.entry(iri("https://w3id.org/fair/3pff/has-event-assistant"),                Direction.INVERSE),
             Map.entry(iri("https://w3id.org/fair/3pff/has-event-facilitator"),              Direction.INVERSE),
             Map.entry(iri("https://w3id.org/fair/3pff/participatedAsFacilitatorAssistantIn"), Direction.REGULAR),
+            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsFacilitatorIn"),          Direction.REGULAR),
             Map.entry(iri("https://w3id.org/fair/3pff/participatedAsImplementerAspirantIn"),  Direction.REGULAR),
+            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsImplementerIn"),          Direction.REGULAR),
             Map.entry(iri("https://w3id.org/fair/3pff/participatedAsParticipantIn"),          Direction.REGULAR),
+            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsTrainerAssistantIn"),     Direction.REGULAR),
+            Map.entry(iri("https://w3id.org/fair/3pff/participatedAsTrainerIn"),              Direction.REGULAR),
             // KPXL gen terms
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasAdmin"),       Direction.INVERSE),
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasObserver"),    Direction.INVERSE),

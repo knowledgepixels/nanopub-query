@@ -376,7 +376,15 @@ public final class AuthorityResolver {
         c.member += runTierLabeled("member(maint-pub,late)", graph,
                 nonAdminTierUpdate(graph, -1,
                         GEN.MEMBER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
-        c.observer = runTierLabeled("observer(self,late)", graph,
+        c.observer = runTierLabeled("observer(admin-pub,late)", graph,
+                nonAdminTierUpdate(graph, -1, GEN.OBSERVER_ROLE, PUBLISHER_IS_ADMIN));
+        c.observer += runTierLabeled("observer(maint-pub,late)", graph,
+                nonAdminTierUpdate(graph, -1,
+                        GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
+        c.observer += runTierLabeled("observer(member-pub,late)", graph,
+                nonAdminTierUpdate(graph, -1,
+                        GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MEMBER_ROLE)));
+        c.observer += runTierLabeled("observer(self,late)", graph,
                 nonAdminTierUpdate(graph, -1, GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
         return c;
     }
@@ -453,11 +461,21 @@ public final class AuthorityResolver {
                 GEN.MEMBER_ROLE, PUBLISHER_IS_ADMIN));
         c.member += runTierLabeled("member(maint-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.MEMBER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
-        // Observer tier: self-evidence only per the plan's policy table
-        // (gen:ObserverRole = self). Authority-publisher sub-tiers were overreach;
-        // the three of them have been removed, so an observer instantiation is
-        // validated iff the assignee's own pubkey signed it.
-        c.observer = runTierLabeled("observer(self)", graph, nonAdminTierUpdate(graph, lastProcessed,
+        // Observer tier: self-evidence OR a downward grant from any higher tier.
+        // ObserverRole is the default tier when a role definition omits an
+        // explicit subclass (see "Role types" in design-space-repositories.md), so
+        // most "X assigned Y this role" nanopubs land here. Restricting the tier
+        // to PUBLISHER_IS_SELF would silently drop those grants. The four
+        // sub-loops mirror the trust-state's downward-only chain: admin grants
+        // anything; maintainers and members grant observer; everyone may
+        // self-attest.
+        c.observer = runTierLabeled("observer(admin-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, PUBLISHER_IS_ADMIN));
+        c.observer += runTierLabeled("observer(maint-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MAINTAINER_ROLE)));
+        c.observer += runTierLabeled("observer(member-pub)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MEMBER_ROLE)));
+        c.observer += runTierLabeled("observer(self)", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
         return c;
     }
