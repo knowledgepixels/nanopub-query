@@ -106,7 +106,7 @@
     <dependency>
       <groupId>org.nanopub</groupId>
       <artifactId>nanopub</artifactId>
-      <version>1.86.2</version>
+      <version>1.87.1</version>
     </dependency>
     <!-- Temporary: dependency on Jitpack for snapshot builds -->
     <!-- <dependency>
@@ -123,12 +123,12 @@
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-repository-http</artifactId>
-      <version>5.3.0</version>
+      <version>5.3.1</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-sail-nativerdf</artifactId>
-      <version>5.3.0</version>
+      <version>5.3.1</version>
     </dependency>
     <dependency>
       <groupId>io.micrometer</groupId>
