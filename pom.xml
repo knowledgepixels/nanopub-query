@@ -106,7 +106,7 @@
     <dependency>
       <groupId>org.nanopub</groupId>
       <artifactId>nanopub</artifactId>
-      <version>1.86.2</version>
+      <version>1.87.1</version>
     </dependency>
     <!-- Temporary: dependency on Jitpack for snapshot builds -->
     <!-- <dependency>
