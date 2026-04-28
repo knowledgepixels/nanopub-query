@@ -500,7 +500,7 @@ The recommended one-query pattern combines:
 1. Universe enumeration from the extraction graph (drives row generation).
 2. `EXISTS` checks against the state graph for `(space, agent)` validation and against the mirrored `AccountState` rows for trust visibility — `EXISTS` is critical here so per-agent flags don't multiply rows.
 3. A three-way status: `approved` / `tier-mismatch` / `agent-unknown`.
-4. Cross-repo `SERVICE` to `/repo/full` for `foaf:name` (the trust repo carries pubkey / status only, no human-readable names).
+4. `OPTIONAL { GRAPH ?g { ?agent foaf:name ?name } }` against the spaces state graph — the canonical name is mirrored in alongside `AccountState` rows, so no cross-repo join is needed for the `approved` and `tier-mismatch` rows.
 
 ```sparql
 PREFIX npa:  <http://purl.org/nanopub/admin/>
@@ -540,9 +540,7 @@ WHERE {
   BIND(IF(?hasValidatedRI, "approved",
        IF(?hasAccountState, "tier-mismatch", "agent-unknown")) AS ?status)
 
-  SERVICE <http://query:9393/repo/full> {
-    OPTIONAL { ?agent foaf:name ?name }
-  }
+  OPTIONAL { GRAPH ?g { ?agent foaf:name ?name } }
 }
 GROUP BY ?agent ?name ?status
 ORDER BY ?status ?agent
@@ -566,9 +564,8 @@ Common UI filters as one-line additions before `GROUP BY`:
 
 ### Operational notes for the query above
 
-- **Names live in `/repo/full`, not `/repo/trust`.** The trust repo only carries `npa:agent`, `npa:pubkey`, `npa:trustStatus`, `npa:depth`, `npa:ratio`, and similar admin metadata — there is no `foaf:name` there. Agent introduction nanopubs (which carry `foaf:name`) are indexed in `full` (and `meta`).
-- **`SERVICE` host: use the docker-compose service name, not `localhost`.** The `SERVICE` clause executes inside the RDF4J container, where `localhost` resolves to RDF4J itself — not to the nanopub-query proxy. Use `http://query:9393/repo/full` so the SERVICE call comes back through the proxy. Outside the docker network, replace with whatever DNS name reaches the proxy from RDF4J's perspective.
-- **Multi-name agents**: the `full` repo can hold multiple `foaf:name` claims for the same agent (variant capitalisations, name changes). The query above produces one row per `(agent, name, status)` triple; if you want exactly one row per `(agent, status)`, drop `?name` from `GROUP BY` and replace its projection with `(SAMPLE(?name) AS ?name)` or `(GROUP_CONCAT(DISTINCT ?name; separator=" / ") AS ?names)`.
+- **Names are mirrored into the spaces state graph alongside `AccountState` rows** — one canonical `foaf:name` per agent, picked at trust-state-flip time (per-(agent, pubkey) latest by `dct:created`; per-agent MAX(ratio), MIN(name) lex tiebreak). Read directly from `?g`; no cross-repo `SERVICE` is needed.
+- **`agent-unknown` agents have no mirrored name** — the mirror only covers agents with an `AccountState`. Self-declared agents outside the trust radius will appear in the result with `?name` unbound. If a UI needs to show those names too, add a `SERVICE <http://query:9393/repo/full> { OPTIONAL { ?agent foaf:name ?name } }` block guarded by `FILTER(?status = "agent-unknown")` (use the docker-compose service name, not `localhost`, since `SERVICE` resolves inside the RDF4J container).
 
 ## Verification
 
