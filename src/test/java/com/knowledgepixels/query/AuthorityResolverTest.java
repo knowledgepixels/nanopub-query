@@ -206,4 +206,109 @@ class AuthorityResolverTest {
                 "must skip admin-pinned RIs (those are handled by adminInvalidationDelete)");
     }
 
+    // ---------------- Sub-space admit + invalidation (PR 2) ----------------
+
+    @Test
+    void subSpaceAdmitUpdate_copiesDeclarationAndEmitsDirectTriples() {
+        String sparql = AuthorityResolver.subSpaceAdmitUpdate(TEST_GRAPH, 17);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        // Per-declaration row preserved with viaNanopub provenance.
+        assertTrue(sparql.contains("npa:SubSpaceDeclaration"),
+                "SubSpaceDeclaration type inserted");
+        assertTrue(sparql.contains("npa:childSpace"), "childSpace predicate");
+        assertTrue(sparql.contains("npa:parentSpace"), "parentSpace predicate");
+        assertTrue(sparql.contains("npa:viaNanopub"), "viaNanopub provenance preserved");
+        // Convenience direct triples on Space IRIs themselves.
+        assertTrue(sparql.contains("?child  npa:isSubSpaceOf ?parent"),
+                "direct child→parent triple emitted");
+        assertTrue(sparql.contains("?parent npa:hasSubSpace  ?child"),
+                "direct parent→child triple emitted");
+    }
+
+    @Test
+    void subSpaceAdmitUpdate_modeAChecksDualAdminPublisher() {
+        String sparql = AuthorityResolver.subSpaceAdmitUpdate(TEST_GRAPH, 0);
+        // Mode A — two FILTER EXISTS on admin-tier RoleInstantiations, one for child,
+        // one for parent, both with the same publisher.
+        assertTrue(sparql.contains("?riC"), "Mode A admin RI for child bound");
+        assertTrue(sparql.contains("?riP"), "Mode A admin RI for parent bound");
+        // Whitespace-tolerant check for "?riC ... npa:forSpace ?child ... npa:forAgent ?publisher".
+        java.util.regex.Pattern modeAChild = java.util.regex.Pattern.compile(
+                "\\?riC[\\s\\S]*?npa:forSpace\\s+\\?child[\\s\\S]*?npa:forAgent\\s+\\?publisher");
+        java.util.regex.Pattern modeAParent = java.util.regex.Pattern.compile(
+                "\\?riP[\\s\\S]*?npa:forSpace\\s+\\?parent[\\s\\S]*?npa:forAgent\\s+\\?publisher");
+        assertTrue(modeAChild.matcher(sparql).find(),
+                "Mode A: same publisher must be admin of child");
+        assertTrue(modeAParent.matcher(sparql).find(),
+                "Mode A: same publisher must be admin of parent");
+    }
+
+    @Test
+    void subSpaceAdmitUpdate_modeBChecksTwoDeclarationsCoveringBothSides() {
+        String sparql = AuthorityResolver.subSpaceAdmitUpdate(TEST_GRAPH, 0);
+        // Mode B — co-declaration ?d2 with a different ?np2.
+        assertTrue(sparql.contains("UNION"),
+                "Mode A and Mode B joined by UNION");
+        assertTrue(sparql.contains("?d2 a npa:SubSpaceDeclaration"),
+                "Mode B co-declaration bound");
+        assertTrue(sparql.contains("FILTER (?np2 != ?np)"),
+                "co-declaration must be a different nanopub");
+        assertTrue(sparql.contains("?publisher2"),
+                "second publisher bound from the co-declaration's pubkey");
+        // Each side's admin check accepts either publisher (so they jointly cover both).
+        assertTrue(sparql.contains("?riA npa:forAgent ?publisher } UNION { ?riA npa:forAgent ?publisher2"),
+                "Mode B child-side admin check unions both publishers");
+        assertTrue(sparql.contains("?riB npa:forAgent ?publisher } UNION { ?riB npa:forAgent ?publisher2"),
+                "Mode B parent-side admin check unions both publishers");
+    }
+
+    @Test
+    void subSpaceAdmitUpdate_hasDeltaAndInvalidationFiltersAndDedup() {
+        String sparql = AuthorityResolver.subSpaceAdmitUpdate(TEST_GRAPH, 17);
+        assertTrue(sparql.contains("FILTER (?ln > 17)"),
+                "load-number delta filter on the primary declaration");
+        // Two invalidation filters (np primary, np2 co-declaration). Both produced
+        // by the helper, so we know they're outside the GRAPH block.
+        assertTrue(sparql.contains("?_inv_np "),
+                "invalidation filter for primary nanopub");
+        assertTrue(sparql.contains("?_inv_np2 "),
+                "invalidation filter for Mode B co-declaration");
+        // Dedup against the state graph's existing SubSpaceDeclaration rows.
+        java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
+                "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<" + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
+                        + ">\\s*\\{\\s*\\?d\\s+a\\s+npa:SubSpaceDeclaration");
+        assertTrue(dedup.matcher(sparql).find(),
+                "dedup excludes already-validated declarations");
+    }
+
+    @Test
+    void subSpaceInvalidationDelete_targetsSubSpaceDeclarationRowsOnly() {
+        String sparql = AuthorityResolver.subSpaceInvalidationDelete(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("npa:SubSpaceDeclaration"),
+                "scoped to SubSpaceDeclaration rows");
+        assertTrue(sparql.contains("npa:Invalidation"),
+                "joins the Invalidation extraction");
+        assertTrue(sparql.contains("npa:invalidates ?np"),
+                "links invalidation to the source nanopub");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the invalidator's load number");
+        // Convenience direct triples (subject = ?child / ?parent) are NOT removed
+        // here — they're left sticky and cleaned by the next periodic rebuild.
+        // The DELETE pattern is keyed on ?d (the per-declaration subject).
+        assertFalse(sparql.contains("?child npa:isSubSpaceOf"),
+                "direct triples are not part of the DELETE — sticky until rebuild");
+    }
+
+    @Test
+    void subSpaceInvalidationCheckWhere_allowsAskOnlyUse() {
+        String where = AuthorityResolver.subSpaceInvalidationCheckWhere(TEST_GRAPH, 0);
+        assertTrue(where.contains("npa:SubSpaceDeclaration"),
+                "scoped to SubSpaceDeclaration rows in the state graph");
+        assertTrue(where.contains("npa:Invalidation"),
+                "joins the Invalidation extraction");
+        assertTrue(where.contains("FILTER (?ln > 0)"),
+                "delta filter on the invalidator's load number");
+    }
+
 }

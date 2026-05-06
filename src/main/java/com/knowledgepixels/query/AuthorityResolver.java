@@ -241,16 +241,16 @@ public final class AuthorityResolver {
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
-                + counts.maintainer + counts.member + counts.observer;
+                + counts.maintainer + counts.member + counts.observer + counts.subSpace;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={}) "
+                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} subspace={}) "
                         + "durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer, counts.subSpace,
                 durationMs);
     }
 
@@ -295,17 +295,22 @@ public final class AuthorityResolver {
         TierInsertedTriples counts = runAllTierLoops(graph, lastProcessed);
         boolean structuralAdds = (counts.admin > 0)
                 || (counts.attachment > 0)
+                || (counts.subSpace > 0)
                 || newRoleDeclarationsArrived(lastProcessed);
         if (structuralAdds) {
-            // Late-arrival sweep: only the leaf tiers (attachment/maintainer/member/observer)
-            // can promote candidates whose enabling event arrived in this same cycle. Skip
-            // the admin tier — its only enabling event is the admin grant itself, already
-            // handled by the regular pass.
+            // Late-arrival sweep: leaf tiers (attachment/maintainer/member/observer)
+            // can promote candidates whose enabling event arrived in this same cycle.
+            // Sub-space admit is also re-run here for Mode-B late-arrival (a new
+            // partner declaration can validate an older primary that the regular
+            // pass's load-number filter excluded). Skip the admin tier — its only
+            // enabling event is the admin grant itself, already handled by the
+            // regular pass.
             TierInsertedTriples lateCounts = runDownstreamWithoutLoadFilter(graph);
             counts.attachment += lateCounts.attachment;
             counts.maintainer += lateCounts.maintainer;
             counts.member     += lateCounts.member;
             counts.observer   += lateCounts.observer;
+            counts.subSpace   += lateCounts.subSpace;
         }
 
         writeProcessedUpTo(graph, currentLoadCounter);
@@ -314,15 +319,15 @@ public final class AuthorityResolver {
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
-                + counts.maintainer + counts.member + counts.observer;
+                + counts.maintainer + counts.member + counts.observer + counts.subSpace;
         lastIncrementalCycleDurationMs = durationMs;
         log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={}) "
+                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} subspace={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer, counts.subSpace,
                 structuralInvalidation, structuralAdds, durationMs);
     }
 
@@ -353,6 +358,15 @@ public final class AuthorityResolver {
                             roleDeclarationInvalidationCheckWhere(lastProcessed))) {
             structural = true;
         }
+        // Sub-space declarations are structural — invalidating one (Mode A) or one
+        // of two co-declarations (Mode B) changes the validated parent/child
+        // topology. The DELETE removes the per-declaration row; the convenience
+        // direct triples are left sticky and cleaned on the next periodic rebuild.
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+                            subSpaceInvalidationCheckWhere(graph, lastProcessed))) {
+            executeUpdate(subSpaceInvalidationDelete(graph, lastProcessed));
+            structural = true;
+        }
         // Leaf-tier RI deletes — no flag.
         executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
         if (structural) setNeedsFullRebuild();
@@ -367,6 +381,10 @@ public final class AuthorityResolver {
      */
     TierInsertedTriples runDownstreamWithoutLoadFilter(IRI graph) {
         TierInsertedTriples c = new TierInsertedTriples();
+        // Sub-space late-arrival: catches Mode-B candidates whose primary
+        // declaration is older than lastProcessed but whose partner just landed.
+        c.subSpace = runTierLabeled("subspace(late)", graph,
+                subSpaceAdmitUpdate(graph, -1));
         c.attachment = runTierLabeled("attachment(late)", graph,
                 attachmentValidationUpdate(graph, -1));
         c.maintainer = runTierLabeled("maintainer(late)", graph,
@@ -432,6 +450,7 @@ public final class AuthorityResolver {
         int maintainer;
         int member;
         int observer;
+        int subSpace;
     }
 
     /**
@@ -451,6 +470,10 @@ public final class AuthorityResolver {
     TierInsertedTriples runAllTierLoops(IRI graph, long lastProcessed) {
         TierInsertedTriples c = new TierInsertedTriples();
         c.admin = runTierLabeled("admin", graph, adminTierUpdate(graph, lastProcessed));
+        // Sub-space admit runs after admin closure has settled (Mode A + Mode B both
+        // need the admin set). Independent of role tiers — order between subspace
+        // and attachment / maintainer / member / observer doesn't matter.
+        c.subSpace = runTierLabeled("subspace", graph, subSpaceAdmitUpdate(graph, lastProcessed));
         c.attachment = runTierLabeled("attachment", graph,
                 attachmentValidationUpdate(graph, lastProcessed));
         c.maintainer = runTierLabeled("maintainer", graph, nonAdminTierUpdate(graph, lastProcessed,
@@ -878,6 +901,126 @@ public final class AuthorityResolver {
                 NPA.GRAPH);
     }
 
+    /**
+     * Sub-space admit pass. Copies validated {@code npa:SubSpaceDeclaration}
+     * extraction rows into the space-state graph (preserving the {@code npasub:}
+     * subject) and emits convenience {@code <child> npa:isSubSpaceOf <parent>} and
+     * {@code <parent> npa:hasSubSpace <child>} direct triples. Two satisfaction
+     * modes joined by UNION:
+     * <ul>
+     *   <li>Mode A — the declaration's publisher is a validated admin of both the
+     *       child and the parent space.</li>
+     *   <li>Mode B — a different non-invalidated declaration for the same
+     *       {@code (child, parent)} pair exists, and the two publishers between
+     *       them cover both admin sides (i.e. one of them is admin of the child,
+     *       one of them is admin of the parent — possibly the same one twice if
+     *       both happen to be admin of both).</li>
+     * </ul>
+     *
+     * <p>Mode-B late-arrival: when only the partner declaration is new in this
+     * cycle (the primary is older than {@code lastProcessed}), the load-number
+     * filter on {@code ?np} excludes the candidate. The late-arrival sweep
+     * ({@link #runDownstreamWithoutLoadFilter}) re-runs this pass without the
+     * load filter and catches it.
+     */
+    static String subSpaceAdmitUpdate(IRI graph, long lastProcessed) {
+        return """
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?d a npa:SubSpaceDeclaration ;
+                     npa:childSpace  ?child ;
+                     npa:parentSpace ?parent ;
+                     npa:viaNanopub  ?np .
+                  ?child  npa:isSubSpaceOf ?parent .
+                  ?parent npa:hasSubSpace  ?child  .
+                } }
+                WHERE {
+                  # 1. Anchor: candidate declarations from the extraction graph.
+                  GRAPH <%4$s> {
+                    ?d a npa:SubSpaceDeclaration ;
+                       npa:childSpace  ?child ;
+                       npa:parentSpace ?parent ;
+                       npa:pubkeyHash  ?pkh ;
+                       npa:viaNanopub  ?np .
+                  }
+                  # 2. Mirror: resolve ?pkh → ?publisher via the trust-approved row.
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:pubkey ?pkh ;
+                          npa:agent  ?publisher .
+                  }
+                  # 3. Authority gate.
+                  {
+                    # Mode A — publisher is admin of BOTH child and parent.
+                    FILTER EXISTS { GRAPH <%3$s> {
+                      ?riC a gen:RoleInstantiation ;
+                           npa:inverseProperty gen:hasAdmin ;
+                           npa:forSpace ?child ;
+                           npa:forAgent ?publisher .
+                    } }
+                    FILTER EXISTS { GRAPH <%3$s> {
+                      ?riP a gen:RoleInstantiation ;
+                           npa:inverseProperty gen:hasAdmin ;
+                           npa:forSpace ?parent ;
+                           npa:forAgent ?publisher .
+                    } }
+                  }
+                  UNION
+                  {
+                    # Mode B — co-declaration whose publisher covers the side this
+                    # one's publisher doesn't. Between {publisher, publisher2},
+                    # both admin sides must be covered.
+                    GRAPH <%4$s> {
+                      ?d2 a npa:SubSpaceDeclaration ;
+                          npa:childSpace  ?child ;
+                          npa:parentSpace ?parent ;
+                          npa:pubkeyHash  ?pkh2 ;
+                          npa:viaNanopub  ?np2 .
+                      FILTER (?np2 != ?np)
+                    }
+                    %8$s
+                    GRAPH <%3$s> {
+                      ?acct2 a npa:AccountState ;
+                             npa:pubkey ?pkh2 ;
+                             npa:agent  ?publisher2 .
+                    }
+                    FILTER EXISTS { GRAPH <%3$s> {
+                      ?riA a gen:RoleInstantiation ;
+                           npa:inverseProperty gen:hasAdmin ;
+                           npa:forSpace ?child .
+                      { ?riA npa:forAgent ?publisher } UNION { ?riA npa:forAgent ?publisher2 }
+                    } }
+                    FILTER EXISTS { GRAPH <%3$s> {
+                      ?riB a gen:RoleInstantiation ;
+                           npa:inverseProperty gen:hasAdmin ;
+                           npa:forSpace ?parent .
+                      { ?riB npa:forAgent ?publisher } UNION { ?riB npa:forAgent ?publisher2 }
+                    } }
+                  }
+                  # 4. Invalidation filter on the primary declaration's nanopub.
+                  %6$s
+                  # 5. Load-number filter on bound ?np.
+                  GRAPH <%7$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  # 6. Dedup last.
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?d a npa:SubSpaceDeclaration .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("np"),
+                NPA.GRAPH,
+                invalidationFilter("np2"));
+    }
+
     // ---------------- Invalidation templates (incremental cycle) ----------------
 
     /**
@@ -1012,6 +1155,53 @@ public final class AuthorityResolver {
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+    }
+
+    /**
+     * WHERE clause shared by the sub-space invalidation ASK precheck and the
+     * matching DELETE. Identifies validated {@code npa:SubSpaceDeclaration} rows
+     * in the space-state graph whose {@code npa:viaNanopub} equals the target of
+     * an {@code npa:Invalidation} that landed in {@code (lastProcessed, ∞)}.
+     */
+    static String subSpaceInvalidationCheckWhere(IRI graph, long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?d a npa:SubSpaceDeclaration ;
+                       npa:viaNanopub ?np .
+                  }
+                  GRAPH <%2$s> {
+                    ?inv a npa:Invalidation ;
+                         npa:invalidates ?np ;
+                         npa:viaNanopub  ?invNp .
+                  }
+                  GRAPH <%3$s> {
+                    ?invNp npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
+                  }
+                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+    }
+
+    /**
+     * DELETE template for validated {@code npa:SubSpaceDeclaration} rows whose
+     * source nanopub was invalidated. Removes the per-declaration row by subject;
+     * the convenience direct triples ({@code <child> npa:isSubSpaceOf <parent>}
+     * and inverse) are left sticky and cleaned by the next periodic full rebuild
+     * (same staleness policy as admin-RI invalidation — see {@code
+     * doc/design-space-repositories.md} on the structural-rebuild flag).
+     */
+    static String subSpaceInvalidationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?d ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?d ?p ?o . }
+                %4$s
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                subSpaceInvalidationCheckWhere(graph, lastProcessed));
     }
 
     /** Wraps an ASK by joining the shared prefixes. */
