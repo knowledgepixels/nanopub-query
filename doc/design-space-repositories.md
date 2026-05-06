@@ -575,13 +575,15 @@ WHERE {
                npa:hasIdPrefix ?parent .
     ?parentRef npa:spaceIri ?parent .
   }
-  # Suppress fallback for any child that has any non-invalidated explicit declaration.
+  # Suppress fallback for any child that already has a validated declaration in
+  # npass:<…>. We check against the validated rows (not raw extraction-graph
+  # declarations) so an unapproved or in-flight Mode B declaration doesn't
+  # silently hide both the URL-prefix fallback and the (still-invalid) explicit
+  # relation. Run order matters: the explicit-declaration admit pass must commit
+  # first so this NOT EXISTS sees the validated set.
   FILTER NOT EXISTS {
-    GRAPH npa:spacesGraph {
-      ?d a npa:SubSpaceDeclaration ;
-         npa:childSpace ?child ;
-         npa:viaNanopub ?d_np .
-      FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?d_np . }
+    GRAPH npass:<ts> {
+      ?d a npa:SubSpaceDeclaration ; npa:childSpace ?child .
     }
   }
   BIND(IRI(CONCAT("http://purl.org/nanopub/admin/derivedlink/",
@@ -589,7 +591,7 @@ WHERE {
 }
 ```
 
-Suppression is **per child, all-or-nothing**: any single non-invalidated declaration on a child suppresses every fallback edge for that child. No partial mixing of declared and derived parents — once a space has spoken explicitly, its declarations are canonical.
+Suppression is **per child, all-or-nothing**: any single validated declaration on a child suppresses every fallback edge for that child. No partial mixing of approved and derived parents — once a space has *successfully* spoken (admin-of-both gate passed), its declarations are canonical. A child whose only declarations are unapproved or in-flight Mode B still gets URL-prefix fallback, so it isn't silently dropped.
 
 The `npa:DerivedSubSpaceLink` tag carries `npa:derivationKind npa:byUrlPrefix` so consumers that want to exclude derived links can `FILTER NOT EXISTS { ?tag npa:childSpace ?child ; npa:parentSpace ?parent ; npa:derivationKind npa:byUrlPrefix }`. No authority check on the underlying derivation — the URL prefix is heuristic, the tag is the warning label.
 
