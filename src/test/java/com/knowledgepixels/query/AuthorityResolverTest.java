@@ -311,4 +311,68 @@ class AuthorityResolverTest {
                 "delta filter on the invalidator's load number");
     }
 
+    // ---------------- URL-prefix sub-space fallback (PR 3) ----------------
+
+    @Test
+    void subSpacePrefixFallbackUpdate_emitsDerivedTagAndDirectTriples() {
+        String sparql = AuthorityResolver.subSpacePrefixFallbackUpdate(TEST_GRAPH);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        // Reified tag carrying the byUrlPrefix derivation kind.
+        assertTrue(sparql.contains("npa:DerivedSubSpaceLink"),
+                "reified tag class for derived edges");
+        assertTrue(sparql.contains("npa:derivationKind npa:byUrlPrefix"),
+                "tag carries the byUrlPrefix derivation marker");
+        // Convenience direct triples on Space IRIs.
+        assertTrue(sparql.contains("?child  npa:isSubSpaceOf ?parent"),
+                "direct child→parent triple emitted");
+        assertTrue(sparql.contains("?parent npa:hasSubSpace  ?child"),
+                "direct parent→child triple emitted");
+        // Per-pair tag IRI minted via MD5 BIND.
+        java.util.regex.Pattern bind = java.util.regex.Pattern.compile(
+                "BIND\\s*\\(\\s*IRI\\s*\\(\\s*CONCAT\\s*\\([\\s\\S]*?MD5\\s*\\(\\s*CONCAT\\s*\\("
+                        + "\\s*STR\\s*\\(\\s*\\?child\\s*\\)\\s*,\\s*\"\\|\"\\s*,\\s*STR\\s*\\(\\s*\\?parent\\s*\\)");
+        assertTrue(bind.matcher(sparql).find(),
+                "tag IRI minted as MD5(child|parent) via BIND");
+    }
+
+    @Test
+    void subSpacePrefixFallbackUpdate_joinsSpaceRefsByPrefix() {
+        String sparql = AuthorityResolver.subSpacePrefixFallbackUpdate(TEST_GRAPH);
+        assertTrue(sparql.contains("npa:hasIdPrefix"),
+                "child SpaceRef's path-prefix triples drive the join");
+        assertTrue(sparql.contains("?childRef"), "child SpaceRef bound");
+        assertTrue(sparql.contains("?parentRef"), "parent SpaceRef bound");
+        // Both Space IRIs come from the extraction graph's SpaceRef aggregates.
+        assertTrue(sparql.contains("<" + com.knowledgepixels.query.vocabulary.SpacesVocab.SPACES_GRAPH + ">"),
+                "anchor on extraction graph (npa:spacesGraph)");
+    }
+
+    @Test
+    void subSpacePrefixFallbackUpdate_suppressesPerChildOnValidatedDeclarations() {
+        String sparql = AuthorityResolver.subSpacePrefixFallbackUpdate(TEST_GRAPH);
+        // Suppression must check the VALIDATED set in the state graph (not the
+        // raw extraction-graph declarations) — that's the variant we agreed on so
+        // unapproved / in-flight Mode B doesn't silently hide both the URL-prefix
+        // fallback AND the (still-invalid) explicit relation.
+        java.util.regex.Pattern suppress = java.util.regex.Pattern.compile(
+                "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<"
+                        + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
+                        + ">\\s*\\{[\\s\\S]*?\\?d\\s+a\\s+npa:SubSpaceDeclaration\\s*;"
+                        + "[\\s\\S]*?npa:childSpace\\s+\\?child");
+        assertTrue(suppress.matcher(sparql).find(),
+                "per-child suppression checks validated SubSpaceDeclaration in the state graph");
+    }
+
+    @Test
+    void subSpacePrefixFallbackUpdate_dedupsOnExistingTagInStateGraph() {
+        String sparql = AuthorityResolver.subSpacePrefixFallbackUpdate(TEST_GRAPH);
+        // Dedup so re-runs are no-ops. Keyed on the deterministic ?tagIri.
+        java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
+                "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<"
+                        + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
+                        + ">\\s*\\{\\s*\\?tagIri\\s+a\\s+npa:DerivedSubSpaceLink");
+        assertTrue(dedup.matcher(sparql).find(),
+                "dedup excludes already-emitted derived tags");
+    }
+
 }
