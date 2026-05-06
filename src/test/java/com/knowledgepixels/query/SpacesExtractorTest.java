@@ -1,15 +1,18 @@
 package com.knowledgepixels.query;
 
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.CHILD_SPACE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.FOR_AGENT;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.FOR_SPACE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.FOR_SPACE_REF;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_DEFINITION;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ID_PREFIX;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ROLE_TYPE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ROOT_ADMIN;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVALIDATES;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVALIDATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVERSE_PROPERTY;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.PARENT_SPACE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.PUBKEY_HASH;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.REGULAR_PROPERTY;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROLE;
@@ -19,6 +22,7 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACES_GRAPH;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_DEFINITION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_IRI;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_REF;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.SUB_SPACE_DECLARATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.VIA_NANOPUB;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forInvalidation;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleAssignment;
@@ -26,6 +30,7 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleDeclaratio
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleInstantiation;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceDefinition;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceRef;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSubSpaceDeclaration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -109,6 +114,7 @@ class SpacesExtractorTest {
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.HAS_ROLE)));
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.SPACE_MEMBER_ROLE)));
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.ROLE_INSTANTIATION)));
+        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_SUB_SPACE_OF)));
     }
 
     @Test
@@ -336,6 +342,185 @@ class SpacesExtractorTest {
         assertContains(out, subject, REGULAR_PROPERTY, plansToAttend);
         assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);       // subject side
         assertDoesNotContain(out, subject, INVERSE_PROPERTY, plansToAttend);
+    }
+
+    // ---------------- gen:isSubSpaceOf ----------------
+
+    @Test
+    void extract_subSpaceStandalone_singlePair_emitsSubSpaceDeclaration() throws Exception {
+        IRI parentSpace = vf.createIRI("https://example.org/spaces/parent");
+        // Single-triple assertion: NanopubUtils.getTypes promotes the predicate to a type.
+        Nanopub np = creator()
+                .assertion(SPACE_IRI_1, GEN.IS_SUB_SPACE_OF, parentSpace)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forSubSpaceDeclaration(ARTIFACT_CODE, Utils.createHash(parentSpace));
+
+        assertAllInSpacesGraph(out);
+        assertContains(out, subject, RDF.TYPE, SUB_SPACE_DECLARATION);
+        assertContains(out, subject, CHILD_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, PARENT_SPACE, parentSpace);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+        assertContains(out, subject, NPX.SIGNED_BY, SIGNER_AGENT);
+    }
+
+    @Test
+    void extract_subSpaceStandalone_multiPair_emitsOnePerParent() throws Exception {
+        // Multi-triple assertion: predicate dispatch may not fire on multi-triple
+        // assertions, so add the type explicitly via npx:hasNanopubType.
+        IRI parent1 = vf.createIRI("https://example.org/spaces/parent1");
+        IRI parent2 = vf.createIRI("https://example.org/spaces/parent2");
+        Nanopub np = creator()
+                .type(GEN.IS_SUB_SPACE_OF)
+                .assertion(SPACE_IRI_1, GEN.IS_SUB_SPACE_OF, parent1)
+                .assertion(SPACE_IRI_1, GEN.IS_SUB_SPACE_OF, parent2)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subj1 = forSubSpaceDeclaration(ARTIFACT_CODE, Utils.createHash(parent1));
+        IRI subj2 = forSubSpaceDeclaration(ARTIFACT_CODE, Utils.createHash(parent2));
+
+        assertContains(out, subj1, RDF.TYPE, SUB_SPACE_DECLARATION);
+        assertContains(out, subj1, PARENT_SPACE, parent1);
+        assertContains(out, subj2, RDF.TYPE, SUB_SPACE_DECLARATION);
+        assertContains(out, subj2, PARENT_SPACE, parent2);
+        // Distinct subjects — different parent hashes.
+        assertFalse(subj1.equals(subj2), "Per-parent subjects must differ");
+    }
+
+    @Test
+    void extract_subSpaceStandalone_selfLoop_isRejected() throws Exception {
+        Nanopub np = creator()
+                .assertion(SPACE_IRI_1, GEN.IS_SUB_SPACE_OF, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        assertTrue(out.isEmpty(),
+                "Self-loop sub-space declaration should produce no extraction; got: " + out);
+    }
+
+    @Test
+    void extract_subSpaceEmbeddedInGenSpace_emitsSubSpaceDeclaration() throws Exception {
+        IRI parentSpace = vf.createIRI("https://example.org/spaces/parent");
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(SPACE_IRI_1, GEN.IS_SUB_SPACE_OF, parentSpace)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forSubSpaceDeclaration(ARTIFACT_CODE, Utils.createHash(parentSpace));
+
+        // Sub-space declaration emitted alongside the SpaceRef / SpaceDefinition.
+        assertContains(out, subject, RDF.TYPE, SUB_SPACE_DECLARATION);
+        assertContains(out, subject, CHILD_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, PARENT_SPACE, parentSpace);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+
+        // SpaceRef + SpaceDefinition still present (regression guard).
+        String spaceRef = ARTIFACT_CODE + "_" + Utils.createHash(SPACE_IRI_1);
+        assertContains(out, forSpaceRef(spaceRef), RDF.TYPE, SPACE_REF);
+        assertContains(out, forSpaceDefinition(ARTIFACT_CODE), RDF.TYPE, SPACE_DEFINITION);
+    }
+
+    @Test
+    void extract_subSpaceEmbeddedInGenSpace_subjectMustBeDeclaredSpaceIri() throws Exception {
+        // A gen:isSubSpaceOf triple whose subject isn't one of the declared Space IRIs
+        // is ignored on the embedded path. Authors who want to declare for an unrelated
+        // IRI should publish a separate gen:isSubSpaceOf nanopub.
+        IRI unrelated = vf.createIRI("https://example.org/somewhere/else");
+        IRI parentSpace = vf.createIRI("https://example.org/spaces/parent");
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(unrelated, GEN.IS_SUB_SPACE_OF, parentSpace)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI rejectedSubject = forSubSpaceDeclaration(ARTIFACT_CODE, Utils.createHash(parentSpace));
+        assertDoesNotContain(out, rejectedSubject, RDF.TYPE, SUB_SPACE_DECLARATION);
+    }
+
+    @Test
+    void extract_genSpace_emitsHasIdPrefixOnSpaceRef() throws Exception {
+        // Regression / new-behaviour check: every gen:Space extraction now decorates
+        // the SpaceRef aggregate with the path-prefix enumeration.
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        String spaceRef = ARTIFACT_CODE + "_" + Utils.createHash(SPACE_IRI_1);
+        IRI refIri = forSpaceRef(spaceRef);
+        // SPACE_IRI_1 = https://example.org/spaces/alpha, so prefixes are
+        // https://example.org/spaces and https://example.org.
+        assertContains(out, refIri, HAS_ID_PREFIX, vf.createIRI("https://example.org/spaces"));
+        assertContains(out, refIri, HAS_ID_PREFIX, vf.createIRI("https://example.org"));
+    }
+
+    // ---------------- ID-prefix enumeration ----------------
+
+    @Test
+    void enumerateIdPrefixes_typicalPath_returnsAllIntermediates() {
+        List<IRI> out = SpacesExtractor.enumerateIdPrefixes(
+                vf.createIRI("https://example.org/a/b/c/space"));
+        assertEquals(List.of(
+                vf.createIRI("https://example.org/a/b/c"),
+                vf.createIRI("https://example.org/a/b"),
+                vf.createIRI("https://example.org/a"),
+                vf.createIRI("https://example.org")
+        ), out);
+    }
+
+    @Test
+    void enumerateIdPrefixes_singleSegment_returnsHostOnly() {
+        List<IRI> out = SpacesExtractor.enumerateIdPrefixes(
+                vf.createIRI("https://example.org/space"));
+        assertEquals(List.of(vf.createIRI("https://example.org")), out);
+    }
+
+    @Test
+    void enumerateIdPrefixes_trailingSlash_isStripped() {
+        List<IRI> out = SpacesExtractor.enumerateIdPrefixes(
+                vf.createIRI("https://example.org/a/b/"));
+        assertEquals(List.of(
+                vf.createIRI("https://example.org/a"),
+                vf.createIRI("https://example.org")
+        ), out);
+    }
+
+    @Test
+    void enumerateIdPrefixes_queryAndFragment_areStripped() {
+        List<IRI> out = SpacesExtractor.enumerateIdPrefixes(
+                vf.createIRI("https://example.org/a/space?x=1#frag"));
+        assertEquals(List.of(
+                vf.createIRI("https://example.org/a"),
+                vf.createIRI("https://example.org")
+        ), out);
+    }
+
+    @Test
+    void enumerateIdPrefixes_hostOnlyIri_returnsEmpty() {
+        assertTrue(SpacesExtractor.enumerateIdPrefixes(
+                vf.createIRI("https://example.org")).isEmpty());
+        assertTrue(SpacesExtractor.enumerateIdPrefixes(
+                vf.createIRI("https://example.org/")).isEmpty());
+    }
+
+    @Test
+    void enumerateIdPrefixes_nonHttpScheme_returnsEmptyForUrn() {
+        // URNs have no path-style structure; the enumerator returns empty rather than
+        // try to chop colon-separated NIDs.
+        assertTrue(SpacesExtractor.enumerateIdPrefixes(
+                vf.createIRI("urn:nbn:de:0287-2003-12345")).isEmpty());
     }
 
     // ---------------- Invalidation ----------------

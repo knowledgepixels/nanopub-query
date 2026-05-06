@@ -75,6 +75,14 @@ public class GEN {
      */
     public static final IRI ROLE_ASSIGNMENT = VocabUtils.createIRI(NAMESPACE, "RoleAssignment");
 
+    /**
+     * Predicate declaring a space as a sub-space of another. n-to-n; child &rarr; parent
+     * direction. May appear inside a {@code gen:Space} nanopub's assertion (embedded
+     * path) or as a single-triple-assertion of its own (the predicate IRI is
+     * type-dispatched the same way the backwards-compat role predicates are).
+     */
+    public static final IRI IS_SUB_SPACE_OF = VocabUtils.createIRI(NAMESPACE, "isSubSpaceOf");
+
     private GEN() {
     }
 
