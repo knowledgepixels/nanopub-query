@@ -69,8 +69,7 @@ Every extraction uses a dedicated subject IRI per entry — derived from the ori
 - `npard:` = `<http://purl.org/nanopub/admin/roledecl/>` — subject for `npa:RoleDeclaration` entries (extracted from `gen:SpaceMemberRole` nanopubs)
 - `npadef:` = `<http://purl.org/nanopub/admin/spacedef/>` — subject for `npa:SpaceDefinition` entries (per contributing `gen:Space` nanopub)
 - `npainv:` = `<http://purl.org/nanopub/admin/invalidation/>` — subject for `npa:Invalidation` entries
-- `npasub:` = `<http://purl.org/nanopub/admin/subspace/>` — subject for `npa:SubSpaceDeclaration` entries (one per `(child, parent)` pair from a sub-space-relevant nanopub)
-- `npasl:`  = `<http://purl.org/nanopub/admin/subspacelink/>` — subject for `npa:SubSpaceLink` entries materialised in `npass:<…>`
+- `npasub:` = `<http://purl.org/nanopub/admin/subspace/>` — subject for `npa:SubSpaceDeclaration` entries (one per `(child, parent)` pair from a sub-space-relevant nanopub); validated copies retain the same subject in `npass:<…>`
 
 Each entry carries `npa:viaNanopub <originatingNP>` to link back to the source; the stamped load number goes on that nanopub IRI so all of a nanopub's emitted entries share one stamp:
 
@@ -470,14 +469,14 @@ A `(child, parent)` link enters `npass:<…>` iff *an admin of the child* and *a
 - **Mode A — single declaration** by a publisher who is admin of both child and parent at materialization time: one `npa:SubSpaceDeclaration` whose `npa:pubkeyHash` resolves (via the mirrored `AccountState` rows) to an agent in both admin closures.
 - **Mode B — two declarations** for the same `(child, parent)` pair, in any combination of paths and any order: a child-side admin's declaration plus a parent-side admin's declaration. Each declaration is inert on its own; the link is admitted when both exist and neither is invalidated.
 
-Admit-pass UPDATE (sketch, runs after the admin closure has settled in the per-tier loop):
+Admit-pass UPDATE (sketch, runs after the admin closure has settled in the per-tier loop). Validated declarations are copied into `npass:<…>` keeping their `npasub:` subject, matching how `RoleAssignment` and `RoleInstantiation` entries are handled — one row per source declaration, no separate link type:
 
 ```sparql
 INSERT { GRAPH npass:<ts> {
-  ?linkIri a npa:SubSpaceLink ;
-           npa:childSpace  ?child ;
-           npa:parentSpace ?parent ;
-           npa:viaNanopub  ?d_np .
+  ?d a npa:SubSpaceDeclaration ;
+     npa:childSpace  ?child ;
+     npa:parentSpace ?parent ;
+     npa:viaNanopub  ?d_np .
 } }
 WHERE {
   GRAPH npa:spacesGraph {
@@ -527,16 +526,17 @@ WHERE {
     } }
   }
 
-  BIND(IRI(CONCAT(STR(npasl:), MD5(CONCAT(STR(?child), "|", STR(?parent))))) AS ?linkIri)
   FILTER NOT EXISTS { GRAPH npass:<ts> {
-    ?linkIri a npa:SubSpaceLink .
+    ?d a npa:SubSpaceDeclaration .
   } }
 }
 ```
 
-`?linkIri` is minted from `(child, parent)` so the UNION dedups naturally regardless of which declaration is chosen as the `npa:viaNanopub` witness. Mode-A and Mode-B candidates for the same pair collapse to one row.
+Mode B produces *two* rows in the state graph (one per declaration); both share the same `(child, parent)` and mutually validated each other. Consumers use `EXISTS` / `DISTINCT` to ask "does any validated declaration for this pair exist?" — the same shape they already use for role tiers.
 
-For consumer convenience the admit pass also emits both directions on the Space IRIs themselves:
+Per-`viaNanopub` DELETE during invalidation works uniformly: dropping one Mode-B declaration leaves the other in place, but the admit-pass re-runs on the remaining one and finds it no longer has a co-declaration to validate against, so the surviving row's existence check fails and it comes down too.
+
+For consumer convenience the admit pass also emits both directions on the Space IRIs themselves, with `FILTER NOT EXISTS` dedup so Mode B doesn't produce duplicate triples:
 
 ```turtle
 GRAPH npass:<ts> {
@@ -558,14 +558,16 @@ npas:<spaceRef> npa:hasIdPrefix <https://example.org/a/b/c> ,
 
 Computation: normalise the Space IRI (strip query, fragment, trailing `/`), then strip path segments one at a time after the `://`, down to host-only. Identity-derived, so reinforced (RDF set semantics) by every contributor.
 
-The fallback admit pass runs in `npass:<…>` *after* the explicit-declaration admit pass:
+The fallback admit pass runs in `npass:<…>` *after* the explicit-declaration admit pass. Fallback edges are emitted directly as `<child> npa:isSubSpaceOf <parent>` / `<parent> npa:hasSubSpace <child>` triples on the Space IRIs, tagged on the relationship via a reified `npa:derivedSubSpaceLink` row so consumers can hide them:
 
 ```sparql
 INSERT { GRAPH npass:<ts> {
-  ?linkIri a npa:SubSpaceLink ;
-           npa:childSpace ?child ;
-           npa:parentSpace ?parent ;
-           npa:derivationKind npa:byUrlPrefix .
+  <child>  npa:isSubSpaceOf <parent> .
+  <parent> npa:hasSubSpace  <child>  .
+  ?tagIri a npa:DerivedSubSpaceLink ;
+          npa:childSpace ?child ;
+          npa:parentSpace ?parent ;
+          npa:derivationKind npa:byUrlPrefix .
 } }
 WHERE {
   GRAPH npa:spacesGraph {
@@ -582,16 +584,14 @@ WHERE {
       FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?d_np . }
     }
   }
-  BIND(IRI(CONCAT(STR(npasl:), MD5(CONCAT(STR(?child), "|", STR(?parent))))) AS ?linkIri)
-  FILTER NOT EXISTS { GRAPH npass:<ts> {
-    ?linkIri a npa:SubSpaceLink .
-  } }
+  BIND(IRI(CONCAT("http://purl.org/nanopub/admin/derivedlink/",
+                  MD5(CONCAT(STR(?child), "|", STR(?parent))))) AS ?tagIri)
 }
 ```
 
 Suppression is **per child, all-or-nothing**: any single non-invalidated declaration on a child suppresses every fallback edge for that child. No partial mixing of declared and derived parents — once a space has spoken explicitly, its declarations are canonical.
 
-Tagged with `npa:derivationKind npa:byUrlPrefix` so consumers can render derived links differently or hide them. No authority check — the URL prefix is heuristic, the tag is the warning label.
+The `npa:DerivedSubSpaceLink` tag carries `npa:derivationKind npa:byUrlPrefix` so consumers that want to exclude derived links can `FILTER NOT EXISTS { ?tag npa:childSpace ?child ; npa:parentSpace ?parent ; npa:derivationKind npa:byUrlPrefix }`. No authority check on the underlying derivation — the URL prefix is heuristic, the tag is the warning label.
 
 Fallback edges live **only in `npass:<…>`**, never in `npa:spacesGraph`. Each rebuild regenerates them; no separate cleanup path.
 
@@ -599,33 +599,42 @@ Fallback edges live **only in `npass:<…>`**, never in `npa:spacesGraph`. Each 
 
 Standard `npa:viaNanopub` DELETE on the originating declaration. The incremental-update admit query is re-run for affected `(child, parent)` pairs: in Mode B, removing one of two co-declarations causes the existence checks to fail and the link row to come down; in Mode A, removing the sole declaration drops the link directly.
 
-`npa:SubSpaceLink` DELETEs are **structural** — set `npa:needsFullRebuild` per [Operational details](#operational-details). Downstream consumers may have cached parent/child views, and once a child loses its only explicit declaration the URL-prefix fallback should re-engage on rebuild.
+Validated `npa:SubSpaceDeclaration` DELETEs in `npass:<…>` are **structural** — set `npa:needsFullRebuild` per [Operational details](#operational-details). Downstream consumers may have cached parent/child views, and once a child loses its only explicit declaration the URL-prefix fallback should re-engage on rebuild.
 
 ### Consumer pattern
 
-Single SPARQL replaces Nanodash's `SpaceRepository.findSubspaces(...)` URL regex + map JOIN:
+Single SPARQL replaces Nanodash's `SpaceRepository.findSubspaces(...)` URL regex + map JOIN. The convenience direct triples cover both validated declarations and URL-prefix derivations, so the basic query shape is:
 
 ```sparql
 PREFIX npa: <http://purl.org/nanopub/admin/>
-SELECT ?subspace ?derivation WHERE {
+SELECT DISTINCT ?subspace WHERE {
   GRAPH <http://purl.org/nanopub/admin/graph> {
     <http://purl.org/nanopub/admin/thisRepo> npa:hasCurrentSpaceState ?g .
   }
-  GRAPH ?g {
-    ?link a npa:SubSpaceLink ;
-          npa:parentSpace <PARENT_IRI> ;
-          npa:childSpace  ?subspace .
-    OPTIONAL { ?link npa:derivationKind ?derivation . }
+  GRAPH ?g { <PARENT_IRI> npa:hasSubSpace ?subspace . }
+}
+```
+
+To exclude URL-prefix-derived edges, filter against the `npa:DerivedSubSpaceLink` tag:
+
+```sparql
+GRAPH ?g {
+  <PARENT_IRI> npa:hasSubSpace ?subspace .
+  FILTER NOT EXISTS {
+    ?tag a npa:DerivedSubSpaceLink ;
+         npa:parentSpace <PARENT_IRI> ;
+         npa:childSpace ?subspace ;
+         npa:derivationKind npa:byUrlPrefix .
   }
 }
 ```
 
-Add `FILTER(!BOUND(?derivation))` to exclude URL-prefix-derived edges; omit it to include them. Querying the inverse direction (find all super-spaces of a given child) uses the same shape with `npa:childSpace <CHILD_IRI>` and `npa:parentSpace ?superspace`.
+Querying the inverse direction (find all super-spaces of a given child) uses `<CHILD_IRI> npa:isSubSpaceOf ?superspace` with the same dedup / tag-filter shape.
 
 ## Implementation phases
 
 1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps. Includes `npa:SubSpaceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isSubSpaceOf` paths) and `npa:hasIdPrefix` triples on `npa:SpaceRef` aggregates (see [Sub-space relations](#sub-space-relations)).
-2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup. Includes the explicit-declaration sub-space admit pass (Mode A + Mode B), the URL-prefix fallback admit pass (suppressed per child by any non-invalidated declaration), and the structural-rebuild flag on `npa:SubSpaceLink` DELETE.
+2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup. Includes the explicit-declaration sub-space admit pass (Mode A + Mode B, copying validated `npa:SubSpaceDeclaration` rows into `npass:<…>`), the URL-prefix fallback admit pass (suppressed per child by any non-invalidated declaration), and the structural-rebuild flag on validated-declaration DELETE.
 3. **Routes / metrics** — `/spaces` listing route (HTML + JSON), Prometheus gauges (rebuild duration, delta size, `processedUpTo` lag, distinct-subject totals).
 4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query that resolves the current `npass:*` graph from the pointer (see [Querying the current space-state graph](#querying-the-current-space-state-graph)); drop `isAdminPubkey` gate and pinned templates/queries. Replace `SpaceRepository.findSubspaces(...)` URL regex with the single-query consumer pattern in [Sub-space relations](#sub-space-relations).
 
