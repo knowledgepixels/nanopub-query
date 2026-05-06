@@ -21,6 +21,7 @@ import org.nanopub.vocabulary.NPA;
  *   <li>{@link #NPARA_NAMESPACE} ({@code npara:}) — {@link #forRoleAssignment(String) role-attachment} entries (from {@code gen:hasRole} nanopubs).
  *   <li>{@link #NPARD_NAMESPACE} ({@code npard:}) — {@link #forRoleDeclaration(String) role-declaration} entries (from {@code gen:SpaceMemberRole} nanopubs).
  *   <li>{@link #NPAINV_NAMESPACE} ({@code npainv:}) — {@link #forInvalidation(String) invalidation} entries.
+ *   <li>{@link #NPASUB_NAMESPACE} ({@code npasub:}) — {@link #forSubSpaceDeclaration(String, String) sub-space-declaration} entries (one per {@code (child, parent)} pair).
  *   <li>{@link #NPASS_NAMESPACE} ({@code npass:}) — space-state graph IRIs (used by the materializer in a later PR).
  * </ul>
  */
@@ -40,6 +41,8 @@ public final class SpacesVocab {
     public static final String NPARD_NAMESPACE = "http://purl.org/nanopub/admin/roledecl/";
     /** Namespace for invalidation entries ({@code npainv:<artifactCode>}). */
     public static final String NPAINV_NAMESPACE = "http://purl.org/nanopub/admin/invalidation/";
+    /** Namespace for sub-space-declaration entries ({@code npasub:<artifactCode>_<parentHash>}). */
+    public static final String NPASUB_NAMESPACE = "http://purl.org/nanopub/admin/subspace/";
     /** Namespace for space-state graph IRIs ({@code npass:<trustStateHash>_<loadCounter>}). */
     public static final String NPASS_NAMESPACE = "http://purl.org/nanopub/admin/spacestate/";
 
@@ -56,6 +59,9 @@ public final class SpacesVocab {
 
     /** RDF type for an invalidation event recorded as add-only data. */
     public static final IRI INVALIDATION = vf.createIRI(NPA.NAMESPACE, "Invalidation");
+
+    /** RDF type for a sub-space-declaration extraction entry. */
+    public static final IRI SUB_SPACE_DECLARATION = vf.createIRI(NPA.NAMESPACE, "SubSpaceDeclaration");
 
     // -------- Properties on extraction entries --------
 
@@ -100,6 +106,19 @@ public final class SpacesVocab {
 
     /** Links an {@link #INVALIDATION} entry to the nanopub it invalidates. */
     public static final IRI INVALIDATES = vf.createIRI(NPA.NAMESPACE, "invalidates");
+
+    /** Links a {@link #SUB_SPACE_DECLARATION} to the child Space IRI. */
+    public static final IRI CHILD_SPACE = vf.createIRI(NPA.NAMESPACE, "childSpace");
+
+    /** Links a {@link #SUB_SPACE_DECLARATION} to the parent Space IRI. */
+    public static final IRI PARENT_SPACE = vf.createIRI(NPA.NAMESPACE, "parentSpace");
+
+    /**
+     * Links a {@link #SPACE_REF} aggregate to each intermediate path-prefix of its
+     * Space IRI (down to host-only). Identity-derived; reinforced by every contributor.
+     * Used by the URL-prefix sub-space fallback in the materializer.
+     */
+    public static final IRI HAS_ID_PREFIX = vf.createIRI(NPA.NAMESPACE, "hasIdPrefix");
 
     // -------- Named graphs & repo pointers --------
 
@@ -153,6 +172,18 @@ public final class SpacesVocab {
     /** Mints {@code npainv:<artifactCode>} for an invalidation entry. */
     public static IRI forInvalidation(String artifactCode) {
         return vf.createIRI(NPAINV_NAMESPACE, artifactCode);
+    }
+
+    /**
+     * Mints {@code npasub:<artifactCode>_<parentHash>} for a sub-space-declaration entry.
+     * Including the parent-IRI hash in the local name lets a single nanopub declare
+     * multiple parents without subject collision.
+     *
+     * @param artifactCode trusty-URI artifact code of the originating nanopub
+     * @param parentHash   {@code Utils.createHash(<parentSpaceIri>)}
+     */
+    public static IRI forSubSpaceDeclaration(String artifactCode, String parentHash) {
+        return vf.createIRI(NPASUB_NAMESPACE, artifactCode + "_" + parentHash);
     }
 
     /**

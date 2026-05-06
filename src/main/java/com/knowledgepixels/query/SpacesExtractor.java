@@ -88,8 +88,9 @@ public final class SpacesExtractor {
         boolean isSpaceMemberRole = types.contains(GEN.SPACE_MEMBER_ROLE);
         boolean isRoleInstantiation = types.contains(GEN.ROLE_INSTANTIATION)
                 || anyMatch(types, BackcompatRolePredicates.ALL);
+        boolean isSubSpaceOf = types.contains(GEN.IS_SUB_SPACE_OF);
 
-        if (!isSpace && !isHasRole && !isSpaceMemberRole && !isRoleInstantiation) {
+        if (!isSpace && !isHasRole && !isSpaceMemberRole && !isRoleInstantiation && !isSubSpaceOf) {
             return Collections.emptyList();
         }
 
@@ -97,6 +98,7 @@ public final class SpacesExtractor {
         if (isHasRole) extractHasRole(np, ctx, out);
         if (isSpaceMemberRole) extractSpaceMemberRole(np, ctx, out);
         if (isRoleInstantiation) extractRoleInstantiation(np, ctx, out);
+        if (isSubSpaceOf) extractSubSpaceOf(np, ctx, out);
 
         return out;
     }
@@ -131,6 +133,7 @@ public final class SpacesExtractor {
                 || types.contains(GEN.HAS_ROLE)
                 || types.contains(GEN.SPACE_MEMBER_ROLE)
                 || types.contains(GEN.ROLE_INSTANTIATION)
+                || types.contains(GEN.IS_SUB_SPACE_OF)
                 || anyMatch(types, BackcompatRolePredicates.ALL);
     }
 
@@ -191,6 +194,18 @@ public final class SpacesExtractor {
         out.add(vf.createStatement(refIri, RDF.TYPE, SpacesVocab.SPACE_REF, GRAPH));
         out.add(vf.createStatement(refIri, SpacesVocab.SPACE_IRI, spaceIri, GRAPH));
         out.add(vf.createStatement(refIri, SpacesVocab.ROOT_NANOPUB, rootUri, GRAPH));
+
+        // Identity-derived path-prefix enumeration powering the URL-prefix sub-space
+        // fallback in the materializer. Same triples on every contributor (RDF set
+        // semantics dedups them).
+        for (IRI prefix : enumerateIdPrefixes(spaceIri)) {
+            out.add(vf.createStatement(refIri, SpacesVocab.HAS_ID_PREFIX, prefix, GRAPH));
+        }
+
+        // Embedded gen:isSubSpaceOf triples in this gen:Space nanopub: emit one
+        // SubSpaceDeclaration per (spaceIri, parentIri) pair. Same shape as the
+        // standalone path; downstream rules don't distinguish them.
+        emitSubSpaceDeclarations(np, ctx, spaceIri, out);
 
         // Per-contributor entry: signer, pubkey, created-at, link back to nanopub.
         out.add(vf.createStatement(defIri, RDF.TYPE, SpacesVocab.SPACE_DEFINITION, GRAPH));
@@ -391,6 +406,115 @@ public final class SpacesExtractor {
     private static BackcompatRolePredicates.Direction directionFor(IRI predicate) {
         if (GEN.HAS_ADMIN.equals(predicate)) return BackcompatRolePredicates.Direction.INVERSE;
         return BackcompatRolePredicates.DIRECTIONS.get(predicate);
+    }
+
+    // ---------------- gen:isSubSpaceOf (standalone path) ----------------
+
+    /**
+     * Standalone {@code gen:isSubSpaceOf} nanopub: every
+     * {@code <childIri> gen:isSubSpaceOf <parentIri>} triple in the assertion emits one
+     * {@code npa:SubSpaceDeclaration}. Multi-triple assertions are allowed; one entry
+     * per pair. Self-loops ({@code <X> gen:isSubSpaceOf <X>}) are rejected.
+     */
+    private static void extractSubSpaceOf(Nanopub np, Context ctx, List<Statement> out) {
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(GEN.IS_SUB_SPACE_OF)) continue;
+            if (!(st.getSubject() instanceof IRI childIri)) continue;
+            if (!(st.getObject() instanceof IRI parentIri)) continue;
+            emitSubSpaceDeclaration(np, ctx, childIri, parentIri, out);
+        }
+    }
+
+    /**
+     * Embedded path: scan a {@code gen:Space} nanopub's assertion for
+     * {@code <spaceIri> gen:isSubSpaceOf <parentIri>} triples (subject must equal the
+     * Space IRI we're emitting an entry for, so the subspace declaration is bound to
+     * this particular Space). Self-loops are rejected.
+     */
+    private static void emitSubSpaceDeclarations(Nanopub np, Context ctx, IRI spaceIri,
+                                                 List<Statement> out) {
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(GEN.IS_SUB_SPACE_OF)) continue;
+            if (!spaceIri.equals(st.getSubject())) continue;
+            if (!(st.getObject() instanceof IRI parentIri)) continue;
+            emitSubSpaceDeclaration(np, ctx, spaceIri, parentIri, out);
+        }
+    }
+
+    /**
+     * Emits one {@code npa:SubSpaceDeclaration} entry, keyed by
+     * {@code (artifactCode, parentHash)} so a single nanopub can declare multiple
+     * parents without subject collision. Self-loops are silently dropped.
+     */
+    private static void emitSubSpaceDeclaration(Nanopub np, Context ctx, IRI childIri,
+                                                IRI parentIri, List<Statement> out) {
+        if (childIri.equals(parentIri)) {
+            log.debug("Ignoring self-loop sub-space declaration on {} in {}", childIri, np.getUri());
+            return;
+        }
+        String parentHash = Utils.createHash(parentIri);
+        IRI subject = SpacesVocab.forSubSpaceDeclaration(ctx.artifactCode(), parentHash);
+
+        // Idempotence: the embedded and standalone paths can both fire on the same
+        // (np, child, parent) combination if a gen:Space nanopub somehow ends up typed
+        // gen:isSubSpaceOf as well. Skip if we've already emitted the type triple for
+        // this subject.
+        Statement typeSt = vf.createStatement(subject, RDF.TYPE, SpacesVocab.SUB_SPACE_DECLARATION, GRAPH);
+        if (out.contains(typeSt)) return;
+
+        out.add(typeSt);
+        out.add(vf.createStatement(subject, SpacesVocab.CHILD_SPACE, childIri, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.PARENT_SPACE, parentIri, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+        addProvenance(subject, ctx, out);
+    }
+
+    // ---------------- ID-prefix enumeration ----------------
+
+    /**
+     * Enumerates all intermediate path-prefixes of a Space IRI, after normalisation,
+     * for the URL-prefix sub-space fallback. Strips query / fragment / trailing slash,
+     * then strips path segments one at a time after the {@code ://} scheme separator,
+     * down to host-only. Returns an empty list for inputs without a scheme separator
+     * or without any path beyond the host.
+     *
+     * <p>Examples:
+     * <pre>
+     *   https://example.org/a/b/c/space  →  [https://example.org/a/b/c,
+     *                                        https://example.org/a/b,
+     *                                        https://example.org/a,
+     *                                        https://example.org]
+     *   https://example.org/x/           →  [https://example.org]   (trailing slash stripped)
+     *   https://example.org/space?q=1    →  [https://example.org]   (query stripped)
+     *   https://example.org              →  []                       (no path to strip)
+     * </pre>
+     */
+    static List<IRI> enumerateIdPrefixes(IRI spaceIri) {
+        String s = spaceIri.stringValue();
+        int hash = s.indexOf('#');
+        if (hash >= 0) s = s.substring(0, hash);
+        int qmark = s.indexOf('?');
+        if (qmark >= 0) s = s.substring(0, qmark);
+        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+
+        int schemeEnd = s.indexOf("://");
+        if (schemeEnd < 0) return Collections.emptyList();
+        int hostStart = schemeEnd + 3;
+        int hostEnd = s.indexOf('/', hostStart);
+        if (hostEnd < 0) return Collections.emptyList();   // host-only, nothing to strip
+
+        List<IRI> prefixes = new ArrayList<>();
+        // Walk back from the right, stripping one segment per step, until we hit host-only.
+        String current = s.substring(0, s.lastIndexOf('/'));
+        while (current.length() > hostEnd) {
+            prefixes.add(vf.createIRI(current));
+            int slash = current.lastIndexOf('/');
+            if (slash <= hostEnd) break;
+            current = current.substring(0, slash);
+        }
+        // Always include the host-only root.
+        prefixes.add(vf.createIRI(s.substring(0, hostEnd)));
+        return prefixes;
     }
 
     // ---------------- shared helpers ----------------
