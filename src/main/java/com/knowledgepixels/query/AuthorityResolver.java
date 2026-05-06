@@ -241,16 +241,18 @@ public final class AuthorityResolver {
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
-                + counts.maintainer + counts.member + counts.observer + counts.subSpace;
+                + counts.maintainer + counts.member + counts.observer
+                + counts.subSpace + counts.subSpacePrefix;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} subspace={}) "
-                        + "durationMs={}",
+                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} "
+                        + "subspace={} subspace-prefix={}) durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer, counts.subSpace,
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.subSpace, counts.subSpacePrefix,
                 durationMs);
     }
 
@@ -302,15 +304,17 @@ public final class AuthorityResolver {
             // can promote candidates whose enabling event arrived in this same cycle.
             // Sub-space admit is also re-run here for Mode-B late-arrival (a new
             // partner declaration can validate an older primary that the regular
-            // pass's load-number filter excluded). Skip the admin tier — its only
-            // enabling event is the admin grant itself, already handled by the
-            // regular pass.
+            // pass's load-number filter excluded). The URL-prefix fallback also
+            // re-runs so newly-orphaned children pick up derived edges. Skip the
+            // admin tier — its only enabling event is the admin grant itself,
+            // already handled by the regular pass.
             TierInsertedTriples lateCounts = runDownstreamWithoutLoadFilter(graph);
-            counts.attachment += lateCounts.attachment;
-            counts.maintainer += lateCounts.maintainer;
-            counts.member     += lateCounts.member;
-            counts.observer   += lateCounts.observer;
-            counts.subSpace   += lateCounts.subSpace;
+            counts.attachment     += lateCounts.attachment;
+            counts.maintainer     += lateCounts.maintainer;
+            counts.member         += lateCounts.member;
+            counts.observer       += lateCounts.observer;
+            counts.subSpace       += lateCounts.subSpace;
+            counts.subSpacePrefix += lateCounts.subSpacePrefix;
         }
 
         writeProcessedUpTo(graph, currentLoadCounter);
@@ -319,15 +323,18 @@ public final class AuthorityResolver {
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
-                + counts.maintainer + counts.member + counts.observer + counts.subSpace;
+                + counts.maintainer + counts.member + counts.observer
+                + counts.subSpace + counts.subSpacePrefix;
         lastIncrementalCycleDurationMs = durationMs;
         log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} subspace={}) "
+                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} "
+                        + "subspace={} subspace-prefix={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer, counts.subSpace,
+                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.subSpace, counts.subSpacePrefix,
                 structuralInvalidation, structuralAdds, durationMs);
     }
 
@@ -385,6 +392,11 @@ public final class AuthorityResolver {
         // declaration is older than lastProcessed but whose partner just landed.
         c.subSpace = runTierLabeled("subspace(late)", graph,
                 subSpaceAdmitUpdate(graph, -1));
+        // URL-prefix fallback: re-run after the late-arrival sub-space admit so
+        // any newly-validated children get their fallback edges suppressed (for
+        // future inserts) and any newly-orphaned children pick up fallback edges.
+        c.subSpacePrefix = runTierLabeled("subspace-prefix(late)", graph,
+                subSpacePrefixFallbackUpdate(graph));
         c.attachment = runTierLabeled("attachment(late)", graph,
                 attachmentValidationUpdate(graph, -1));
         c.maintainer = runTierLabeled("maintainer(late)", graph,
@@ -451,6 +463,7 @@ public final class AuthorityResolver {
         int member;
         int observer;
         int subSpace;
+        int subSpacePrefix;
     }
 
     /**
@@ -474,6 +487,12 @@ public final class AuthorityResolver {
         // need the admin set). Independent of role tiers — order between subspace
         // and attachment / maintainer / member / observer doesn't matter.
         c.subSpace = runTierLabeled("subspace", graph, subSpaceAdmitUpdate(graph, lastProcessed));
+        // URL-prefix sub-space fallback runs after the explicit-declaration admit
+        // pass commits so the per-child suppression check sees this cycle's fresh
+        // validations. No load filter — depends on which Spaces exist, not on
+        // delta-arrivals; the dedup FILTER NOT EXISTS prevents re-insertion.
+        c.subSpacePrefix = runTierLabeled("subspace-prefix", graph,
+                subSpacePrefixFallbackUpdate(graph));
         c.attachment = runTierLabeled("attachment", graph,
                 attachmentValidationUpdate(graph, lastProcessed));
         c.maintainer = runTierLabeled("maintainer", graph, nonAdminTierUpdate(graph, lastProcessed,
@@ -1019,6 +1038,79 @@ public final class AuthorityResolver {
                 invalidationFilter("np"),
                 NPA.GRAPH,
                 invalidationFilter("np2"));
+    }
+
+    /**
+     * URL-prefix sub-space fallback admit pass. For every pair of {@code SpaceRef}
+     * aggregates where the child's {@code npa:hasIdPrefix} matches the parent's
+     * {@code npa:spaceIri}, emits convenience {@code <child> npa:isSubSpaceOf <parent>}
+     * and {@code <parent> npa:hasSubSpace <child>} direct triples plus a reified
+     * {@code npa:DerivedSubSpaceLink} tag carrying {@code npa:derivationKind
+     * npa:byUrlPrefix} so consumers can hide derived edges.
+     *
+     * <p>Per-child suppression: any validated {@code npa:SubSpaceDeclaration} on the
+     * child in {@code npass:<…>} suppresses every fallback edge for that child.
+     * Suppression checks the validated set (not raw extraction-graph declarations)
+     * so an unapproved or in-flight Mode B declaration doesn't silently hide both
+     * the URL-prefix fallback and the (still-invalid) explicit relation.
+     *
+     * <p>Run order: must run after {@link #subSpaceAdmitUpdate} commits in the
+     * same cycle so the suppression check sees this cycle's freshly-validated
+     * declarations.
+     *
+     * <p>No load-number filter: the fallback depends on which Spaces exist (parent
+     * + child {@code SpaceRef}s), not on which were just added. Always full-scan;
+     * the dedup {@code FILTER NOT EXISTS} on the tag IRI prevents re-insertion.
+     *
+     * <p>No invalidation handling: derived edges have no source nanopub. Two
+     * staleness modes: (a) child later gets first validated declaration → old
+     * derived edges stay sticky until the next periodic rebuild (same policy as
+     * admin-RI invalidation); (b) child loses last validated declaration → the
+     * regular fallback pass on the next cycle re-engages, adds derived edges
+     * incrementally, no rebuild needed.
+     */
+    static String subSpacePrefixFallbackUpdate(IRI graph) {
+        return """
+                PREFIX npa: <%1$s>
+                INSERT { GRAPH <%2$s> {
+                  ?child  npa:isSubSpaceOf ?parent .
+                  ?parent npa:hasSubSpace  ?child  .
+                  ?tagIri a npa:DerivedSubSpaceLink ;
+                          npa:childSpace     ?child ;
+                          npa:parentSpace    ?parent ;
+                          npa:derivationKind npa:byUrlPrefix .
+                } }
+                WHERE {
+                  # 1. Anchor: child SpaceRef → its path-prefixes (extracted at load
+                  #    time from the Space IRI; see SpacesExtractor.enumerateIdPrefixes).
+                  GRAPH <%3$s> {
+                    ?childRef  npa:spaceIri    ?child ;
+                               npa:hasIdPrefix ?parent .
+                    # 2. Parent SpaceRef must exist for the same IRI as the prefix.
+                    ?parentRef npa:spaceIri    ?parent .
+                  }
+                  # 3. Suppress fallback for any child that has a validated declaration
+                  #    in this state graph. Per-child, all-or-nothing.
+                  FILTER NOT EXISTS {
+                    GRAPH <%2$s> {
+                      ?d a npa:SubSpaceDeclaration ;
+                         npa:childSpace ?child .
+                    }
+                  }
+                  # 4. Mint a deterministic tag IRI per (child, parent).
+                  BIND(IRI(CONCAT("http://purl.org/nanopub/admin/derivedlink/",
+                                  MD5(CONCAT(STR(?child), "|", STR(?parent))))) AS ?tagIri)
+                  # 5. Dedup: don't re-insert if this tag is already present.
+                  FILTER NOT EXISTS {
+                    GRAPH <%2$s> {
+                      ?tagIri a npa:DerivedSubSpaceLink .
+                    }
+                  }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH);
     }
 
     // ---------------- Invalidation templates (incremental cycle) ----------------

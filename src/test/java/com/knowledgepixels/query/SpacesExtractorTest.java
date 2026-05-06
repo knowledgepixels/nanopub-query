@@ -460,24 +460,24 @@ class SpacesExtractorTest {
         List<Statement> out = SpacesExtractor.extract(np, defaultContext());
         String spaceRef = ARTIFACT_CODE + "_" + Utils.createHash(SPACE_IRI_1);
         IRI refIri = forSpaceRef(spaceRef);
-        // SPACE_IRI_1 = https://example.org/spaces/alpha, so prefixes are
-        // https://example.org/spaces and https://example.org.
+        // SPACE_IRI_1 = https://example.org/spaces/alpha → direct parent only.
         assertContains(out, refIri, HAS_ID_PREFIX, vf.createIRI("https://example.org/spaces"));
-        assertContains(out, refIri, HAS_ID_PREFIX, vf.createIRI("https://example.org"));
+        // The deeper ancestor (host) should NOT be emitted: direct-parent-only
+        // semantics means consumers walk transitively via npa:hasSubSpace+ at
+        // query time, not via per-extraction multi-prefix triples.
+        assertDoesNotContain(out, refIri, HAS_ID_PREFIX, vf.createIRI("https://example.org"));
     }
 
     // ---------------- ID-prefix enumeration ----------------
 
     @Test
-    void enumerateIdPrefixes_typicalPath_returnsAllIntermediates() {
+    void enumerateIdPrefixes_typicalPath_returnsImmediateParent() {
+        // Direct-parent-only: drops exactly one path segment, regardless of depth.
+        // Multi-level descendants are reachable via SPARQL property paths
+        // (npa:hasSubSpace+) at consumer query time.
         List<IRI> out = SpacesExtractor.enumerateIdPrefixes(
                 vf.createIRI("https://example.org/a/b/c/space"));
-        assertEquals(List.of(
-                vf.createIRI("https://example.org/a/b/c"),
-                vf.createIRI("https://example.org/a/b"),
-                vf.createIRI("https://example.org/a"),
-                vf.createIRI("https://example.org")
-        ), out);
+        assertEquals(List.of(vf.createIRI("https://example.org/a/b/c")), out);
     }
 
     @Test
@@ -491,20 +491,14 @@ class SpacesExtractorTest {
     void enumerateIdPrefixes_trailingSlash_isStripped() {
         List<IRI> out = SpacesExtractor.enumerateIdPrefixes(
                 vf.createIRI("https://example.org/a/b/"));
-        assertEquals(List.of(
-                vf.createIRI("https://example.org/a"),
-                vf.createIRI("https://example.org")
-        ), out);
+        assertEquals(List.of(vf.createIRI("https://example.org/a")), out);
     }
 
     @Test
     void enumerateIdPrefixes_queryAndFragment_areStripped() {
         List<IRI> out = SpacesExtractor.enumerateIdPrefixes(
                 vf.createIRI("https://example.org/a/space?x=1#frag"));
-        assertEquals(List.of(
-                vf.createIRI("https://example.org/a"),
-                vf.createIRI("https://example.org")
-        ), out);
+        assertEquals(List.of(vf.createIRI("https://example.org/a")), out);
     }
 
     @Test

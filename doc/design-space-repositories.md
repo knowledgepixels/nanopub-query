@@ -93,7 +93,7 @@ GRAPH npa:spacesGraph {
   npas:<spaceRef> a npa:SpaceRef ;
                   npa:spaceIri    <spaceIRI> ;
                   npa:rootNanopub <rootNP> ;    # object of gen:hasRootDefinition; <thisNP> if the triple is absent
-                  npa:hasIdPrefix <prefix1>, <prefix2>, … .  # all path-prefixes of <spaceIRI> down to host-only; see Sub-space relations
+                  npa:hasIdPrefix <parentPrefix> .  # immediate URL-path parent of <spaceIRI>; see Sub-space relations
 
   # Per-contributor — one per loaded gen:Space nanopub for this space ref
   npadef:<artifactCode> a npa:SpaceDefinition ;
@@ -547,16 +547,13 @@ GRAPH npass:<ts> {
 
 ### URL-prefix fallback (for spaces with no explicit declaration)
 
-For every loaded `gen:Space` nanopub, the extractor emits `npa:hasIdPrefix` triples on the `npa:SpaceRef` aggregate, one per intermediate path-prefix of the Space IRI. For `<https://example.org/a/b/c/space>`:
+For every loaded `gen:Space` nanopub, the extractor emits one `npa:hasIdPrefix` triple on the `npa:SpaceRef` aggregate, naming the **immediate** URL-path parent of the Space IRI. For `<https://example.org/a/b/c/space>`:
 
 ```turtle
-npas:<spaceRef> npa:hasIdPrefix <https://example.org/a/b/c> ,
-                                <https://example.org/a/b> ,
-                                <https://example.org/a> ,
-                                <https://example.org> .
+npas:<spaceRef> npa:hasIdPrefix <https://example.org/a/b/c> .
 ```
 
-Computation: normalise the Space IRI (strip query, fragment, trailing `/`), then strip path segments one at a time after the `://`, down to host-only. Identity-derived, so reinforced (RDF set semantics) by every contributor.
+Computation: normalise the Space IRI (strip query, fragment, trailing `/`), then drop the last path segment after the `://`. Direct-parent-only — matches Nanodash's existing `SpaceRepository.findSubspaces(...)` URL-regex behaviour. Multi-level descendants are reachable via SPARQL property paths (`<ancestor> npa:hasSubSpace+ ?descendant`) at consumer query time as long as the intermediate Spaces exist. Identity-derived, so reinforced (RDF set semantics) by every contributor.
 
 The fallback admit pass runs in `npass:<…>` *after* the explicit-declaration admit pass. Fallback edges are emitted directly as `<child> npa:isSubSpaceOf <parent>` / `<parent> npa:hasSubSpace <child>` triples on the Space IRIs, tagged on the relationship via a reified `npa:derivedSubSpaceLink` row so consumers can hide them:
 

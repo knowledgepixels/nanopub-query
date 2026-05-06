@@ -472,20 +472,25 @@ public final class SpacesExtractor {
     // ---------------- ID-prefix enumeration ----------------
 
     /**
-     * Enumerates all intermediate path-prefixes of a Space IRI, after normalisation,
-     * for the URL-prefix sub-space fallback. Strips query / fragment / trailing slash,
-     * then strips path segments one at a time after the {@code ://} scheme separator,
-     * down to host-only. Returns an empty list for inputs without a scheme separator
-     * or without any path beyond the host.
+     * Returns the immediate URL-path parent of a Space IRI, after normalisation,
+     * for the URL-prefix sub-space fallback. Strips query / fragment / trailing
+     * slash, then drops the last path segment after the {@code ://} scheme
+     * separator. Returns at most one IRI; empty for inputs without a scheme
+     * separator or without any path beyond the host.
+     *
+     * <p>Direct-parent-only semantics matches Nanodash's existing
+     * {@code SpaceRepository.findSubspaces(...)} URL-regex behaviour. Multi-level
+     * containment queries should use SPARQL property paths
+     * ({@code <ancestor> npa:hasSubSpace+ ?descendant}) which walk the chain
+     * transitively, so deeper descendants remain reachable as long as the
+     * intermediate Spaces exist.
      *
      * <p>Examples:
      * <pre>
-     *   https://example.org/a/b/c/space  →  [https://example.org/a/b/c,
-     *                                        https://example.org/a/b,
-     *                                        https://example.org/a,
-     *                                        https://example.org]
+     *   https://example.org/a/b/c/space  →  [https://example.org/a/b/c]
+     *   https://example.org/space        →  [https://example.org]   (single segment → host)
      *   https://example.org/x/           →  [https://example.org]   (trailing slash stripped)
-     *   https://example.org/space?q=1    →  [https://example.org]   (query stripped)
+     *   https://example.org/a/space?q=1  →  [https://example.org/a] (query stripped)
      *   https://example.org              →  []                       (no path to strip)
      * </pre>
      */
@@ -503,18 +508,11 @@ public final class SpacesExtractor {
         int hostEnd = s.indexOf('/', hostStart);
         if (hostEnd < 0) return Collections.emptyList();   // host-only, nothing to strip
 
-        List<IRI> prefixes = new ArrayList<>();
-        // Walk back from the right, stripping one segment per step, until we hit host-only.
-        String current = s.substring(0, s.lastIndexOf('/'));
-        while (current.length() > hostEnd) {
-            prefixes.add(vf.createIRI(current));
-            int slash = current.lastIndexOf('/');
-            if (slash <= hostEnd) break;
-            current = current.substring(0, slash);
-        }
-        // Always include the host-only root.
-        prefixes.add(vf.createIRI(s.substring(0, hostEnd)));
-        return prefixes;
+        // Drop the last path segment. If that strips us back to the host (single-
+        // segment path), return the host-only IRI as the immediate parent.
+        int lastSlash = s.lastIndexOf('/');
+        String parent = (lastSlash <= hostEnd) ? s.substring(0, hostEnd) : s.substring(0, lastSlash);
+        return List.of(vf.createIRI(parent));
     }
 
     // ---------------- shared helpers ----------------
