@@ -89,10 +89,16 @@ public final class SpacesExtractor {
         boolean isRoleInstantiation = types.contains(GEN.ROLE_INSTANTIATION)
                 || anyMatch(types, BackcompatRolePredicates.ALL);
         boolean isSubSpaceOf = types.contains(GEN.IS_SUB_SPACE_OF);
-        boolean isMaintainedBy = types.contains(GEN.IS_MAINTAINED_BY);
+        // Maintained-resource nanopubs use either the resource-class marker
+        // (gen:MaintainedResource — what Nanodash currently writes) or the
+        // predicate marker (gen:isMaintainedBy — single-predicate-assertion
+        // auto-typing or explicit npx:hasNanopubType). Both shapes carry the
+        // same <r> gen:isMaintainedBy <s> triple in the assertion.
+        boolean isMaintainedResource = types.contains(GEN.MAINTAINED_RESOURCE)
+                || types.contains(GEN.IS_MAINTAINED_BY);
 
         if (!isSpace && !isHasRole && !isSpaceMemberRole && !isRoleInstantiation
-                && !isSubSpaceOf && !isMaintainedBy) {
+                && !isSubSpaceOf && !isMaintainedResource) {
             return Collections.emptyList();
         }
 
@@ -101,7 +107,7 @@ public final class SpacesExtractor {
         if (isSpaceMemberRole) extractSpaceMemberRole(np, ctx, out);
         if (isRoleInstantiation) extractRoleInstantiation(np, ctx, out);
         if (isSubSpaceOf) extractSubSpaceOf(np, ctx, out);
-        if (isMaintainedBy) extractIsMaintainedBy(np, ctx, out);
+        if (isMaintainedResource) extractIsMaintainedBy(np, ctx, out);
 
         return out;
     }
@@ -138,6 +144,7 @@ public final class SpacesExtractor {
                 || types.contains(GEN.ROLE_INSTANTIATION)
                 || types.contains(GEN.IS_SUB_SPACE_OF)
                 || types.contains(GEN.IS_MAINTAINED_BY)
+                || types.contains(GEN.MAINTAINED_RESOURCE)
                 || anyMatch(types, BackcompatRolePredicates.ALL);
     }
 

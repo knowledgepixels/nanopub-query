@@ -120,6 +120,7 @@ class SpacesExtractorTest {
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.ROLE_INSTANTIATION)));
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_SUB_SPACE_OF)));
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_MAINTAINED_BY)));
+        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.MAINTAINED_RESOURCE)));
     }
 
     @Test
@@ -494,6 +495,26 @@ class SpacesExtractorTest {
         assertContains(out, subj2, RESOURCE_IRI, resource2);
         // Distinct subjects — different resource hashes.
         assertFalse(subj1.equals(subj2), "Per-resource subjects must differ");
+    }
+
+    @Test
+    void extract_maintainedResourceStandalone_resourceClassTypeMarker_emitsDeclaration() throws Exception {
+        // Publisher convention used by Nanodash: type the nanopub at the head/pubinfo
+        // level as gen:MaintainedResource (the resource class) rather than
+        // gen:isMaintainedBy (the predicate). The extractor accepts either marker as
+        // the type gate; both shapes carry the <r> gen:isMaintainedBy <s> link.
+        IRI resource = vf.createIRI("https://example.org/ontologies/foo");
+        Nanopub np = creator()
+                .type(GEN.MAINTAINED_RESOURCE)
+                .assertion(resource, RDF.TYPE, GEN.MAINTAINED_RESOURCE)
+                .assertion(resource, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource));
+        assertContains(out, subject, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+        assertContains(out, subject, RESOURCE_IRI, resource);
+        assertContains(out, subject, MAINTAINER_SPACE, SPACE_IRI_1);
     }
 
     @Test
