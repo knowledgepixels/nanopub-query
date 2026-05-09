@@ -22,6 +22,7 @@ import org.nanopub.vocabulary.NPA;
  *   <li>{@link #NPARD_NAMESPACE} ({@code npard:}) — {@link #forRoleDeclaration(String) role-declaration} entries (from {@code gen:SpaceMemberRole} nanopubs).
  *   <li>{@link #NPAINV_NAMESPACE} ({@code npainv:}) — {@link #forInvalidation(String) invalidation} entries.
  *   <li>{@link #NPASUB_NAMESPACE} ({@code npasub:}) — {@link #forSubSpaceDeclaration(String, String) sub-space-declaration} entries (one per {@code (child, parent)} pair).
+ *   <li>{@link #NPAMRD_NAMESPACE} ({@code npamrd:}) — {@link #forMaintainedResourceDeclaration(String, String) maintained-resource-declaration} entries (one per {@code (resource, space)} pair).
  *   <li>{@link #NPASS_NAMESPACE} ({@code npass:}) — space-state graph IRIs (used by the materializer in a later PR).
  * </ul>
  */
@@ -43,6 +44,8 @@ public final class SpacesVocab {
     public static final String NPAINV_NAMESPACE = "http://purl.org/nanopub/admin/invalidation/";
     /** Namespace for sub-space-declaration entries ({@code npasub:<artifactCode>_<parentHash>}). */
     public static final String NPASUB_NAMESPACE = "http://purl.org/nanopub/admin/subspace/";
+    /** Namespace for maintained-resource-declaration entries ({@code npamrd:<artifactCode>_<resourceHash>}). */
+    public static final String NPAMRD_NAMESPACE = "http://purl.org/nanopub/admin/maintainedresource/";
     /** Namespace for space-state graph IRIs ({@code npass:<trustStateHash>_<loadCounter>}). */
     public static final String NPASS_NAMESPACE = "http://purl.org/nanopub/admin/spacestate/";
 
@@ -62,6 +65,9 @@ public final class SpacesVocab {
 
     /** RDF type for a sub-space-declaration extraction entry. */
     public static final IRI SUB_SPACE_DECLARATION = vf.createIRI(NPA.NAMESPACE, "SubSpaceDeclaration");
+
+    /** RDF type for a maintained-resource-declaration extraction entry. */
+    public static final IRI MAINTAINED_RESOURCE_DECLARATION = vf.createIRI(NPA.NAMESPACE, "MaintainedResourceDeclaration");
 
     // -------- Properties on extraction entries --------
 
@@ -112,6 +118,12 @@ public final class SpacesVocab {
 
     /** Links a {@link #SUB_SPACE_DECLARATION} to the parent Space IRI. */
     public static final IRI PARENT_SPACE = vf.createIRI(NPA.NAMESPACE, "parentSpace");
+
+    /** Links a {@link #MAINTAINED_RESOURCE_DECLARATION} to the maintained resource IRI. */
+    public static final IRI RESOURCE_IRI = vf.createIRI(NPA.NAMESPACE, "resourceIri");
+
+    /** Links a {@link #MAINTAINED_RESOURCE_DECLARATION} to the maintaining Space IRI. */
+    public static final IRI MAINTAINER_SPACE = vf.createIRI(NPA.NAMESPACE, "maintainerSpace");
 
     /**
      * Links a {@link #SPACE_REF} aggregate to each intermediate path-prefix of its
@@ -184,6 +196,18 @@ public final class SpacesVocab {
      */
     public static IRI forSubSpaceDeclaration(String artifactCode, String parentHash) {
         return vf.createIRI(NPASUB_NAMESPACE, artifactCode + "_" + parentHash);
+    }
+
+    /**
+     * Mints {@code npamrd:<artifactCode>_<resourceHash>} for a maintained-resource-declaration entry.
+     * Including the resource-IRI hash in the local name lets a single nanopub declare
+     * multiple maintained resources without subject collision.
+     *
+     * @param artifactCode trusty-URI artifact code of the originating nanopub
+     * @param resourceHash {@code Utils.createHash(<resourceIri>)}
+     */
+    public static IRI forMaintainedResourceDeclaration(String artifactCode, String resourceHash) {
+        return vf.createIRI(NPAMRD_NAMESPACE, artifactCode + "_" + resourceHash);
     }
 
     /**

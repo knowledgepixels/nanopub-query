@@ -83,6 +83,24 @@ public class GEN {
      */
     public static final IRI IS_SUB_SPACE_OF = VocabUtils.createIRI(NAMESPACE, "isSubSpaceOf");
 
+    /**
+     * Predicate declaring a resource (subject) as maintained by a space (object).
+     * n-to-n; resource &rarr; space direction. May appear inside a {@code gen:Space}
+     * nanopub's assertion (embedded path) or in a stand-alone link nanopub typed
+     * {@code gen:isMaintainedBy} (the predicate IRI is type-dispatched the same way
+     * the backwards-compat role predicates are).
+     */
+    public static final IRI IS_MAINTAINED_BY = VocabUtils.createIRI(NAMESPACE, "isMaintainedBy");
+
+    /**
+     * Class IRI for resources declared as maintained by a space. Informative only:
+     * an assertion-level {@code <r> rdf:type gen:MaintainedResource} marks the
+     * publisher's intent in a maintained-resource-defining nanopub but does not
+     * gate extraction — the {@link #IS_MAINTAINED_BY} triple alone carries the
+     * relation.
+     */
+    public static final IRI MAINTAINED_RESOURCE = VocabUtils.createIRI(NAMESPACE, "MaintainedResource");
+
     private GEN() {
     }
 
