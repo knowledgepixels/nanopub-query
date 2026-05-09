@@ -375,4 +375,83 @@ class AuthorityResolverTest {
                 "dedup excludes already-emitted derived tags");
     }
 
+    // ---------------- Maintained-resource admit + invalidation (#97) ----------------
+
+    @Test
+    void maintainedResourceAdmitUpdate_copiesDeclarationAndEmitsDirectTriples() {
+        String sparql = AuthorityResolver.maintainedResourceAdmitUpdate(TEST_GRAPH, 17);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        // Per-declaration row preserved with viaNanopub provenance.
+        assertTrue(sparql.contains("npa:MaintainedResourceDeclaration"),
+                "MaintainedResourceDeclaration type inserted");
+        assertTrue(sparql.contains("npa:resourceIri"), "resourceIri predicate");
+        assertTrue(sparql.contains("npa:maintainerSpace"), "maintainerSpace predicate");
+        assertTrue(sparql.contains("npa:viaNanopub"), "viaNanopub provenance preserved");
+        // Convenience direct triples on the resource and space IRIs themselves.
+        assertTrue(sparql.contains("?r npa:isMaintainedBy"),
+                "direct resource→space triple emitted");
+        assertTrue(sparql.contains("?s npa:hasMaintainedResource"),
+                "direct space→resource triple emitted");
+    }
+
+    @Test
+    void maintainedResourceAdmitUpdate_modeAChecksAdminPublisher() {
+        String sparql = AuthorityResolver.maintainedResourceAdmitUpdate(TEST_GRAPH, 0);
+        // Mode A only: the publisher resolved from ?pkh must be admin of ?s.
+        java.util.regex.Pattern modeA = java.util.regex.Pattern.compile(
+                "\\?riA[\\s\\S]*?npa:inverseProperty\\s+gen:hasAdmin"
+                        + "[\\s\\S]*?npa:forSpace\\s+\\?s"
+                        + "[\\s\\S]*?npa:forAgent\\s+\\?publisher");
+        assertTrue(modeA.matcher(sparql).find(),
+                "Mode A: publisher must be admin of the maintaining space");
+    }
+
+    @Test
+    void maintainedResourceAdmitUpdate_hasNoModeB() {
+        String sparql = AuthorityResolver.maintainedResourceAdmitUpdate(TEST_GRAPH, 0);
+        // No Mode-B co-declaration: only one space is involved, so the
+        // two-sides-must-be-covered concern doesn't apply. Guards against accidental
+        // copy-paste of sub-space machinery.
+        assertFalse(sparql.contains("UNION"),
+                "no UNION — single satisfaction mode (Mode A only)");
+        assertFalse(sparql.contains("?d2"),
+                "no co-declaration partner");
+        assertFalse(sparql.contains("?publisher2"),
+                "no second publisher");
+    }
+
+    @Test
+    void maintainedResourceAdmitUpdate_hasDeltaAndInvalidationFiltersAndDedup() {
+        String sparql = AuthorityResolver.maintainedResourceAdmitUpdate(TEST_GRAPH, 17);
+        assertTrue(sparql.contains("FILTER (?ln > 17)"),
+                "load-number delta filter on the declaration nanopub");
+        assertTrue(sparql.contains("?_inv_np "),
+                "invalidation filter for the declaration nanopub");
+        // Dedup against the state graph's existing MaintainedResourceDeclaration rows.
+        java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
+                "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<"
+                        + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
+                        + ">\\s*\\{\\s*\\?d\\s+a\\s+npa:MaintainedResourceDeclaration");
+        assertTrue(dedup.matcher(sparql).find(),
+                "dedup excludes already-validated declarations");
+    }
+
+    @Test
+    void maintainedResourceInvalidationDelete_targetsDeclarationRowsOnly() {
+        String sparql = AuthorityResolver.maintainedResourceInvalidationDelete(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("npa:MaintainedResourceDeclaration"),
+                "scoped to MaintainedResourceDeclaration rows");
+        assertTrue(sparql.contains("npa:Invalidation"),
+                "joins the Invalidation extraction");
+        assertTrue(sparql.contains("npa:invalidates ?np"),
+                "links invalidation to the source nanopub");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the invalidator's load number");
+        // Convenience direct triples (subject = ?r / ?s) are NOT removed here —
+        // they're left sticky and cleaned by the next periodic rebuild.
+        assertFalse(sparql.contains("?r npa:isMaintainedBy"),
+                "direct triples are not part of the DELETE — sticky until rebuild");
+    }
+
 }
