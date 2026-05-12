@@ -630,10 +630,109 @@ GRAPH ?g {
 
 Querying the inverse direction (find all super-spaces of a given child) uses `<CHILD_IRI> npa:isSubSpaceOf ?superspace` with the same dedup / tag-filter shape.
 
+## Maintained resources
+
+A maintained resource is any resource (ontology, dataset, network, vocabulary, …) that a space declares responsibility for via `gen:isMaintainedBy` (resource → space direction). Multiple resources per space; a single resource may also name multiple maintaining spaces.
+
+Distinct from sub-space relations: this is a resource→space link, not a space→space link. The resource doesn't need to be a space itself, isn't constrained by URL hierarchy, and carries no transitive role inheritance.
+
+### Declaration paths
+
+Predicate: `gen:isMaintainedBy` (in the `gen:` namespace alongside other space terms). Two paths produce the same `npa:MaintainedResourceDeclaration` extraction entry; downstream rules don't distinguish them:
+
+1. **Embedded** in a `gen:Space` nanopub — `<resourceIri> gen:isMaintainedBy <thisSpaceIri>` triple in the assertion (object equals the Space being defined). One declaration per resource.
+2. **Standalone** maintained-resource nanopub — `<resourceIri> gen:isMaintainedBy <spaceIri>` triple(s) in the assertion, gated by either of two equivalent nanopub-level type markers (extractor accepts both):
+   - `npx:hasNanopubType gen:MaintainedResource` (resource-class marker; what Nanodash currently writes for resource-defining nanopubs that also assert `<r> rdf:type gen:MaintainedResource` in the assertion).
+   - `npx:hasNanopubType gen:isMaintainedBy` or single-predicate-assertion auto-typing (predicate marker; for link-only nanopubs).
+
+   Both shapes carry the same link triple. The assertion-level `<r> rdf:type gen:MaintainedResource` is informative only — the extractor doesn't gate on it; the `gen:isMaintainedBy` triple plus a nanopub-level type marker is sufficient. Multi-triple assertions are allowed (one nanopub may declare multiple resources for the same space).
+
+### Extraction entry (in `npa:spacesGraph`)
+
+```turtle
+GRAPH npa:spacesGraph {
+  npamrd:<artifactCode>_<resourceHash> a npa:MaintainedResourceDeclaration ;
+                                       npa:resourceIri     <resourceIri> ;
+                                       npa:maintainerSpace <spaceIri> ;
+                                       npa:viaNanopub      <thisNP> ;
+                                       npx:signedBy        <publishingAgent> ;
+                                       npa:pubkeyHash      "<pubkeyHash>" ;
+                                       dct:created         "<timestamp>"^^xsd:dateTime .
+}
+```
+
+`<resourceHash> = Utils.createHash(<resourceIri>)` so a single nanopub declaring multiple resources mints distinct subjects without collision.
+
+### Authority rule
+
+A `(resource, space)` link enters `npass:<…>` iff the declaration's publisher is a validated **admin of the maintaining space** at materialization time. Single satisfaction mode — there is no Mode-B co-declaration shape because only one space is involved, so the two-sides-must-be-covered concern that drives sub-space Mode B doesn't apply. Maintainer-tier publishers do not qualify; admin authority is the single gate.
+
+Admit-pass UPDATE (sketch, runs after the admin closure has settled in the per-tier loop). Validated declarations are copied into `npass:<…>` keeping their `npamrd:` subject:
+
+```sparql
+INSERT { GRAPH npass:<ts> {
+  ?d a npa:MaintainedResourceDeclaration ;
+     npa:resourceIri     ?r ;
+     npa:maintainerSpace ?s ;
+     npa:viaNanopub      ?d_np .
+  ?r npa:isMaintainedBy        ?s .
+  ?s npa:hasMaintainedResource ?r .
+} }
+WHERE {
+  GRAPH npa:spacesGraph {
+    ?d a npa:MaintainedResourceDeclaration ;
+       npa:resourceIri     ?r ;
+       npa:maintainerSpace ?s ;
+       npa:pubkeyHash      ?pkh ;
+       npa:viaNanopub      ?d_np .
+    FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?d_np . }
+  }
+  GRAPH npass:<ts> {
+    ?acct a npa:AccountState ; npa:agent ?publisher ; npa:pubkey ?pkh .
+    # Mode A only: publisher is admin of the maintaining space.
+    ?riA a gen:RoleInstantiation ; npa:inverseProperty gen:hasAdmin ;
+         npa:forSpace ?s ; npa:forAgent ?publisher .
+  }
+  FILTER NOT EXISTS { GRAPH npass:<ts> {
+    ?d a npa:MaintainedResourceDeclaration .
+  } }
+}
+```
+
+The admit pass also emits convenience triples directly on the resource and space IRIs (`<r> npa:isMaintainedBy <s>` and `<s> npa:hasMaintainedResource <r>`) so consumer queries don't need to traverse the declaration row.
+
+No URL-prefix fallback. Resources don't generally sit under their maintaining space's URL hierarchy (e.g. `kpxl/gen/terms/…` maintained by `spaces/knowledgepixels`), so a prefix-based inference would yield mostly noise. Explicit `gen:isMaintainedBy` declarations are the only path.
+
+No transitivity materialization. If a resource is maintained by space `Y` and `Y npa:isSubSpaceOf X`, the extractor does not also emit `<r> npa:isMaintainedBy <X>`. Consumers that want transitive containment compose property paths at query time:
+
+```sparql
+?r npa:isMaintainedBy/npa:isSubSpaceOf* ?s .
+```
+
+### Invalidation
+
+Standard `npa:viaNanopub` DELETE on the originating declaration. The incremental-update admit query is re-run for affected `(resource, space)` pairs and the link row comes down with the source declaration.
+
+Validated `npa:MaintainedResourceDeclaration` DELETEs in `npass:<…>` are **not structural** — they don't change the trust state or the role-tier closure, so the `npa:needsFullRebuild` flag is not set. Per-`viaNanopub` DELETE plus a re-run of the admit query suffices.
+
+### Consumer pattern
+
+```sparql
+PREFIX npa: <http://purl.org/nanopub/admin/>
+SELECT DISTINCT ?resource WHERE {
+  GRAPH <http://purl.org/nanopub/admin/graph> {
+    <http://purl.org/nanopub/admin/thisRepo> npa:hasCurrentSpaceState ?g .
+  }
+  GRAPH ?g { <SPACE_IRI> npa:hasMaintainedResource ?resource . }
+}
+```
+
+The inverse direction (find the maintaining space(s) of a resource) uses `<RESOURCE_IRI> npa:isMaintainedBy ?space` with the same shape.
+
 ## Implementation phases
 
-1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps. Includes `npa:SubSpaceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isSubSpaceOf` paths) and `npa:hasIdPrefix` triples on `npa:SpaceRef` aggregates (see [Sub-space relations](#sub-space-relations)).
-2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup. Includes the explicit-declaration sub-space admit pass (Mode A + Mode B, copying validated `npa:SubSpaceDeclaration` rows into `npass:<…>`), the URL-prefix fallback admit pass (suppressed per child by any non-invalidated declaration), and the structural-rebuild flag on validated-declaration DELETE.
+1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps. Includes `npa:SubSpaceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isSubSpaceOf` paths), `npa:MaintainedResourceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isMaintainedBy` paths; see [Maintained resources](#maintained-resources)), and `npa:hasIdPrefix` triples on `npa:SpaceRef` aggregates (see [Sub-space relations](#sub-space-relations)).
+2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup. Includes the explicit-declaration sub-space admit pass (Mode A + Mode B, copying validated `npa:SubSpaceDeclaration` rows into `npass:<…>`), the URL-prefix fallback admit pass (suppressed per child by any non-invalidated declaration), the maintained-resource admit pass (Mode A only, copying validated `npa:MaintainedResourceDeclaration` rows into `npass:<…>` plus convenience `<r> npa:isMaintainedBy <s>` / `<s> npa:hasMaintainedResource <r>` triples), and the structural-rebuild flag on validated-declaration DELETE.
 3. **Routes / metrics** — `/spaces` listing route (HTML + JSON), Prometheus gauges (rebuild duration, delta size, `processedUpTo` lag, distinct-subject totals).
 4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query that resolves the current `npass:*` graph from the pointer (see [Querying the current space-state graph](#querying-the-current-space-state-graph)); drop `isAdminPubkey` gate and pinned templates/queries. Replace `SpaceRepository.findSubspaces(...)` URL regex with the single-query consumer pattern in [Sub-space relations](#sub-space-relations).
 

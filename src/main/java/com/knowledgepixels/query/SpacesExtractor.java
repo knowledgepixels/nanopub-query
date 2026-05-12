@@ -89,8 +89,16 @@ public final class SpacesExtractor {
         boolean isRoleInstantiation = types.contains(GEN.ROLE_INSTANTIATION)
                 || anyMatch(types, BackcompatRolePredicates.ALL);
         boolean isSubSpaceOf = types.contains(GEN.IS_SUB_SPACE_OF);
+        // Maintained-resource nanopubs use either the resource-class marker
+        // (gen:MaintainedResource — what Nanodash currently writes) or the
+        // predicate marker (gen:isMaintainedBy — single-predicate-assertion
+        // auto-typing or explicit npx:hasNanopubType). Both shapes carry the
+        // same <r> gen:isMaintainedBy <s> triple in the assertion.
+        boolean isMaintainedResource = types.contains(GEN.MAINTAINED_RESOURCE)
+                || types.contains(GEN.IS_MAINTAINED_BY);
 
-        if (!isSpace && !isHasRole && !isSpaceMemberRole && !isRoleInstantiation && !isSubSpaceOf) {
+        if (!isSpace && !isHasRole && !isSpaceMemberRole && !isRoleInstantiation
+                && !isSubSpaceOf && !isMaintainedResource) {
             return Collections.emptyList();
         }
 
@@ -99,6 +107,7 @@ public final class SpacesExtractor {
         if (isSpaceMemberRole) extractSpaceMemberRole(np, ctx, out);
         if (isRoleInstantiation) extractRoleInstantiation(np, ctx, out);
         if (isSubSpaceOf) extractSubSpaceOf(np, ctx, out);
+        if (isMaintainedResource) extractIsMaintainedBy(np, ctx, out);
 
         return out;
     }
@@ -134,6 +143,8 @@ public final class SpacesExtractor {
                 || types.contains(GEN.SPACE_MEMBER_ROLE)
                 || types.contains(GEN.ROLE_INSTANTIATION)
                 || types.contains(GEN.IS_SUB_SPACE_OF)
+                || types.contains(GEN.IS_MAINTAINED_BY)
+                || types.contains(GEN.MAINTAINED_RESOURCE)
                 || anyMatch(types, BackcompatRolePredicates.ALL);
     }
 
@@ -206,6 +217,11 @@ public final class SpacesExtractor {
         // SubSpaceDeclaration per (spaceIri, parentIri) pair. Same shape as the
         // standalone path; downstream rules don't distinguish them.
         emitSubSpaceDeclarations(np, ctx, spaceIri, out);
+
+        // Embedded gen:isMaintainedBy triples in this gen:Space nanopub: emit one
+        // MaintainedResourceDeclaration per (resourceIri, spaceIri) pair where the
+        // object equals the Space being defined. Same shape as the standalone path.
+        emitMaintainedResourceDeclarations(np, ctx, spaceIri, out);
 
         // Per-contributor entry: signer, pubkey, created-at, link back to nanopub.
         out.add(vf.createStatement(defIri, RDF.TYPE, SpacesVocab.SPACE_DEFINITION, GRAPH));
@@ -465,6 +481,70 @@ public final class SpacesExtractor {
         out.add(typeSt);
         out.add(vf.createStatement(subject, SpacesVocab.CHILD_SPACE, childIri, GRAPH));
         out.add(vf.createStatement(subject, SpacesVocab.PARENT_SPACE, parentIri, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+        addProvenance(subject, ctx, out);
+    }
+
+    // ---------------- gen:isMaintainedBy ----------------
+
+    /**
+     * Standalone {@code gen:isMaintainedBy} nanopub: every
+     * {@code <resourceIri> gen:isMaintainedBy <spaceIri>} triple in the assertion emits
+     * one {@code npa:MaintainedResourceDeclaration}. Multi-triple assertions are
+     * allowed; one entry per pair. Self-loops ({@code <X> gen:isMaintainedBy <X>}) are
+     * rejected.
+     */
+    private static void extractIsMaintainedBy(Nanopub np, Context ctx, List<Statement> out) {
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(GEN.IS_MAINTAINED_BY)) continue;
+            if (!(st.getSubject() instanceof IRI resourceIri)) continue;
+            if (!(st.getObject() instanceof IRI spaceIri)) continue;
+            emitMaintainedResourceDeclaration(np, ctx, resourceIri, spaceIri, out);
+        }
+    }
+
+    /**
+     * Embedded path: scan a {@code gen:Space} nanopub's assertion for
+     * {@code <resourceIri> gen:isMaintainedBy <spaceIri>} triples (object must equal
+     * the Space IRI we're emitting an entry for, so the maintained-resource
+     * declaration is bound to this particular Space). Self-loops are rejected.
+     */
+    private static void emitMaintainedResourceDeclarations(Nanopub np, Context ctx, IRI spaceIri,
+                                                           List<Statement> out) {
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(GEN.IS_MAINTAINED_BY)) continue;
+            if (!spaceIri.equals(st.getObject())) continue;
+            if (!(st.getSubject() instanceof IRI resourceIri)) continue;
+            emitMaintainedResourceDeclaration(np, ctx, resourceIri, spaceIri, out);
+        }
+    }
+
+    /**
+     * Emits one {@code npa:MaintainedResourceDeclaration} entry, keyed by
+     * {@code (artifactCode, resourceHash)} so a single nanopub can declare multiple
+     * maintained resources without subject collision. Self-loops are silently dropped.
+     */
+    private static void emitMaintainedResourceDeclaration(Nanopub np, Context ctx, IRI resourceIri,
+                                                          IRI spaceIri, List<Statement> out) {
+        if (resourceIri.equals(spaceIri)) {
+            log.debug("Ignoring self-loop maintained-resource declaration on {} in {}",
+                    resourceIri, np.getUri());
+            return;
+        }
+        String resourceHash = Utils.createHash(resourceIri);
+        IRI subject = SpacesVocab.forMaintainedResourceDeclaration(ctx.artifactCode(), resourceHash);
+
+        // Idempotence: the embedded (gen:Space) and standalone (gen:isMaintainedBy)
+        // paths can both fire on the same (np, resource, space) combination if a
+        // gen:Space nanopub somehow ends up typed gen:isMaintainedBy as well. Skip if
+        // we've already emitted the type triple for this subject.
+        Statement typeSt = vf.createStatement(subject, RDF.TYPE,
+                SpacesVocab.MAINTAINED_RESOURCE_DECLARATION, GRAPH);
+        if (out.contains(typeSt)) return;
+
+        out.add(typeSt);
+        out.add(vf.createStatement(subject, SpacesVocab.RESOURCE_IRI, resourceIri, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.MAINTAINER_SPACE, spaceIri, GRAPH));
         out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
         addProvenance(subject, ctx, out);
     }

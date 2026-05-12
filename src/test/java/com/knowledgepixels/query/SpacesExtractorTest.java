@@ -12,8 +12,11 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ROOT_ADMIN;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVALIDATES;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVALIDATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVERSE_PROPERTY;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.MAINTAINED_RESOURCE_DECLARATION;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.MAINTAINER_SPACE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.PARENT_SPACE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.PUBKEY_HASH;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.RESOURCE_IRI;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.REGULAR_PROPERTY;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROLE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROLE_DECLARATION;
@@ -29,6 +32,7 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleAssignment
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleDeclaration;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleInstantiation;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceDefinition;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.forMaintainedResourceDeclaration;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceRef;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSubSpaceDeclaration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -115,6 +119,8 @@ class SpacesExtractorTest {
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.SPACE_MEMBER_ROLE)));
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.ROLE_INSTANTIATION)));
         assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_SUB_SPACE_OF)));
+        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_MAINTAINED_BY)));
+        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.MAINTAINED_RESOURCE)));
     }
 
     @Test
@@ -445,6 +451,149 @@ class SpacesExtractorTest {
         IRI rejectedSubject = forSubSpaceDeclaration(ARTIFACT_CODE, Utils.createHash(parentSpace));
         assertDoesNotContain(out, rejectedSubject, RDF.TYPE, SUB_SPACE_DECLARATION);
     }
+
+    // ---------------- gen:isMaintainedBy ----------------
+
+    @Test
+    void extract_maintainedResourceStandalone_singlePair_emitsDeclaration() throws Exception {
+        IRI resource = vf.createIRI("https://example.org/ontologies/foo");
+        // Single-triple assertion: NanopubUtils.getTypes promotes the predicate to a type.
+        Nanopub np = creator()
+                .assertion(resource, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource));
+
+        assertAllInSpacesGraph(out);
+        assertContains(out, subject, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+        assertContains(out, subject, RESOURCE_IRI, resource);
+        assertContains(out, subject, MAINTAINER_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+        assertContains(out, subject, NPX.SIGNED_BY, SIGNER_AGENT);
+    }
+
+    @Test
+    void extract_maintainedResourceStandalone_multiPair_emitsOnePerResource() throws Exception {
+        // Multi-triple assertion: predicate dispatch may not fire on multi-triple
+        // assertions, so add the type explicitly via npx:hasNanopubType.
+        IRI resource1 = vf.createIRI("https://example.org/ontologies/foo");
+        IRI resource2 = vf.createIRI("https://example.org/ontologies/bar");
+        Nanopub np = creator()
+                .type(GEN.IS_MAINTAINED_BY)
+                .assertion(resource1, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .assertion(resource2, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subj1 = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource1));
+        IRI subj2 = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource2));
+
+        assertContains(out, subj1, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+        assertContains(out, subj1, RESOURCE_IRI, resource1);
+        assertContains(out, subj2, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+        assertContains(out, subj2, RESOURCE_IRI, resource2);
+        // Distinct subjects — different resource hashes.
+        assertFalse(subj1.equals(subj2), "Per-resource subjects must differ");
+    }
+
+    @Test
+    void extract_maintainedResourceStandalone_resourceClassTypeMarker_emitsDeclaration() throws Exception {
+        // Publisher convention used by Nanodash: type the nanopub at the head/pubinfo
+        // level as gen:MaintainedResource (the resource class) rather than
+        // gen:isMaintainedBy (the predicate). The extractor accepts either marker as
+        // the type gate; both shapes carry the <r> gen:isMaintainedBy <s> link.
+        IRI resource = vf.createIRI("https://example.org/ontologies/foo");
+        Nanopub np = creator()
+                .type(GEN.MAINTAINED_RESOURCE)
+                .assertion(resource, RDF.TYPE, GEN.MAINTAINED_RESOURCE)
+                .assertion(resource, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource));
+        assertContains(out, subject, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+        assertContains(out, subject, RESOURCE_IRI, resource);
+        assertContains(out, subject, MAINTAINER_SPACE, SPACE_IRI_1);
+    }
+
+    @Test
+    void extract_maintainedResourceStandalone_typeTripleIsInformativeOnly() throws Exception {
+        // The publisher contract for a maintained-resource-defining nanopub includes
+        // <r> rdf:type gen:MaintainedResource in the assertion, but the extractor does
+        // not gate on it — the gen:isMaintainedBy triple alone produces the declaration.
+        IRI resource = vf.createIRI("https://example.org/ontologies/foo");
+        Nanopub np = creator()
+                .type(GEN.IS_MAINTAINED_BY)
+                .assertion(resource, RDF.TYPE, GEN.MAINTAINED_RESOURCE)
+                .assertion(resource, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource));
+        assertContains(out, subject, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+        assertContains(out, subject, RESOURCE_IRI, resource);
+        assertContains(out, subject, MAINTAINER_SPACE, SPACE_IRI_1);
+    }
+
+    @Test
+    void extract_maintainedResourceStandalone_selfLoop_isRejected() throws Exception {
+        Nanopub np = creator()
+                .assertion(SPACE_IRI_1, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        assertTrue(out.isEmpty(),
+                "Self-loop maintained-resource declaration should produce no extraction; got: " + out);
+    }
+
+    @Test
+    void extract_maintainedResourceEmbeddedInGenSpace_emitsDeclaration() throws Exception {
+        IRI resource = vf.createIRI("https://example.org/ontologies/foo");
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(resource, GEN.IS_MAINTAINED_BY, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource));
+
+        // Maintained-resource declaration emitted alongside the SpaceRef / SpaceDefinition.
+        assertContains(out, subject, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+        assertContains(out, subject, RESOURCE_IRI, resource);
+        assertContains(out, subject, MAINTAINER_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+
+        // SpaceRef + SpaceDefinition still present (regression guard).
+        String spaceRef = ARTIFACT_CODE + "_" + Utils.createHash(SPACE_IRI_1);
+        assertContains(out, forSpaceRef(spaceRef), RDF.TYPE, SPACE_REF);
+        assertContains(out, forSpaceDefinition(ARTIFACT_CODE), RDF.TYPE, SPACE_DEFINITION);
+    }
+
+    @Test
+    void extract_maintainedResourceEmbeddedInGenSpace_objectMustBeDeclaredSpaceIri() throws Exception {
+        // A gen:isMaintainedBy triple whose object isn't one of the declared Space IRIs
+        // is ignored on the embedded path. Authors who want to declare for an unrelated
+        // space should publish a separate gen:isMaintainedBy nanopub.
+        IRI resource = vf.createIRI("https://example.org/ontologies/foo");
+        IRI otherSpace = vf.createIRI("https://example.org/spaces/other");
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(resource, GEN.IS_MAINTAINED_BY, otherSpace)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI rejectedSubject = forMaintainedResourceDeclaration(ARTIFACT_CODE, Utils.createHash(resource));
+        assertDoesNotContain(out, rejectedSubject, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
+    }
+
+    // ---------------- HAS_ID_PREFIX (regression coverage) ----------------
 
     @Test
     void extract_genSpace_emitsHasIdPrefixOnSpaceRef() throws Exception {

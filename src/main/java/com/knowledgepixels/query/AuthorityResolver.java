@@ -242,17 +242,17 @@ public final class AuthorityResolver {
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
                 + counts.maintainer + counts.member + counts.observer
-                + counts.subSpace + counts.subSpacePrefix;
+                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} "
-                        + "subspace={} subspace-prefix={}) durationMs={}",
+                        + "subspace={} subspace-prefix={} maintained-resource={}) durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
-                counts.subSpace, counts.subSpacePrefix,
+                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
                 durationMs);
     }
 
@@ -309,12 +309,13 @@ public final class AuthorityResolver {
             // admin tier — its only enabling event is the admin grant itself,
             // already handled by the regular pass.
             TierInsertedTriples lateCounts = runDownstreamWithoutLoadFilter(graph);
-            counts.attachment     += lateCounts.attachment;
-            counts.maintainer     += lateCounts.maintainer;
-            counts.member         += lateCounts.member;
-            counts.observer       += lateCounts.observer;
-            counts.subSpace       += lateCounts.subSpace;
-            counts.subSpacePrefix += lateCounts.subSpacePrefix;
+            counts.attachment         += lateCounts.attachment;
+            counts.maintainer         += lateCounts.maintainer;
+            counts.member             += lateCounts.member;
+            counts.observer           += lateCounts.observer;
+            counts.subSpace           += lateCounts.subSpace;
+            counts.subSpacePrefix     += lateCounts.subSpacePrefix;
+            counts.maintainedResource += lateCounts.maintainedResource;
         }
 
         writeProcessedUpTo(graph, currentLoadCounter);
@@ -324,17 +325,17 @@ public final class AuthorityResolver {
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
                 + counts.maintainer + counts.member + counts.observer
-                + counts.subSpace + counts.subSpacePrefix;
+                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastIncrementalCycleDurationMs = durationMs;
         log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} "
-                        + "subspace={} subspace-prefix={}) "
+                        + "subspace={} subspace-prefix={} maintained-resource={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
-                counts.subSpace, counts.subSpacePrefix,
+                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
                 structuralInvalidation, structuralAdds, durationMs);
     }
 
@@ -376,6 +377,9 @@ public final class AuthorityResolver {
         }
         // Leaf-tier RI deletes — no flag.
         executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
+        // Maintained-resource declaration deletes — no flag (leaf relation, no
+        // downstream caches to bound).
+        executeUpdate(maintainedResourceInvalidationDelete(graph, lastProcessed));
         if (structural) setNeedsFullRebuild();
         return structural;
     }
@@ -392,6 +396,10 @@ public final class AuthorityResolver {
         // declaration is older than lastProcessed but whose partner just landed.
         c.subSpace = runTierLabeled("subspace(late)", graph,
                 subSpaceAdmitUpdate(graph, -1));
+        // Maintained-resource late-arrival: catches declarations that landed
+        // before the publisher's admin grant became valid in this state.
+        c.maintainedResource = runTierLabeled("maintained-resource(late)", graph,
+                maintainedResourceAdmitUpdate(graph, -1));
         // URL-prefix fallback: re-run after the late-arrival sub-space admit so
         // any newly-validated children get their fallback edges suppressed (for
         // future inserts) and any newly-orphaned children pick up fallback edges.
@@ -464,6 +472,7 @@ public final class AuthorityResolver {
         int observer;
         int subSpace;
         int subSpacePrefix;
+        int maintainedResource;
     }
 
     /**
@@ -487,6 +496,11 @@ public final class AuthorityResolver {
         // need the admin set). Independent of role tiers — order between subspace
         // and attachment / maintainer / member / observer doesn't matter.
         c.subSpace = runTierLabeled("subspace", graph, subSpaceAdmitUpdate(graph, lastProcessed));
+        // Maintained-resource admit also depends only on the admin closure. Single
+        // Mode A: publisher must be admin of the maintaining space. No co-declaration
+        // partner, no URL-prefix fallback.
+        c.maintainedResource = runTierLabeled("maintained-resource", graph,
+                maintainedResourceAdmitUpdate(graph, lastProcessed));
         // URL-prefix sub-space fallback runs after the explicit-declaration admit
         // pass commits so the per-child suppression check sees this cycle's fresh
         // validations. No load filter — depends on which Spaces exist, not on
@@ -1041,6 +1055,79 @@ public final class AuthorityResolver {
     }
 
     /**
+     * Maintained-resource admit pass. Copies validated
+     * {@code npa:MaintainedResourceDeclaration} extraction rows into the space-state
+     * graph (preserving the {@code npamrd:} subject) and emits convenience
+     * {@code <r> npa:isMaintainedBy <s>} and {@code <s> npa:hasMaintainedResource <r>}
+     * direct triples. Single satisfaction mode:
+     * <ul>
+     *   <li>Mode A — the declaration's publisher is a validated admin of the
+     *       maintaining space.</li>
+     * </ul>
+     *
+     * <p>No Mode B because only one space is involved; the two-sides-must-be-covered
+     * concern that drives sub-space Mode B doesn't apply. Late-arrival is still
+     * possible (declaration lands before the publisher's admin grant becomes valid):
+     * the load-number filter on {@code ?np} excludes the candidate, and the
+     * late-arrival sweep ({@link #runDownstreamWithoutLoadFilter}) re-runs this pass
+     * without the load filter and catches it.
+     */
+    static String maintainedResourceAdmitUpdate(IRI graph, long lastProcessed) {
+        return """
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?d a npa:MaintainedResourceDeclaration ;
+                     npa:resourceIri     ?r ;
+                     npa:maintainerSpace ?s ;
+                     npa:viaNanopub      ?np .
+                  ?r npa:isMaintainedBy        ?s .
+                  ?s npa:hasMaintainedResource ?r .
+                } }
+                WHERE {
+                  # 1. Anchor: candidate declarations from the extraction graph.
+                  GRAPH <%4$s> {
+                    ?d a npa:MaintainedResourceDeclaration ;
+                       npa:resourceIri     ?r ;
+                       npa:maintainerSpace ?s ;
+                       npa:pubkeyHash      ?pkh ;
+                       npa:viaNanopub      ?np .
+                  }
+                  # 2. Mirror: resolve ?pkh → ?publisher via the trust-approved row.
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:pubkey ?pkh ;
+                          npa:agent  ?publisher .
+                    # 3. Authority gate (Mode A only): publisher is admin of the
+                    #    maintaining space.
+                    ?riA a gen:RoleInstantiation ;
+                         npa:inverseProperty gen:hasAdmin ;
+                         npa:forSpace ?s ;
+                         npa:forAgent ?publisher .
+                  }
+                  # 4. Invalidation filter on the declaration's nanopub.
+                  %6$s
+                  # 5. Load-number filter on bound ?np.
+                  GRAPH <%7$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  # 6. Dedup last.
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?d a npa:MaintainedResourceDeclaration .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("np"),
+                NPA.GRAPH);
+    }
+
+    /**
      * URL-prefix sub-space fallback admit pass. For every pair of {@code SpaceRef}
      * aggregates where the child's {@code npa:hasIdPrefix} matches the parent's
      * {@code npa:spaceIri}, emits convenience {@code <child> npa:isSubSpaceOf <parent>}
@@ -1294,6 +1381,42 @@ public final class AuthorityResolver {
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 subSpaceInvalidationCheckWhere(graph, lastProcessed));
+    }
+
+    /**
+     * DELETE template for validated {@code npa:MaintainedResourceDeclaration} rows
+     * whose source nanopub was invalidated. Removes the per-declaration row by
+     * subject; the convenience direct triples ({@code <r> npa:isMaintainedBy <s>}
+     * and inverse) are left sticky and cleaned by the next periodic full rebuild
+     * (same staleness policy as sub-space declaration invalidation, but without
+     * the structural-rebuild flag — maintained-resource is a leaf relation, no
+     * downstream consumers depend on its closure).
+     */
+    static String maintainedResourceInvalidationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?d ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> {
+                    ?d a npa:MaintainedResourceDeclaration ;
+                       npa:viaNanopub ?np .
+                    ?d ?p ?o .
+                  }
+                  GRAPH <%4$s> {
+                    ?inv a npa:Invalidation ;
+                         npa:invalidates ?np ;
+                         npa:viaNanopub  ?invNp .
+                  }
+                  GRAPH <%5$s> {
+                    ?invNp npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %6$d)
+                  }
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
     }
 
     /** Wraps an ASK by joining the shared prefixes. */
