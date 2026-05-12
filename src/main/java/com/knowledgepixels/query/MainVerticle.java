@@ -644,6 +644,7 @@ public class MainVerticle extends AbstractVerticle {
      */
     static void applyGlobalHeaders(HttpServerResponse response) {
         var state = StatusController.get().getState();
+        response.putHeader("Nanopub-Query-Version", Utils.getVersion());
         response.putHeader("Nanopub-Query-Status", state.state.toString());
         response.putHeader("Nanopub-Query-Registry-Url", JellyNanopubLoader.registryUrl);
         Long setupId = StatusController.get().getRegistrySetupId();

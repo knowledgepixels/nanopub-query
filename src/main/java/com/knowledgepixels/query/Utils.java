@@ -1,10 +1,13 @@
 package com.knowledgepixels.query;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -190,6 +193,31 @@ public class Utils {
             log.info("Could not get environment variable", ex);
         }
         return defaultValue;
+    }
+
+    private static String version;
+
+    /**
+     * Returns the application version, read from the filtered version.properties resource.
+     *
+     * @return the project version, or "unknown" if it cannot be read
+     */
+    public static String getVersion() {
+        String v = version;
+        if (v != null) {
+            return v;
+        }
+        Properties p = new Properties();
+        try (InputStream in = Utils.class.getResourceAsStream("/version.properties")) {
+            if (in != null) {
+                p.load(in);
+            }
+        } catch (IOException ex) {
+            log.warn("Could not read version.properties", ex);
+        }
+        v = p.getProperty("version", "unknown");
+        version = v;
+        return v;
     }
 
     /**
