@@ -131,6 +131,14 @@ public class NanopubLoader {
             notes.add("Signature error");
         }
         if (!hasValidSignature(el)) {
+            // Audit trail for the silent-false path: without this, an aborted nanopub
+            // is invisible in the admin repo and only detectable as a gap between the
+            // stream counter and the loaded count. See issue around RDF4J-instability
+            // load gaps (full vs registry, meta vs full) where signature validation
+            // returned false but no GeneralSecurityException was thrown.
+            if (notes.isEmpty()) {
+                notes.add("Invalid signature");
+            }
             aborted = true;
             return;
         }
@@ -886,10 +894,16 @@ public class NanopubLoader {
     }
 
     static boolean hasValidSignature(NanopubSignatureElement el) {
+        if (el == null) {
+            log.warn("Signature validation: signature element is null");
+            return false;
+        }
         try {
-            if (el != null && SignatureUtils.hasValidSignature(el) && el.getPublicKeyString() != null) {
+            if (SignatureUtils.hasValidSignature(el) && el.getPublicKeyString() != null) {
                 return true;
             }
+            log.warn("Signature validation returned false for {} (pubkey present: {})",
+                    el.getUri(), el.getPublicKeyString() != null);
         } catch (GeneralSecurityException ex) {
             log.warn("Signature validation failed for signature element {}", el.getUri(), ex);
         }

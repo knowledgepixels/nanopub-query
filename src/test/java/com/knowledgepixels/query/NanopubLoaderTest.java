@@ -82,13 +82,19 @@ class NanopubLoaderTest {
     @Test
     void loadWhenNanopubNotLoadedInvalidSignature() throws MalformedNanopubException, IOException {
         try (MockedStatic<NanopubLoader> mockedLoader = mockStatic(NanopubLoader.class, CALLS_REAL_METHODS);
-             MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
+             MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class);
+             MockedStatic<TripleStore> mockedStore = mockStatic(TripleStore.class)) {
 
             Nanopub nanopub = new NanopubImpl(NanopubTestSuite.getLatest().getByNanopubUri("http://example.org/nanopub-validator-example/RAeUPiCKlke8Pw9wYbqIESyBqFJM5UDSkx4uF9kkRfCh0").getFirst().toFile());
 
             mockedLoader.when(() -> NanopubLoader.isNanopubLoaded(anyString())).thenReturn(false);
             mockedLoader.when(NanopubLoader::getHttpClient).thenReturn(mock(HttpClient.class));
             mockedGetNanopub.when(() -> GetNanopub.get(anyString(), any(HttpClient.class))).thenReturn(nanopub);
+            // The invalid-signature path now writes an "Invalid signature" audit note
+            // to the admin repo so silent aborts aren't invisible. Mock the TripleStore
+            // so the test doesn't try to hit a real RDF4J endpoint.
+            mockedStore.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mock(RepositoryConnection.class));
 
             NanopubLoader.load(nanopubUri);
             mockedLoader.verify(() -> NanopubLoader.load(nanopub, -1), times(1));
