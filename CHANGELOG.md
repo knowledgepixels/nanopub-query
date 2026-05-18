@@ -1,3 +1,13 @@
+## [1.12.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.11.0...nanopub-query-1.12.0) (2026-05-18)
+
+### Features
+
+* expose Nanopub-Query-Loaded-Nanopub-Count response header ([486446f](https://github.com/knowledgepixels/nanopub-query/commit/486446f1e72b6b1cb9e33f091e35eaccdcd4838f))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([dca7b08](https://github.com/knowledgepixels/nanopub-query/commit/dca7b084973f1b7b5b32e22f7fe7bc8d4eab0dd9))
+
 ## [1.11.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.10.0...nanopub-query-1.11.0) (2026-05-18)
 
 ### Features
