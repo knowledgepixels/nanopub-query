@@ -1,3 +1,100 @@
+## [1.11.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.10.0...nanopub-query-1.11.0) (2026-05-18)
+
+### Features
+
+* add /spaces listing route with HTML and JSON output ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([7741004](https://github.com/knowledgepixels/nanopub-query/commit/77410042a58a6f851b0d6e625475ee1cee14d97f))
+* add v2 spaces vocabulary and extractor ([7f787ec](https://github.com/knowledgepixels/nanopub-query/commit/7f787ecceebf46ad57bbc7256bb2cf14cfbfa557))
+* AuthorityResolver skeleton — mirror step, pointer, orphan cleanup ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([6006f33](https://github.com/knowledgepixels/nanopub-query/commit/6006f33a48ac37717d1d39cb34386a764ee21fb1))
+* emit URL-prefix sub-space fallback edges in materialiser ([#93](https://github.com/knowledgepixels/nanopub-query/issues/93)) ([a72ee4d](https://github.com/knowledgepixels/nanopub-query/commit/a72ee4dcc3795eba11bc3a7c81e8a12847e6c591))
+* expose Nanopub-Query-Version response header ([7de527b](https://github.com/knowledgepixels/nanopub-query/commit/7de527b772af51f449bfcd40db6bd49d8f1e96bb))
+* expose spaces build/cycle metrics as Prometheus gauges ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([115c0bb](https://github.com/knowledgepixels/nanopub-query/commit/115c0bbc68fa551b0c9816097ade30a07d936ed1))
+* extract gen:isMaintainedBy declarations ([#97](https://github.com/knowledgepixels/nanopub-query/issues/97)) ([b51d8f3](https://github.com/knowledgepixels/nanopub-query/commit/b51d8f39a44819317854d56dfed96d3a4ae89937))
+* extract gen:isSubSpaceOf declarations and id-prefix triples ([#93](https://github.com/knowledgepixels/nanopub-query/issues/93)) ([483579e](https://github.com/knowledgepixels/nanopub-query/commit/483579eba3c3836074c4c1ea7d7aeef55c8cc24a))
+* incremental delta cycles + invalidation propagation + periodic rebuild ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([65ff538](https://github.com/knowledgepixels/nanopub-query/commit/65ff5386113695b365055713e84bc7aac19e212f))
+* materialize canonical foaf:name per agent into trust + spaces graphs ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([bf9d14c](https://github.com/knowledgepixels/nanopub-query/commit/bf9d14c84465ed682498f7a6ab4974d9b5d65eca)), closes [nanopub-registry#113](https://github.com/knowledgepixels/nanopub-registry/issues/113) [post-#113](https://github.com/knowledgepixels/post-/issues/113) [#89](https://github.com/knowledgepixels/nanopub-query/issues/89)
+* per-tier SPARQL UPDATE loops in the full-build path ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([c04bdaa](https://github.com/knowledgepixels/nanopub-query/commit/c04bdaa008d4b607d7a2bac5a59c0b976ddcd271))
+* recognize 4 more 3PFF participation predicates as role instances ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([b27678a](https://github.com/knowledgepixels/nanopub-query/commit/b27678a9a879c6bf6d9428e910eca0aa9aafd936))
+* validate downward observer-tier grants from admin/maintainer/member ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([5d1f617](https://github.com/knowledgepixels/nanopub-query/commit/5d1f617d6c08919d85a3cc3f83ea2115211eb95a))
+* validate maintained-resource declarations in materialiser admit pass ([#97](https://github.com/knowledgepixels/nanopub-query/issues/97)) ([b82219c](https://github.com/knowledgepixels/nanopub-query/commit/b82219c1cae60cf8db9e8ff69e196d43ea96749d))
+* validate sub-space declarations in materialiser admit pass ([#93](https://github.com/knowledgepixels/nanopub-query/issues/93)) ([0e029ed](https://github.com/knowledgepixels/nanopub-query/commit/0e029ed57cc4312160804ed6c5431b48fb2068f0))
+* wire SpacesExtractor into NanopubLoader + invalidation hook ([1cd4c98](https://github.com/knowledgepixels/nanopub-query/commit/1cd4c98646030c8efbe37b9fb572e0c65b47fcf9))
+
+### Dependency updates
+
+* **deps:** bump exec-maven-plugin from 3.5.0 to 3.6.3 ([a5567a1](https://github.com/knowledgepixels/nanopub-query/commit/a5567a15fefcf0f0ec8c1854e6cc84f0d48afa3d))
+* **deps:** bump maven-compiler-plugin from 3.14.0 to 3.15.0 ([f7a5a2a](https://github.com/knowledgepixels/nanopub-query/commit/f7a5a2a23f9bf19edfac15410d0beb50575c770c))
+* **deps:** bump maven-shade-plugin from 3.6.0 to 3.6.2 ([f89f9b1](https://github.com/knowledgepixels/nanopub-query/commit/f89f9b161ab7cdad07e3551552a0c6121f8359ac))
+* **deps:** bump maven-source-plugin from 3.3.1 to 3.4.0 ([f0702cc](https://github.com/knowledgepixels/nanopub-query/commit/f0702ccdb4a0d5fbbdba67bc990679d392419662))
+* **deps:** bump maven-surefire-plugin from 3.5.3 to 3.5.5 ([ce7d275](https://github.com/knowledgepixels/nanopub-query/commit/ce7d2759deb5cfb955e854cfac1bad8f332181d0))
+* **deps:** bump mockito-core from 5.21.0 to 5.23.0 ([39e246f](https://github.com/knowledgepixels/nanopub-query/commit/39e246f21dcc78f7f6aaf1def9f54f173e2ea2ea))
+* **deps:** bump nanopub from 1.86.1 to 1.86.2 ([23129e4](https://github.com/knowledgepixels/nanopub-query/commit/23129e4f4168a5302019f140953567dc8ee3cad3))
+* **deps:** bump nanopub from 1.86.2 to 1.87.1 ([8ff58b7](https://github.com/knowledgepixels/nanopub-query/commit/8ff58b778aa02779f9869300380be848c0b920d0))
+* **deps:** bump rdf4j from 5.1.2 to 5.3.0 ([da46085](https://github.com/knowledgepixels/nanopub-query/commit/da46085665c456da21237cede05da0f5d703d4b3))
+* **deps:** bump rdf4j-repository-http and rdf4j-sail-nativerdf from 5.3.0 to 5.3.1 ([e541b11](https://github.com/knowledgepixels/nanopub-query/commit/e541b114a4b37e949a039227a6dcb11c5aa309fb))
+
+### Bug Fixes
+
+* allow setResetting() from LOADING_INITIAL and RESETTING ([6679725](https://github.com/knowledgepixels/nanopub-query/commit/66797259ae9d50f43faecba202760dca3fba668a))
+* also gate maintained-resource extraction on gen:MaintainedResource type marker ([#97](https://github.com/knowledgepixels/nanopub-query/issues/97)) ([8fde48e](https://github.com/knowledgepixels/nanopub-query/commit/8fde48ee0a8baf915009b226f0959023224a7249))
+* bypass RDF4J transaction wrapping for tier-loop UPDATEs ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([888738e](https://github.com/knowledgepixels/nanopub-query/commit/888738e5a78f1d8325e9887a1756caf6882dbbc9))
+* drop observer authority sub-tiers per policy table ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([e77dd02](https://github.com/knowledgepixels/nanopub-query/commit/e77dd0253ac4513626550e6ff63524434e2b942b))
+* flip backcompat role-predicate direction to match publisher convention ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([7bd62d2](https://github.com/knowledgepixels/nanopub-query/commit/7bd62d2e965478c7803b04176a3ffb38aa8dfcc9))
+* hoist invalidation FILTER + anchor non-admin tiers on attachments ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([d981458](https://github.com/knowledgepixels/nanopub-query/commit/d981458d41adf333ebc48e7e62dcedb0a4f68d73))
+* read npa:hasLoadNumber from admin graph, not spacesGraph ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([918ab18](https://github.com/knowledgepixels/nanopub-query/commit/918ab1868666899a1d0317648f08caad347e90a3))
+* reorder admin + non-admin tier templates for RDF4J query planner ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([5eac546](https://github.com/knowledgepixels/nanopub-query/commit/5eac546beadb3269664654e3bfd259449a492e28))
+* SPARQL parse error in tier-loop invalidation filter ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([d363d40](https://github.com/knowledgepixels/nanopub-query/commit/d363d40760a1994164b9ff3491993e03afb0aae8))
+* split observer + member tiers by publisher-kind to dodge timeouts ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([131c710](https://github.com/knowledgepixels/nanopub-query/commit/131c7103a04679ac1520802e875782d012fd3c47))
+
+### Documentation
+
+* add worked agent-listing query + three-way status semantics ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([5e4e244](https://github.com/knowledgepixels/nanopub-query/commit/5e4e244193555efa58fc6547e57d0cd5f5cc31b4))
+* base URL-prefix fallback suppression on validated rows, not raw declarations ([#93](https://github.com/knowledgepixels/nanopub-query/issues/93)) ([fa2707a](https://github.com/knowledgepixels/nanopub-query/commit/fa2707aec03437fd351030f17bae1b0f925fbdb1))
+* drop for-space redirect, document in-query pointer pattern ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([6094e5e](https://github.com/knowledgepixels/nanopub-query/commit/6094e5e07e11d0f8f235e00289f69a5f5d2704c4))
+* drop redundant SubSpaceLink type, copy validated declarations as-is ([#93](https://github.com/knowledgepixels/nanopub-query/issues/93)) ([226dbdb](https://github.com/knowledgepixels/nanopub-query/commit/226dbdb0f5bf46e8067e445f19d28ab6533357a9))
+* drop SERVICE clause from worked-example query, names are now mirrored ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([1e84430](https://github.com/knowledgepixels/nanopub-query/commit/1e84430c29b0e869d695c452ed1508e6487949cd)), closes [#90](https://github.com/knowledgepixels/nanopub-query/issues/90)
+* **plan:** add dct:created stamps and explicit tier INSERT sketch ([ae83cdd](https://github.com/knowledgepixels/nanopub-query/commit/ae83cdd9849a1c70645332ecb2b65d318f0b8052))
+* **plan:** add gen:RoleAssignment entry for root admins in self-rooted gen:Space nanopubs ([8dc26c1](https://github.com/knowledgepixels/nanopub-query/commit/8dc26c17c08eaef91aad549ec2bb8443269a52de))
+* **plan:** add gen:SpaceMemberRole to type list and gen:RoleAssignment extraction shape ([cf88f03](https://github.com/knowledgepixels/nanopub-query/commit/cf88f03cc489bb710ad8b0a75ae2a40bf8aa29a5))
+* **plan:** add signer info to npa:SpaceRef entries ([c614509](https://github.com/knowledgepixels/nanopub-query/commit/c6145098341faca887a845f5b6ad8b196aee4f93))
+* **plan:** add v2 alternative for space repositories ([b0b2015](https://github.com/knowledgepixels/nanopub-query/commit/b0b201599edd3defa2532dda99a50d79f403d90f))
+* **plan:** clarify pending-cycle flag name, <ts> shorthand, and tier order ([9738a72](https://github.com/knowledgepixels/nanopub-query/commit/9738a722d14b3ee33760dac81ea40f750d9556f2))
+* **plan:** clarify role-type hardcoding in space-repositories plan ([fd97278](https://github.com/knowledgepixels/nanopub-query/commit/fd9727892ae9a4806bb75f40bf5baa174af6ddc8))
+* **plan:** copy role tier rdf:type triple in gen:SpaceMemberRole extraction ([8b04004](https://github.com/knowledgepixels/nanopub-query/commit/8b0400499a3901e43680fa8068d992f02df741a9))
+* **plan:** drop gen:ViewDisplay and gen:ResourceView from v2 plan ([302bd3c](https://github.com/knowledgepixels/nanopub-query/commit/302bd3cef0354582deabfc5e1eb1f69c1ae91fea))
+* **plan:** drop profile fields, pin earliest-root transition default, note role reuse ([3e1653b](https://github.com/knowledgepixels/nanopub-query/commit/3e1653b37b0fd24f2df5b2a55eda3d26e550ce69))
+* **plan:** drop v2 suffix; the v2 plan is now the plan ([90a197e](https://github.com/knowledgepixels/nanopub-query/commit/90a197e14f6d14468a8481cbbe2bbd6c05ebaf52))
+* **plan:** drop working-title qualifiers; names canonical ([05a2bef](https://github.com/knowledgepixels/nanopub-query/commit/05a2bef0221ee7485edcf79e887ea77946594b85))
+* **plan:** hook invalidation extraction into existing loader type-propagation loop ([721e338](https://github.com/knowledgepixels/nanopub-query/commit/721e338bcde40867b6bde09a75fef75418c4d3e3))
+* **plan:** incremental, load-number-driven space state graph ([83817c7](https://github.com/knowledgepixels/nanopub-query/commit/83817c7a2e24b3a51972f78d23632a2f78cc166b))
+* **plan:** introduce npa:RoleDeclaration class for gen:SpaceMemberRole extractions ([eabfcfa](https://github.com/knowledgepixels/nanopub-query/commit/eabfcfa836447a56fb2e55c93f23e1766112c9e5))
+* **plan:** invalidation filter on spacesGraph reads, plus operational details ([d87aadc](https://github.com/knowledgepixels/nanopub-query/commit/d87aadc936f71d7db03427d2b8aca2fbd79659a0))
+* **plan:** late-arrival handling, per-definition cleanup, parallel rebuilds with periodic flag ([c921e9d](https://github.com/knowledgepixels/nanopub-query/commit/c921e9d80af6a27f385ca8b4e915c625c69704a2))
+* **plan:** list predefined types for spaces repo, inline shared sections ([5dcd852](https://github.com/knowledgepixels/nanopub-query/commit/5dcd8529e239b7fc69821a301030de20744fdd5e))
+* **plan:** lowercase 'graph' keyword in Turtle snippets ([11b66cb](https://github.com/knowledgepixels/nanopub-query/commit/11b66cb9d35f61d94d82ee290c211367bca1e6c3))
+* **plan:** pin npa:processedUpTo storage and npa:rootNanopub semantics ([2b450f8](https://github.com/knowledgepixels/nanopub-query/commit/2b450f85e2f1631cd30141e9bcfc5f49f5a1e77b))
+* **plan:** refresh Key files and Verification to match current design ([e28cf15](https://github.com/knowledgepixels/nanopub-query/commit/e28cf1573698951944da70a94c6c7490726f747d))
+* **plan:** rename to gen:RoleInstantiation, add gen:hasRole extraction, widen admin instantiation ([44b2e05](https://github.com/knowledgepixels/nanopub-query/commit/44b2e059803f7fdeeafd4c2e2fb51e0143185c93))
+* **plan:** revert to upper-case SPARQL keywords in Turtle snippets ([3a00ff0](https://github.com/knowledgepixels/nanopub-query/commit/3a00ff0b662b164264fb39cee0d8f38534228c10))
+* **plan:** rootless gen:Space nanopubs act as their own root ([be18666](https://github.com/knowledgepixels/nanopub-query/commit/be1866628aaadf9dbddfab3c856f2ec591117526))
+* **plan:** specify triples added per gen:Space and gen:SpaceMemberRole nanopub ([0a257d3](https://github.com/knowledgepixels/nanopub-query/commit/0a257d35206e33010ac5ee653906a8e9f2c03b50))
+* **plan:** use dedicated npa: subject IRIs per extraction entry ([d7b92ec](https://github.com/knowledgepixels/nanopub-query/commit/d7b92ec0be367be6fc058f76b0efffc79f22b72c))
+* **plan:** validation rule, role-declaration gate note, backcompat via registry typing ([b17a004](https://github.com/knowledgepixels/nanopub-query/commit/b17a004722e429a29be66e306e6bcd765dca929d))
+* rename plan-space-repositories.md to design-space-repositories.md ([59e9929](https://github.com/knowledgepixels/nanopub-query/commit/59e99291f62da66cfbc858e4b64b9f94a949f0e4)), closes [74-#87](https://github.com/knowledgepixels/74-/issues/87) [#87](https://github.com/knowledgepixels/nanopub-query/issues/87)
+
+### Tests
+
+* add unit tests for SpacesExtractor ([b85168c](https://github.com/knowledgepixels/nanopub-query/commit/b85168ca0c0ff6e7f07c846085309f4713a6321d))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([7dfb989](https://github.com/knowledgepixels/nanopub-query/commit/7dfb989a48666ebac3487b9b716120f5ec362e84))
+
+### Refactoring
+
+* emit only the immediate URL-path parent (direct-parent semantics) ([#93](https://github.com/knowledgepixels/nanopub-query/issues/93)) ([32b2678](https://github.com/knowledgepixels/nanopub-query/commit/32b2678ac8801507ecb227c98dd7e3785ce94426))
+* remove v1 spaces infrastructure ([0326680](https://github.com/knowledgepixels/nanopub-query/commit/0326680cae9eb3195616c997675f9bb580c97ff9))
+* report distinct-subject totals in space-state build/cycle logs ([#62](https://github.com/knowledgepixels/nanopub-query/issues/62)) ([f77712e](https://github.com/knowledgepixels/nanopub-query/commit/f77712e79796c1ba867682955c9b4ad15b7c1bf6))
+
 ## [1.10.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.9.0...nanopub-query-1.10.0) (2026-04-22)
 
 ### Features
