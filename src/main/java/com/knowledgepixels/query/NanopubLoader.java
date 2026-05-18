@@ -429,11 +429,17 @@ public class NanopubLoader {
                 runTask.accept(() -> loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));
             }
 
-            // Wait for all non-meta tasks to complete successfully before submitting the meta task
+            // Wait for all non-meta tasks to complete successfully before submitting the meta task.
+            // On failure, cancel the remaining futures so orphaned tasks don't keep running in the
+            // shared loadingPool and race with the next batch retry (which re-submits the same
+            // nanopub against the same repos).
             for (var task : runningTasks) {
                 try {
                     task.get();
                 } catch (ExecutionException | InterruptedException ex) {
+                    for (var t : runningTasks) {
+                        if (!t.isDone()) t.cancel(true);
+                    }
                     throw new RuntimeException("Error in nanopub loading thread", ex.getCause());
                 }
             }
