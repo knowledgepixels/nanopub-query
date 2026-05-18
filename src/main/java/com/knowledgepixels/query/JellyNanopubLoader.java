@@ -317,12 +317,16 @@ public class JellyNanopubLoader {
                             ", received counter: " + m.getCounter());
                 }
                 NanopubLoader.load(m.getNanopub(), m.getCounter());
+                // Bump the in-memory counter BEFORE persisting it. The previous order
+                // wrote the *previous* nanopub's counter to the DB at each checkpoint,
+                // so a crash-restart silently re-processed one extra nanopub and the
+                // contract "saved counter == last fully loaded nanopub" was violated.
+                lastCommittedCounter = m.getCounter();
                 if (m.getCounter() % 10 == 0) {
                     // Save the committed counter only every 10 nanopubs to reduce DB load
                     saveCommittedCounter(type);
                     lastSavedCounter.set(m.getCounter());
                 }
-                lastCommittedCounter = m.getCounter();
                 loaded.getAndIncrement();
 
                 if (loaded.get() % 50 == 0) {
