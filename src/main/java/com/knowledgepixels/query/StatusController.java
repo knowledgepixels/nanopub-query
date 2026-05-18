@@ -234,11 +234,14 @@ public class StatusController {
 
     /**
      * Transition the service to the RESETTING state, resetting the load counter to -1.
-     * This is triggered when a registry reset is detected (setupId changed or counter decreased).
+     * This is triggered when a registry reset is detected (setupId changed or counter decreased),
+     * or when FORCE_RESYNC is set on startup. Accepts any post-initialize source state:
+     * a reset discards prior load progress, so it's valid from LOADING_INITIAL (crashed mid-init),
+     * LOADING_UPDATES, READY, or RESETTING (retry after a crashed prior reset).
      */
     public void setResetting() {
         synchronized (this) {
-            if (state != State.READY && state != State.LOADING_UPDATES) {
+            if (state == State.LAUNCHING) {
                 throw new IllegalStateException("Cannot transition to RESETTING, as the " + "current state is " + state);
             }
             updateState(State.RESETTING, -1);
