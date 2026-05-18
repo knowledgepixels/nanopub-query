@@ -663,5 +663,9 @@ public class MainVerticle extends AbstractVerticle {
         if (nanopubCount != null) {
             response.putHeader("Nanopub-Query-Registry-Nanopub-Count", nanopubCount);
         }
+        Long loadedCount = NanopubLoader.getLoadedNanopubCount();
+        if (loadedCount != null) {
+            response.putHeader("Nanopub-Query-Loaded-Nanopub-Count", loadedCount.toString());
+        }
     }
 }

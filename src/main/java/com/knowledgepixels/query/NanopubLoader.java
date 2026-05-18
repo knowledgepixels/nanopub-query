@@ -50,6 +50,18 @@ public class NanopubLoader {
     private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
 
     /**
+     * Cached count of nanopubs ever loaded into the {@code full} repo. Maintained
+     * for {@link MainVerticle}'s {@code Nanopub-Query-Loaded-Nanopub-Count}
+     * response header. Mirrors the persisted {@code npa:hasNanopubCount} triple
+     * that {@link #loadNanopubToRepo} maintains; invalidations don't decrement
+     * (they're recorded as separate {@code npx:invalidates} markers), so this
+     * is a cumulative count including superseded/retracted nanopubs — matching
+     * the registry-side {@code Nanopub-Registry-Nanopub-Count} semantics.
+     * Populated lazily on first read; bumped post-commit on each fresh load.
+     */
+    static volatile Long loadedNanopubCount = null;
+
+    /**
      * Retry budget for the five (with #71 merged: six) structurally identical
      * retry loops in this file. Previously the shape was flat {@code 10 s × 30} —
      * five minutes of constant hammering at RDF4J that did not help a slow server.
@@ -492,6 +504,7 @@ public class NanopubLoader {
         int retries = 0;
         while (!success) {
             RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
+            long newCountForCache = -1;
             try (conn) {
                 // Serializable, because write skew would cause the chain of hashes to be broken.
                 // The inserts must be done serially.
@@ -514,8 +527,14 @@ public class NanopubLoader {
                     conn.add(npId, NPA.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), NPA.GRAPH);
                     // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
                     conn.add(statements);
+                    if ("full".equals(repoName)) {
+                        newCountForCache = repoStatus.count + 1;
+                    }
                 }
                 conn.commit();
+                if (newCountForCache >= 0) {
+                    loadedNanopubCount = newCountForCache;
+                }
                 success = true;
             } catch (Exception ex) {
                 log.warn("Could not load nanopub {} to repo {}.", npId, repoName, ex);
@@ -596,6 +615,31 @@ public class NanopubLoader {
                 }
             }
         }
+    }
+
+    /**
+     * Returns the cumulative count of nanopubs ever loaded into the {@code full}
+     * repo, or {@code null} if the value cannot be determined (e.g. the store
+     * hasn't been initialised yet). Reads the persisted {@code npa:hasNanopubCount}
+     * triple on first call and caches it in {@link #loadedNanopubCount};
+     * subsequent fresh loads update the cache in-place.
+     */
+    public static Long getLoadedNanopubCount() {
+        Long v = loadedNanopubCount;
+        if (v != null) return v;
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection("full")) {
+            Value val = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT);
+            if (val != null) {
+                v = Long.parseLong(val.stringValue());
+                loadedNanopubCount = v;
+                return v;
+            }
+        } catch (NumberFormatException ex) {
+            log.warn("Invalid npa:hasNanopubCount literal in full repo", ex);
+        } catch (Exception ex) {
+            log.warn("Could not read npa:hasNanopubCount from full repo", ex);
+        }
+        return null;
     }
 
     private static long fetchSpacesLoadCounter(RepositoryConnection conn) {

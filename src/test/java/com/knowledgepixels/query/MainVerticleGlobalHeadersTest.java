@@ -211,4 +211,20 @@ class MainVerticleGlobalHeadersTest {
             JellyNanopubLoader.lastNanopubCount = null;
         }
     }
+
+    @Test
+    void emitsLoadedNanopubCountWhenPresent() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            NanopubLoader.loadedNanopubCount = 49998L;
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Loaded-Nanopub-Count", "49998");
+            NanopubLoader.loadedNanopubCount = null;
+        }
+    }
 }
