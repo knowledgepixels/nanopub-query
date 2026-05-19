@@ -20,7 +20,6 @@ import org.nanopub.vocabulary.NPA;
  *   <li>{@link #NPARI_NAMESPACE} ({@code npari:}) — {@link #forRoleInstantiation(String) role-instantiation} entries.
  *   <li>{@link #NPARA_NAMESPACE} ({@code npara:}) — {@link #forRoleAssignment(String) role-attachment} entries (from {@code gen:hasRole} nanopubs).
  *   <li>{@link #NPARD_NAMESPACE} ({@code npard:}) — {@link #forRoleDeclaration(String) role-declaration} entries (from {@code gen:SpaceMemberRole} nanopubs).
- *   <li>{@link #NPAINV_NAMESPACE} ({@code npainv:}) — {@link #forInvalidation(String) invalidation} entries.
  *   <li>{@link #NPASUB_NAMESPACE} ({@code npasub:}) — {@link #forSubSpaceDeclaration(String, String) sub-space-declaration} entries (one per {@code (child, parent)} pair).
  *   <li>{@link #NPAMRD_NAMESPACE} ({@code npamrd:}) — {@link #forMaintainedResourceDeclaration(String, String) maintained-resource-declaration} entries (one per {@code (resource, space)} pair).
  *   <li>{@link #NPASS_NAMESPACE} ({@code npass:}) — space-state graph IRIs (used by the materializer in a later PR).
@@ -40,8 +39,6 @@ public final class SpacesVocab {
     public static final String NPARA_NAMESPACE = "http://purl.org/nanopub/admin/roleassign/";
     /** Namespace for role-declaration entries ({@code npard:<artifactCode>}). */
     public static final String NPARD_NAMESPACE = "http://purl.org/nanopub/admin/roledecl/";
-    /** Namespace for invalidation entries ({@code npainv:<artifactCode>}). */
-    public static final String NPAINV_NAMESPACE = "http://purl.org/nanopub/admin/invalidation/";
     /** Namespace for sub-space-declaration entries ({@code npasub:<artifactCode>_<parentHash>}). */
     public static final String NPASUB_NAMESPACE = "http://purl.org/nanopub/admin/subspace/";
     /** Namespace for maintained-resource-declaration entries ({@code npamrd:<artifactCode>_<resourceHash>}). */
@@ -59,9 +56,6 @@ public final class SpacesVocab {
 
     /** RDF type for the summarized role-definition entry. */
     public static final IRI ROLE_DECLARATION = vf.createIRI(NPA.NAMESPACE, "RoleDeclaration");
-
-    /** RDF type for an invalidation event recorded as add-only data. */
-    public static final IRI INVALIDATION = vf.createIRI(NPA.NAMESPACE, "Invalidation");
 
     /** RDF type for a sub-space-declaration extraction entry. */
     public static final IRI SUB_SPACE_DECLARATION = vf.createIRI(NPA.NAMESPACE, "SubSpaceDeclaration");
@@ -109,9 +103,6 @@ public final class SpacesVocab {
 
     /** Tier class of a {@link #ROLE_DECLARATION}: gen:MaintainerRole / MemberRole / ObserverRole. */
     public static final IRI HAS_ROLE_TYPE = vf.createIRI(NPA.NAMESPACE, "hasRoleType");
-
-    /** Links an {@link #INVALIDATION} entry to the nanopub it invalidates. */
-    public static final IRI INVALIDATES = vf.createIRI(NPA.NAMESPACE, "invalidates");
 
     /** Links a {@link #SUB_SPACE_DECLARATION} to the child Space IRI. */
     public static final IRI CHILD_SPACE = vf.createIRI(NPA.NAMESPACE, "childSpace");
@@ -179,11 +170,6 @@ public final class SpacesVocab {
     /** Mints {@code npard:<artifactCode>} for a role-declaration entry. */
     public static IRI forRoleDeclaration(String artifactCode) {
         return vf.createIRI(NPARD_NAMESPACE, artifactCode);
-    }
-
-    /** Mints {@code npainv:<artifactCode>} for an invalidation entry. */
-    public static IRI forInvalidation(String artifactCode) {
-        return vf.createIRI(NPAINV_NAMESPACE, artifactCode);
     }
 
     /**
