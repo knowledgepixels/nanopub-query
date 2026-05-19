@@ -1,3 +1,21 @@
+## [1.13.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.12.0...nanopub-query-1.13.0) (2026-05-19)
+
+### Features
+
+* **JellyNanopubLoader:** engage circuit breaker on initial load too ([a3ff197](https://github.com/knowledgepixels/nanopub-query/commit/a3ff197404d4393794fddf5353cb27269124c612))
+
+### Bug Fixes
+
+* **JellyNanopubLoader:** bump lastCommittedCounter before persisting it ([57a81d7](https://github.com/knowledgepixels/nanopub-query/commit/57a81d7ea68c436bf80f7621e1c67fa36241fa0e))
+* keep rdf4j alive on cold start under 5.3.1-tomcat image ([ee5fb66](https://github.com/knowledgepixels/nanopub-query/commit/ee5fb66ecccf755eb4855781098f04f7891f3381))
+* **NanopubLoader:** cancel orphan tasks when executeLoading throws ([bc47979](https://github.com/knowledgepixels/nanopub-query/commit/bc4797946ca682599f134c8cc420f7891c5c59a9))
+* **NanopubLoader:** record audit note when signature validation fails silently ([8bd05b3](https://github.com/knowledgepixels/nanopub-query/commit/8bd05b33694706cf5af1d7ae0bbf4a242684df6f))
+* stop healthcheck from clobbering restart timestamp file ([2428aa9](https://github.com/knowledgepixels/nanopub-query/commit/2428aa94a857fedec44ac9e0218d1004b0420625))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([da634cf](https://github.com/knowledgepixels/nanopub-query/commit/da634cf15e0f621d1bb23d53f4c5378a9e1e717c))
+
 ## [1.12.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.11.0...nanopub-query-1.12.0) (2026-05-18)
 
 ### Features
