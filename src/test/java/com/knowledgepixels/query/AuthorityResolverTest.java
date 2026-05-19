@@ -162,10 +162,8 @@ class AuthorityResolverTest {
         assertTrue(sparql.contains("DELETE"), "DELETE clause");
         assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
                 "scoped to admin-pinned RoleInstantiations");
-        assertTrue(sparql.contains("npa:Invalidation"),
-                "joins the Invalidation extraction");
-        assertTrue(sparql.contains("npa:invalidates ?np"),
-                "links invalidation to the source nanopub");
+        assertTrue(sparql.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
+                "joins the raw npx:invalidates triple in npa:graph");
         assertTrue(sparql.contains("FILTER (?ln > 17)"),
                 "delta filter on the invalidator's load number");
     }
@@ -190,8 +188,8 @@ class AuthorityResolverTest {
         String where = AuthorityResolver.roleDeclarationInvalidationCheckWhere(0);
         assertTrue(where.contains("npa:RoleDeclaration"),
                 "scoped to RoleDeclaration rows in spacesGraph");
-        assertTrue(where.contains("npa:Invalidation"),
-                "joins the Invalidation extraction");
+        assertTrue(where.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
+                "joins the raw npx:invalidates triple in npa:graph");
         assertTrue(where.contains("FILTER (?ln > 0)"),
                 "delta filter on the invalidator's load number");
     }
@@ -287,10 +285,8 @@ class AuthorityResolverTest {
         assertTrue(sparql.contains("DELETE"), "DELETE clause");
         assertTrue(sparql.contains("npa:SubSpaceDeclaration"),
                 "scoped to SubSpaceDeclaration rows");
-        assertTrue(sparql.contains("npa:Invalidation"),
-                "joins the Invalidation extraction");
-        assertTrue(sparql.contains("npa:invalidates ?np"),
-                "links invalidation to the source nanopub");
+        assertTrue(sparql.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
+                "joins the raw npx:invalidates triple in npa:graph");
         assertTrue(sparql.contains("FILTER (?ln > 5)"),
                 "delta filter on the invalidator's load number");
         // Convenience direct triples (subject = ?child / ?parent) are NOT removed
@@ -305,8 +301,8 @@ class AuthorityResolverTest {
         String where = AuthorityResolver.subSpaceInvalidationCheckWhere(TEST_GRAPH, 0);
         assertTrue(where.contains("npa:SubSpaceDeclaration"),
                 "scoped to SubSpaceDeclaration rows in the state graph");
-        assertTrue(where.contains("npa:Invalidation"),
-                "joins the Invalidation extraction");
+        assertTrue(where.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
+                "joins the raw npx:invalidates triple in npa:graph");
         assertTrue(where.contains("FILTER (?ln > 0)"),
                 "delta filter on the invalidator's load number");
     }
@@ -442,10 +438,8 @@ class AuthorityResolverTest {
         assertTrue(sparql.contains("DELETE"), "DELETE clause");
         assertTrue(sparql.contains("npa:MaintainedResourceDeclaration"),
                 "scoped to MaintainedResourceDeclaration rows");
-        assertTrue(sparql.contains("npa:Invalidation"),
-                "joins the Invalidation extraction");
-        assertTrue(sparql.contains("npa:invalidates ?np"),
-                "links invalidation to the source nanopub");
+        assertTrue(sparql.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
+                "joins the raw npx:invalidates triple in npa:graph");
         assertTrue(sparql.contains("FILTER (?ln > 5)"),
                 "delta filter on the invalidator's load number");
         // Convenience direct triples (subject = ?r / ?s) are NOT removed here —

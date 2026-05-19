@@ -19,6 +19,7 @@ import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.RepositoryResult;
 import org.nanopub.vocabulary.NPA;
+import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -650,26 +651,35 @@ public final class AuthorityResolver {
     /**
      * Reusable invalidation filter on a bound nanopub-IRI variable. Pass the bare
      * variable name (no leading {@code ?}); e.g. {@code invalidationFilter("np")}
-     * produces an outer-scoped {@code FILTER NOT EXISTS { GRAPH npa:spacesGraph
-     * { ?_inv_np a npa:Invalidation ; npa:invalidates ?np . } }}.
+     * produces an outer-scoped {@code FILTER NOT EXISTS { GRAPH npa:graph
+     * { ?_inv_np npx:invalidates ?np . } }}.
+     *
+     * <p>Joins on the raw {@code npx:invalidates} triple in {@code npa:graph}
+     * (written by the loader for the invalidator AND mirrored back when the
+     * invalidated target loads later via {@code getInvalidatingStatements}), so
+     * the filter is symmetric in load order. The earlier shape joined on a
+     * structured {@code npa:Invalidation} entry in {@code npa:spacesGraph} that
+     * was only emitted on the invalidator's side, leaving a window where a
+     * superseding nanopub loaded before its target produced no entry and the
+     * stale row was never filtered out (see also the matching change in the
+     * tier-specific {@code *InvalidationCheckWhere}/{@code *InvalidationDelete}
+     * templates below).
      *
      * <p>Important: this filter must be placed OUTSIDE the surrounding
      * {@code GRAPH npa:spacesGraph { ... }} block, not nested inside it. When
      * nested, RDF4J's planner couples the FILTER NOT EXISTS evaluation into the
-     * join order (per-row scan of {@code ?_inv a npa:Invalidation} multiplied by
-     * the candidate set), which we measured turning a 39ms query into a 60s+
-     * timeout on the live observer-tier data. Outside the GRAPH block, the
-     * planner defers the filter until {@code ?np}/{@code ?rdNp} are bound and
-     * does a targeted index lookup.
+     * join order (per-row scan multiplied by the candidate set), which we
+     * measured turning a 39ms query into a 60s+ timeout on the live observer-tier
+     * data. Outside the GRAPH block, the planner defers the filter until
+     * {@code ?np}/{@code ?rdNp} are bound and does a targeted index lookup.
      *
      * <p>Variable names must match {@code [A-Za-z0-9_]+} per SPARQL grammar —
      * embedding a {@code ?} inside {@code ?_inv_?np} would yield a parse error.
      */
     private static String invalidationFilter(String bareVarName) {
-        return "FILTER NOT EXISTS { GRAPH <" + SpacesVocab.SPACES_GRAPH + "> {"
+        return "FILTER NOT EXISTS { GRAPH <" + NPA.GRAPH + "> {"
                 + " ?_inv_" + bareVarName
-                + " a <" + SpacesVocab.INVALIDATION + "> ; "
-                + "<" + SpacesVocab.INVALIDATES + "> ?" + bareVarName + " . } }";
+                + " <" + NPX.INVALIDATES + "> ?" + bareVarName + " . } }";
     }
 
     /**
@@ -1205,8 +1215,9 @@ public final class AuthorityResolver {
     /**
      * WHERE clause shared by the admin-RI invalidation ASK precheck and the
      * matching DELETE. Identifies admin-tier {@code gen:RoleInstantiation} rows
-     * in the space-state graph whose {@code npa:viaNanopub} equals the target
-     * of an {@code npa:Invalidation} that landed in {@code (lastProcessed, ∞)}.
+     * in the space-state graph whose {@code npa:viaNanopub} is the target of an
+     * {@code npx:invalidates} triple in {@code npa:graph} whose subject nanopub
+     * has a load number in {@code (lastProcessed, ∞)}.
      */
     static String adminInvalidationCheckWhere(IRI graph, long lastProcessed) {
         return String.format("""
@@ -1216,15 +1227,11 @@ public final class AuthorityResolver {
                         npa:viaNanopub ?np .
                   }
                   GRAPH <%2$s> {
-                    ?inv a npa:Invalidation ;
-                         npa:invalidates ?np ;
-                         npa:viaNanopub  ?invNp .
-                  }
-                  GRAPH <%3$s> {
-                    ?invNp npa:hasLoadNumber ?ln .
+                    ?invNp <%3$s> ?np ;
+                           npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
                   }
-                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
     }
 
     /** DELETE template for admin-tier RoleInstantiations whose source nanopub was invalidated. */
@@ -1251,15 +1258,11 @@ public final class AuthorityResolver {
                         npa:viaNanopub ?np .
                   }
                   GRAPH <%2$s> {
-                    ?inv a npa:Invalidation ;
-                         npa:invalidates ?np ;
-                         npa:viaNanopub  ?invNp .
-                  }
-                  GRAPH <%3$s> {
-                    ?invNp npa:hasLoadNumber ?ln .
+                    ?invNp <%3$s> ?np ;
+                           npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
                   }
-                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
     }
 
     /** DELETE template for RoleAssignments whose source nanopub was invalidated. */
@@ -1291,15 +1294,13 @@ public final class AuthorityResolver {
                   GRAPH <%1$s> {
                     ?rd a npa:RoleDeclaration ;
                         npa:viaNanopub ?np .
-                    ?inv a npa:Invalidation ;
-                         npa:invalidates ?np ;
-                         npa:viaNanopub  ?invNp .
                   }
                   GRAPH <%2$s> {
-                    ?invNp npa:hasLoadNumber ?ln .
-                    FILTER (?ln > %3$d)
+                    ?invNp <%3$s> ?np ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
                   }
-                """, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+                """, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
     }
 
     /**
@@ -1323,24 +1324,21 @@ public final class AuthorityResolver {
                     ?ri ?p ?o .
                   }
                   GRAPH <%4$s> {
-                    ?inv a npa:Invalidation ;
-                         npa:invalidates ?np ;
-                         npa:viaNanopub  ?invNp .
-                  }
-                  GRAPH <%5$s> {
-                    ?invNp npa:hasLoadNumber ?ln .
+                    ?invNp <%5$s> ?np ;
+                           npa:hasLoadNumber ?ln .
                     FILTER (?ln > %6$d)
                   }
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
-                SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+                NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
     }
 
     /**
      * WHERE clause shared by the sub-space invalidation ASK precheck and the
      * matching DELETE. Identifies validated {@code npa:SubSpaceDeclaration} rows
-     * in the space-state graph whose {@code npa:viaNanopub} equals the target of
-     * an {@code npa:Invalidation} that landed in {@code (lastProcessed, ∞)}.
+     * in the space-state graph whose {@code npa:viaNanopub} is the target of an
+     * {@code npx:invalidates} triple in {@code npa:graph} whose subject nanopub
+     * has a load number in {@code (lastProcessed, ∞)}.
      */
     static String subSpaceInvalidationCheckWhere(IRI graph, long lastProcessed) {
         return String.format("""
@@ -1349,15 +1347,11 @@ public final class AuthorityResolver {
                        npa:viaNanopub ?np .
                   }
                   GRAPH <%2$s> {
-                    ?inv a npa:Invalidation ;
-                         npa:invalidates ?np ;
-                         npa:viaNanopub  ?invNp .
-                  }
-                  GRAPH <%3$s> {
-                    ?invNp npa:hasLoadNumber ?ln .
+                    ?invNp <%3$s> ?np ;
+                           npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
                   }
-                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
     }
 
     /**
@@ -1406,17 +1400,13 @@ public final class AuthorityResolver {
                     ?d ?p ?o .
                   }
                   GRAPH <%4$s> {
-                    ?inv a npa:Invalidation ;
-                         npa:invalidates ?np ;
-                         npa:viaNanopub  ?invNp .
-                  }
-                  GRAPH <%5$s> {
-                    ?invNp npa:hasLoadNumber ?ln .
+                    ?invNp <%5$s> ?np ;
+                           npa:hasLoadNumber ?ln .
                     FILTER (?ln > %6$d)
                   }
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
-                SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+                NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
     }
 
     /** Wraps an ASK by joining the shared prefixes. */
