@@ -112,42 +112,6 @@ public final class SpacesExtractor {
         return out;
     }
 
-    /**
-     * Emits the {@link SpacesVocab#INVALIDATION} entry for an invalidator nanopub
-     * whose target has at least one space-relevant type. Caller (the loader's
-     * invalidation-propagation loop) passes in the types of the invalidated
-     * nanopub so we can check space-relevance without re-reading the meta repo.
-     *
-     * @param thisNp        the invalidator nanopub
-     * @param invalidatedNp URI of the nanopub being invalidated
-     * @param targetTypes   types of the invalidated nanopub (from the meta repo)
-     * @param ctx           extraction context for the invalidator
-     * @return the invalidation entry statements, or empty if no target type is space-relevant
-     */
-    public static List<Statement> extractInvalidation(Nanopub thisNp, IRI invalidatedNp,
-                                                      Set<IRI> targetTypes, Context ctx) {
-        if (!isSpaceRelevant(targetTypes)) return Collections.emptyList();
-        IRI subject = SpacesVocab.forInvalidation(ctx.artifactCode());
-        List<Statement> out = new ArrayList<>();
-        out.add(vf.createStatement(subject, RDF.TYPE, SpacesVocab.INVALIDATION, GRAPH));
-        out.add(vf.createStatement(subject, SpacesVocab.INVALIDATES, invalidatedNp, GRAPH));
-        out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, thisNp.getUri(), GRAPH));
-        addProvenance(subject, ctx, out);
-        return out;
-    }
-
-    /** True iff any type in {@code types} is a predefined type or a backwards-compat predicate. */
-    public static boolean isSpaceRelevant(Set<IRI> types) {
-        return types.contains(GEN.SPACE)
-                || types.contains(GEN.HAS_ROLE)
-                || types.contains(GEN.SPACE_MEMBER_ROLE)
-                || types.contains(GEN.ROLE_INSTANTIATION)
-                || types.contains(GEN.IS_SUB_SPACE_OF)
-                || types.contains(GEN.IS_MAINTAINED_BY)
-                || types.contains(GEN.MAINTAINED_RESOURCE)
-                || anyMatch(types, BackcompatRolePredicates.ALL);
-    }
-
     // ---------------- gen:Space ----------------
 
     private static void extractSpace(Nanopub np, Context ctx, List<Statement> out) {

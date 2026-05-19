@@ -58,7 +58,7 @@ Two things in one repo:
    - `<https://w3id.org/kpxl/gen/terms/hasTeamMember>`
    - `<https://w3id.org/kpxl/gen/terms/plansToAttend>`
 
-2. **One extraction graph**, `npa:spacesGraph`, holding add-only summary triples for each loaded space-relevant nanopub and each invalidation. No validation happens at this layer — everything that matches a predefined type is written here, load-number-stamped.
+2. **One extraction graph**, `npa:spacesGraph`, holding add-only summary triples for each loaded space-relevant nanopub. No validation happens at this layer — everything that matches a predefined type is written here, load-number-stamped. Invalidations are not summarised here; the materialiser reads the raw `npx:invalidates` triple in the loader's `npa:graph` (see [Invalidations](#invalidations)).
 
 3. **One space-state graph**, `npass:<trustStateHash>_<loadCounterAtBuildStart>`, holding the validated closures under the current trust state (see [Space state graph](#space-state-graph)). Extended incrementally via SPARQL UPDATE driven by load-number deltas; fully rebuilt (into a new graph IRI) on trust-state flip or on the periodic-rebuild signal.
 
@@ -68,7 +68,6 @@ Every extraction uses a dedicated subject IRI per entry — derived from the ori
 - `npara:` = `<http://purl.org/nanopub/admin/roleassign/>` — subject for `gen:hasRole` (role-attachment) entries
 - `npard:` = `<http://purl.org/nanopub/admin/roledecl/>` — subject for `npa:RoleDeclaration` entries (extracted from `gen:SpaceMemberRole` nanopubs)
 - `npadef:` = `<http://purl.org/nanopub/admin/spacedef/>` — subject for `npa:SpaceDefinition` entries (per contributing `gen:Space` nanopub)
-- `npainv:` = `<http://purl.org/nanopub/admin/invalidation/>` — subject for `npa:Invalidation` entries
 - `npasub:` = `<http://purl.org/nanopub/admin/subspace/>` — subject for `npa:SubSpaceDeclaration` entries (one per `(child, parent)` pair from a sub-space-relevant nanopub); validated copies retain the same subject in `npass:<…>`
 
 Each entry carries `npa:viaNanopub <originatingNP>` to link back to the source; the stamped load number goes on that nanopub IRI so all of a nanopub's emitted entries share one stamp:
@@ -209,20 +208,16 @@ Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per ins
 
 Single-triple-assertion dispatch picks up nanopubs whose assertion uses `gen:isSubSpaceOf` as the predicate (the predicate IRI surfaces in the nanopub's type set, the same trick that catches the 14 backcompat role predicates). Every `<childIri> gen:isSubSpaceOf <parentIri>` triple in the assertion emits one `npa:SubSpaceDeclaration` entry — same shape as the embedded path in `gen:Space` extraction. Multi-triple assertions are allowed; one entry per `(child, parent)` pair. Full schema and validation rule live in [Sub-space relations](#sub-space-relations).
 
-### Triples added per invalidation
+### Invalidations
 
-No independent space-relevance check on invalidators. `NanopubLoader.java:578-586` already runs a per-invalidator loop that looks up the invalidated nanopub's types from the `meta` repo (`NPX.HAS_NANOPUB_TYPE`) and propagates into each type-specific repo. Hook into that loop: if any of the target's types is space-relevant, emit an `npa:Invalidation` entry. Detection of the invalidator itself is by the `npx:invalidates` / `npx:retracts` / `npx:supersedes` predicate in the assertion.
+No extraction entry is emitted for invalidations. The materialiser instead reads the raw `npx:invalidates` triple that `NanopubLoader` already writes into the loader's `npa:graph` for the invalidator's nanopub (covering `npx:invalidates`, `npx:retracts`, and `npx:supersedes` — the loader normalises all three onto `npx:invalidates`). That triple is reliable in both load orderings: for invalidator-before-target it's emitted by the invalidator's own load, and for target-before-invalidator it's mirrored back when the target loads via `NanopubLoader.getInvalidatingStatements`.
 
-Each invalidation is loaded as an add-only event into `npa:spacesGraph`, stamped with the load number like any other extraction:
+In the spaces repo this triple appears in `NPA.GRAPH` (loader meta), alongside the invalidator's `npa:hasLoadNumber` stamp:
 
 ```turtle
-GRAPH npa:spacesGraph {
-  npainv:<artifactCode> a npa:Invalidation ;
-                        npa:invalidates  <invalidatedNP> ;
-                        npa:viaNanopub   <invalidatingNP> ;
-                        npx:signedBy     <publishingAgent> ;
-                        npa:pubkeyHash   "<pubkeyHash>" ;
-                        dct:created      "<timestamp>"^^xsd:dateTime .
+GRAPH npa:graph {
+  <invalidatingNP> npx:invalidates   <invalidatedNP> ;
+                   npa:hasLoadNumber <N> .
 }
 ```
 
@@ -273,11 +268,11 @@ Since the registry's trust calculation flags any pubkey that claims multiple age
 
 ```sparql
 FILTER NOT EXISTS {
-  ?inv a npa:Invalidation ; npa:invalidates ?np .
+  GRAPH npa:graph { ?_inv_np npx:invalidates ?np . }
 }
 ```
 
-where `?np` is the source nanopub of the candidate being considered (`?entry npa:viaNanopub ?np`, or `?def npa:viaNanopub ?np` for the admin-seed query). This keeps `npa:spacesGraph` purely add-only — invalidations add an `npa:Invalidation` record but never delete prior extractions — while ensuring no query ever admits a candidate whose source has been retracted, regardless of arrival order. Covers the out-of-order case where an invalidation lands before its target.
+where `?np` is the source nanopub of the candidate being considered (`?entry npa:viaNanopub ?np`, or `?def npa:viaNanopub ?np` for the admin-seed query). `npa:spacesGraph` itself remains purely add-only — the materialiser doesn't write invalidation records there; it reads the raw `npx:invalidates` triple in `npa:graph`, which the loader maintains symmetrically in both load orderings. Covers the out-of-order case where an invalidation lands before its target.
 
 ### Mirror step
 
@@ -325,20 +320,18 @@ Concurrency: readers keep hitting the old graph (via the pointer) throughout ste
 
 Triggered by a space-relevant nanopub load or invalidation (which bumps `currentLoadCounter`). Runs as a single cycle bounded by `(processedUpTo, currentLoadCounter]`. In the SPARQL sketches below, `<ts>` stands for the current space-state graph IRI (resolved via `npa:hasCurrentSpaceState` at cycle start).
 
-1. Apply invalidation DELETEs — for each new `npa:Invalidation` entry, remove the space-state entry whose `npa:viaNanopub` points at the invalidated nanopub:
+1. Apply invalidation DELETEs — for each `npx:invalidates` triple whose invalidator landed in the current delta window, remove the space-state entry whose `npa:viaNanopub` points at the invalidated nanopub:
    ```sparql
    DELETE { GRAPH npass:<ts> { ?entry ?p ?o . } }
    WHERE {
-     GRAPH npa:spacesGraph {
-       ?inv a npa:Invalidation ;
-            npa:invalidates ?invalidatedNP ;
-            npa:viaNanopub ?invalidatingNP .
-       ?invalidatingNP npa:hasLoadNumber ?ln .
-       FILTER (?ln > ?lastProcessed)
-     }
      GRAPH npass:<ts> {
        ?entry npa:viaNanopub ?invalidatedNP ;
               ?p ?o .
+     }
+     GRAPH npa:graph {
+       ?invalidatingNP npx:invalidates   ?invalidatedNP ;
+                       npa:hasLoadNumber ?ln .
+       FILTER (?ln > ?lastProcessed)
      }
    }
    ```
@@ -358,9 +351,10 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
            npa:viaNanopub      ?np .
        ?np npa:hasLoadNumber ?ln .
        FILTER (?ln > ?lastProcessed)
-       # Invalidation filter (per Validation rule)
-       FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?np . }
      }
+     # Invalidation filter (per Validation rule) — outside the GRAPH block so the
+     # planner defers it until ?np is bound (see invalidationFilter() in code).
+     FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_np npx:invalidates ?np . } }
      # Authority evidence: publisher resolves to an existing admin of ?space
      GRAPH npass:<ts> {
        ?acct a npa:AccountState ;
@@ -373,8 +367,8 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
                 npa:forSpaceRef [ npa:spaceIri ?space ] ;
                 npa:hasRootAdmin ?publisher ;
                 npa:viaNanopub   ?defNp .
-           FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?defNp . }
          }
+         FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_defNp npx:invalidates ?defNp . } }
        }
        UNION
        { ?prev a gen:RoleInstantiation ;
@@ -402,7 +396,7 @@ Sticky and non-cascading: invalidating a grant removes only the derivation keyed
 
 Invalidating a `gen:SpaceMemberRole` nanopub removes its `npa:RoleDeclaration` from `npass:<ts>` via the standard per-`npa:viaNanopub` DELETE. Previously-derived instantiations under that role stay (sticky); new instantiations can no longer be derived because either the JOIN against `npa:RoleDeclaration` fails (at full rebuild, when the declaration-reading query applies the invalidation filter) or the filter directly excludes instantiations whose source was retracted.
 
-`npa:spacesGraph` stays purely add-only: invalidations add `npa:Invalidation` records but never delete prior extraction entries. Cleanup happens only in `npass:<ts>` (DELETE-on-viaNanopub) and via the invalidation filter on every extraction-graph read (per [Validation rule](#validation-rule)).
+`npa:spacesGraph` stays purely add-only: nothing is rewritten or deleted in this graph at materialiser time. Invalidations live as raw `npx:invalidates` triples in `npa:graph` (written by the loader) and are joined in via the invalidation filter on every extraction-graph read (per [Validation rule](#validation-rule)). Cleanup of validated state happens only in `npass:<ts>` (DELETE-on-viaNanopub).
 
 ### Trust-state flip always means full rebuild
 
@@ -485,8 +479,8 @@ WHERE {
        npa:parentSpace ?parent ;
        npa:pubkeyHash ?pkh ;
        npa:viaNanopub ?d_np .
-    FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?d_np . }
   }
+  FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_d_np npx:invalidates ?d_np . } }
   GRAPH npass:<ts> {
     ?acct a npa:AccountState ; npa:agent ?publisher ; npa:pubkey ?pkh .
   }
@@ -508,8 +502,8 @@ WHERE {
           npa:pubkeyHash ?pkh2 ;
           npa:viaNanopub ?d_np2 .
       FILTER (?d_np2 != ?d_np)
-      FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?d_np2 . }
     }
+    FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_d_np2 npx:invalidates ?d_np2 . } }
     GRAPH npass:<ts> {
       ?acct2 a npa:AccountState ; npa:agent ?publisher2 ; npa:pubkey ?pkh2 .
     }
@@ -685,8 +679,8 @@ WHERE {
        npa:maintainerSpace ?s ;
        npa:pubkeyHash      ?pkh ;
        npa:viaNanopub      ?d_np .
-    FILTER NOT EXISTS { ?inv a npa:Invalidation ; npa:invalidates ?d_np . }
   }
+  FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_d_np npx:invalidates ?d_np . } }
   GRAPH npass:<ts> {
     ?acct a npa:AccountState ; npa:agent ?publisher ; npa:pubkey ?pkh .
     # Mode A only: publisher is admin of the maintaining space.
@@ -731,7 +725,7 @@ The inverse direction (find the maintaining space(s) of a resource) uses `<RESOU
 
 ## Implementation phases
 
-1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples (including `npa:Invalidation` entries) into `npa:spacesGraph` with `npa:hasLoadNumber` stamps. Includes `npa:SubSpaceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isSubSpaceOf` paths), `npa:MaintainedResourceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isMaintainedBy` paths; see [Maintained resources](#maintained-resources)), and `npa:hasIdPrefix` triples on `npa:SpaceRef` aggregates (see [Sub-space relations](#sub-space-relations)).
+1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples into `npa:spacesGraph` with `npa:hasLoadNumber` stamps. Includes `npa:SubSpaceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isSubSpaceOf` paths), `npa:MaintainedResourceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isMaintainedBy` paths; see [Maintained resources](#maintained-resources)), and `npa:hasIdPrefix` triples on `npa:SpaceRef` aggregates (see [Sub-space relations](#sub-space-relations)). Invalidations land in `npa:graph` as raw `npx:invalidates` triples (no separate extraction entry); see [Invalidations](#invalidations).
 2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup. Includes the explicit-declaration sub-space admit pass (Mode A + Mode B, copying validated `npa:SubSpaceDeclaration` rows into `npass:<…>`), the URL-prefix fallback admit pass (suppressed per child by any non-invalidated declaration), the maintained-resource admit pass (Mode A only, copying validated `npa:MaintainedResourceDeclaration` rows into `npass:<…>` plus convenience `<r> npa:isMaintainedBy <s>` / `<s> npa:hasMaintainedResource <r>` triples), and the structural-rebuild flag on validated-declaration DELETE.
 3. **Routes / metrics** — `/spaces` listing route (HTML + JSON), Prometheus gauges (rebuild duration, delta size, `processedUpTo` lag, distinct-subject totals).
 4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query that resolves the current `npass:*` graph from the pointer (see [Querying the current space-state graph](#querying-the-current-space-state-graph)); drop `isAdminPubkey` gate and pinned templates/queries. Replace `SpaceRepository.findSubspaces(...)` URL regex with the single-query consumer pattern in [Sub-space relations](#sub-space-relations).

@@ -9,8 +9,6 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_DEFINITION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ID_PREFIX;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ROLE_TYPE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ROOT_ADMIN;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVALIDATES;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVALIDATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVERSE_PROPERTY;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.MAINTAINED_RESOURCE_DECLARATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.MAINTAINER_SPACE;
@@ -27,7 +25,6 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_IRI;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_REF;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SUB_SPACE_DECLARATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.VIA_NANOPUB;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forInvalidation;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleAssignment;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleDeclaration;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleInstantiation;
@@ -108,34 +105,6 @@ class SpacesExtractorTest {
     @AfterEach
     void tearDownMocks() {
         if (mockedUtils != null) mockedUtils.close();
-    }
-
-    // ---------------- isSpaceRelevant ----------------
-
-    @Test
-    void isSpaceRelevant_recognizesPredefinedTypes() {
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.SPACE)));
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.HAS_ROLE)));
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.SPACE_MEMBER_ROLE)));
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.ROLE_INSTANTIATION)));
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_SUB_SPACE_OF)));
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_MAINTAINED_BY)));
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.MAINTAINED_RESOURCE)));
-    }
-
-    @Test
-    void isSpaceRelevant_recognizesBackcompatPredicatesAsTypes() {
-        IRI hasTeamMember = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasTeamMember");
-        IRI plansToAttend = vf.createIRI("https://w3id.org/kpxl/gen/terms/plansToAttend");
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(hasTeamMember)));
-        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(plansToAttend)));
-    }
-
-    @Test
-    void isSpaceRelevant_rejectsUnrelatedTypes() {
-        IRI unrelated = vf.createIRI("https://example.org/Foo");
-        assertFalse(SpacesExtractor.isSpaceRelevant(Set.of(unrelated)));
-        assertFalse(SpacesExtractor.isSpaceRelevant(Set.of()));
     }
 
     // ---------------- gen:Space ----------------
@@ -664,46 +633,6 @@ class SpacesExtractorTest {
         // try to chop colon-separated NIDs.
         assertTrue(SpacesExtractor.enumerateIdPrefixes(
                 vf.createIRI("urn:nbn:de:0287-2003-12345")).isEmpty());
-    }
-
-    // ---------------- Invalidation ----------------
-
-    @Test
-    void extractInvalidation_targetIsSpaceTyped_emitsInvalidationEntry() throws Exception {
-        IRI invalidatedNp = vf.createIRI("https://w3id.org/np/RA-tgtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        Nanopub invalidator = creator()
-                // Placeholder assertion (non-empty is required by NanopubImpl; the
-                // extractor's invalidation path doesn't inspect the assertion).
-                .assertion(NP_URI, NPX.INVALIDATES,
-                        vf.createIRI("https://w3id.org/np/RA-tgtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
-                .finalizeNanopub();
-
-        List<Statement> out = SpacesExtractor.extractInvalidation(
-                invalidator, invalidatedNp, Set.of(GEN.SPACE), defaultContext());
-
-        IRI subject = forInvalidation(ARTIFACT_CODE);
-        assertContains(out, subject, RDF.TYPE, INVALIDATION);
-        assertContains(out, subject, INVALIDATES, invalidatedNp);
-        assertContains(out, subject, VIA_NANOPUB, NP_URI);
-        assertContains(out, subject, NPX.SIGNED_BY, SIGNER_AGENT);
-        assertAllInSpacesGraph(out);
-    }
-
-    @Test
-    void extractInvalidation_targetNotSpaceRelevant_emitsNothing() throws Exception {
-        IRI invalidatedNp = vf.createIRI("https://w3id.org/np/RA-tgtBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
-        Nanopub invalidator = creator()
-                // Placeholder assertion (non-empty is required by NanopubImpl; the
-                // extractor's invalidation path doesn't inspect the assertion).
-                .assertion(NP_URI, NPX.INVALIDATES,
-                        vf.createIRI("https://w3id.org/np/RA-tgtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
-                .finalizeNanopub();
-        IRI unrelated = vf.createIRI("https://example.org/SomeOtherType");
-
-        List<Statement> out = SpacesExtractor.extractInvalidation(
-                invalidator, invalidatedNp, Set.of(unrelated), defaultContext());
-
-        assertTrue(out.isEmpty(), "No invalidation entry for non-space-relevant target");
     }
 
     // ---------------- Load-counter stamping ----------------

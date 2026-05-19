@@ -715,28 +715,12 @@ public class NanopubLoader {
 //						connections.add(loadStatements("text-pubkey_" + Utils.createHash(pubkey), invalidateStatement, pubkeyStatement));
                     }
 
-                    // Collect target types so we can both propagate per-type AND decide
-                    // whether the target is space-relevant in a single pass over meta.
-                    Set<IRI> targetTypes = new HashSet<>();
-                    for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invalidatedNpId, NPX.HAS_NANOPUB_TYPE)) {
-                        if (v instanceof IRI typeIri) targetTypes.add(typeIri);
-                    }
                     Set<IRI> thisNpTypes = NanopubUtils.getTypes(thisNp);
-                    for (IRI typeIri : targetTypes) {
-                        if (!thisNpTypes.contains(typeIri)) {
+                    for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invalidatedNpId, NPX.HAS_NANOPUB_TYPE)) {
+                        if (v instanceof IRI typeIri && !thisNpTypes.contains(typeIri)) {
                             //log.info("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for type " + typeIri);
                             connections.add(loadStatements("type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement, pubkeyStatementX));
 //							connections.add(loadStatements("text-type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
-                        }
-                    }
-
-                    // Emit an npa:Invalidation entry into the spaces repo if the target
-                    // had any space-relevant type. Piggybacks on the type lookup above
-                    // so we don't re-read meta.
-                    if (FeatureFlags.spacesEnabled() && SpacesExtractor.isSpaceRelevant(targetTypes)) {
-                        List<Statement> invEntry = buildInvalidationEntry(thisNp, invalidatedNpId, targetTypes, thisPubkey);
-                        if (!invEntry.isEmpty()) {
-                            connections.add(loadStatements("spaces", invEntry.toArray(new Statement[0])));
                         }
                     }
 
@@ -778,42 +762,6 @@ public class NanopubLoader {
                 }
             }
         }
-    }
-
-    /**
-     * Builds the statements for an {@code npa:Invalidation} entry describing a
-     * space-relevant retraction/supersession. Caller writes these into the
-     * {@code spaces} repo.
-     *
-     * @param thisNp        the invalidator nanopub
-     * @param invalidatedNp IRI of the invalidated target
-     * @param targetTypes   the target's types (already read from the meta repo)
-     * @param thisPubkey    the invalidator's signing pubkey
-     * @return the invalidation-entry statements, or an empty list if no signer is known
-     */
-    private static List<Statement> buildInvalidationEntry(Nanopub thisNp, IRI invalidatedNp,
-                                                          Set<IRI> targetTypes, String thisPubkey) {
-        String artifactCode = TrustyUriUtils.getArtifactCode(thisNp.getUri().toString());
-        if (artifactCode == null || artifactCode.isEmpty()) return Collections.emptyList();
-        IRI signer = null;
-        for (Statement st : thisNp.getPubinfo()) {
-            if (!st.getSubject().equals(thisNp.getUri())) continue;
-            if (!st.getPredicate().equals(NPX.SIGNED_BY)) continue;
-            if (st.getObject() instanceof IRI signerIri) {
-                signer = signerIri;
-                break;
-            }
-        }
-        Date createdAt = null;
-        try {
-            Calendar ts = SimpleTimestampPattern.getCreationTime(thisNp);
-            if (ts != null) createdAt = ts.getTime();
-        } catch (IllegalArgumentException ignored) {
-            // pubinfo timestamp missing or malformed; extraction entry simply omits dct:created.
-        }
-        SpacesExtractor.Context ctx = new SpacesExtractor.Context(
-                artifactCode, signer, Utils.createHash(thisPubkey), createdAt);
-        return SpacesExtractor.extractInvalidation(thisNp, invalidatedNp, targetTypes, ctx);
     }
 
     @GeneratedFlagForDependentElements
