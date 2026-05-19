@@ -123,11 +123,28 @@ public class JellyNanopubLoader {
         }
         lastCommittedCounter = afterCounter;
         while (lastCommittedCounter < targetCounter) {
+            // Same circuit-breaker logic as loadUpdates: after BREAKER_THRESHOLD
+            // consecutive failed batches, pause before retrying so a saturated RDF4J
+            // (e.g. during a restart storm) can drain instead of being hammered on the
+            // 5-second RETRY_DELAY_JELLY cadence.
+            if (consecutiveBatchFailures >= BREAKER_THRESHOLD) {
+                log.warn("Circuit breaker active during initial load after {} consecutive batch failures; pausing {} ms before next attempt",
+                        consecutiveBatchFailures, BREAKER_PAUSE_MS);
+                try {
+                    Thread.sleep(BREAKER_PAUSE_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted while waiting for circuit breaker.");
+                }
+            }
             try {
                 loadBatch(lastCommittedCounter, LoadingType.INITIAL);
+                consecutiveBatchFailures = 0;
                 log.info("Initial load: loaded batch up to counter {}", lastCommittedCounter);
             } catch (Exception e) {
-                log.info("Failed to load batch starting from counter {}", lastCommittedCounter);
+                consecutiveBatchFailures++;
+                log.info("Failed to load batch starting from counter {} (consecutive failures: {})",
+                        lastCommittedCounter, consecutiveBatchFailures);
                 log.info("Failure reason: ", e);
                 try {
                     Thread.sleep(RETRY_DELAY_JELLY);
@@ -317,12 +334,16 @@ public class JellyNanopubLoader {
                             ", received counter: " + m.getCounter());
                 }
                 NanopubLoader.load(m.getNanopub(), m.getCounter());
+                // Bump the in-memory counter BEFORE persisting it. The previous order
+                // wrote the *previous* nanopub's counter to the DB at each checkpoint,
+                // so a crash-restart silently re-processed one extra nanopub and the
+                // contract "saved counter == last fully loaded nanopub" was violated.
+                lastCommittedCounter = m.getCounter();
                 if (m.getCounter() % 10 == 0) {
                     // Save the committed counter only every 10 nanopubs to reduce DB load
                     saveCommittedCounter(type);
                     lastSavedCounter.set(m.getCounter());
                 }
-                lastCommittedCounter = m.getCounter();
                 loaded.getAndIncrement();
 
                 if (loaded.get() % 50 == 0) {
