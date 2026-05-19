@@ -654,16 +654,29 @@ public final class AuthorityResolver {
      * produces an outer-scoped {@code FILTER NOT EXISTS { GRAPH npa:graph
      * { ?_inv_np npx:invalidates ?np . } }}.
      *
-     * <p>Joins on the raw {@code npx:invalidates} triple in {@code npa:graph}
-     * (written by the loader for the invalidator AND mirrored back when the
-     * invalidated target loads later via {@code getInvalidatingStatements}), so
-     * the filter is symmetric in load order. The earlier shape joined on a
-     * structured {@code npa:Invalidation} entry in {@code npa:spacesGraph} that
-     * was only emitted on the invalidator's side, leaving a window where a
-     * superseding nanopub loaded before its target produced no entry and the
-     * stale row was never filtered out (see also the matching change in the
-     * tier-specific {@code *InvalidationCheckWhere}/{@code *InvalidationDelete}
-     * templates below).
+     * <p>Joins on the raw {@code npx:invalidates} triple in {@code npa:graph},
+     * which {@link com.knowledgepixels.query.NanopubLoader} writes into the
+     * spaces repo from two complementary directions, making the filter symmetric
+     * in load order:
+     * <ul>
+     *   <li>At the invalidator's own load: the loader's space-repo trigger fires
+     *       whenever the nanopub has either its own space-relevant extractions
+     *       OR an {@code npx:invalidates}/{@code npx:retracts}/{@code npx:supersedes}
+     *       triple, so a pure-retraction nanopub still lands its raw triple plus
+     *       {@code npa:hasLoadNumber} stamp in {@code npa:graph}.</li>
+     *   <li>At the invalidated target's load (when the invalidator landed
+     *       earlier): {@code NanopubLoader.getInvalidatingStatements} reads the
+     *       triple back from the meta repo and mirrors it into the target's own
+     *       write to the spaces repo.</li>
+     * </ul>
+     *
+     * <p>The earlier shape joined on a structured {@code npa:Invalidation} entry
+     * in {@code npa:spacesGraph} that was only emitted on the invalidator's side
+     * AND only when the invalidated target's meta had already loaded, leaving a
+     * window where a superseding nanopub loaded before its target produced no
+     * entry and the stale row was never filtered out (see also the matching
+     * change in the tier-specific {@code *InvalidationCheckWhere}/{@code
+     * *InvalidationDelete} templates below).
      *
      * <p>Important: this filter must be placed OUTSIDE the surrounding
      * {@code GRAPH npa:spacesGraph { ... }} block, not nested inside it. When

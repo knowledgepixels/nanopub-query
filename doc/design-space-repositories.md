@@ -210,9 +210,11 @@ Single-triple-assertion dispatch picks up nanopubs whose assertion uses `gen:isS
 
 ### Invalidations
 
-No extraction entry is emitted for invalidations. The materialiser instead reads the raw `npx:invalidates` triple that `NanopubLoader` already writes into the loader's `npa:graph` for the invalidator's nanopub (covering `npx:invalidates`, `npx:retracts`, and `npx:supersedes` — the loader normalises all three onto `npx:invalidates`). That triple is reliable in both load orderings: for invalidator-before-target it's emitted by the invalidator's own load, and for target-before-invalidator it's mirrored back when the target loads via `NanopubLoader.getInvalidatingStatements`.
+No extraction entry is emitted for invalidations. The materialiser instead reads the raw `npx:invalidates` triple that `NanopubLoader` writes into `npa:graph` for the invalidator's nanopub (covering `npx:invalidates`, `npx:retracts`, and `npx:supersedes` — the loader normalises all three onto `npx:invalidates`). That triple is reliable in both load orderings.
 
-In the spaces repo this triple appears in `NPA.GRAPH` (loader meta), alongside the invalidator's `npa:hasLoadNumber` stamp:
+`NanopubLoader` runs `loadToSpacesRepo` for any nanopub that either (a) carries its own space-relevant extraction triples, or (b) is an invalidator (i.e., has any `npx:invalidates`/`npx:retracts`/`npx:supersedes` triple in its assertion). The "(b)" trigger is what keeps pure-retraction nanopubs — typed only as a retraction, with no own space-typed content — visible to the materialiser: without it, the invalidator's `npx:invalidates ?np` and `npa:hasLoadNumber ?ln` would never land in the spaces repo's `npa:graph` and an A-before-B load order with a pure-retraction B would silently leave A's row in the materialised state graph.
+
+In the spaces repo the triples appear in `NPA.GRAPH` (loader meta), alongside the invalidator's `npa:hasLoadNumber` stamp:
 
 ```turtle
 GRAPH npa:graph {

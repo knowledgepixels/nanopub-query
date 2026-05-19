@@ -421,7 +421,16 @@ public class NanopubLoader {
             //			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(authorIri));
             //		}
 
-            if (FeatureFlags.spacesEnabled() && !spaceExtractionStatements.isEmpty()) {
+            // Write to the spaces repo whenever the nanopub has its own space-relevant
+            // extractions OR carries an npx:invalidates / npx:retracts / npx:supersedes
+            // triple. The latter case keeps pure-retraction nanopubs (no own space-typed
+            // content) visible to the materialiser's invalidation joins: they need
+            // ?invNp <npx:invalidates> ?np AND ?invNp <npa:hasLoadNumber> ?ln in
+            // npa:graph of the spaces repo, both of which loadToSpacesRepo writes.
+            // Without this, an A-before-B load order with a pure-retraction B would
+            // leave A's row in the materialised state graph forever.
+            if (FeatureFlags.spacesEnabled()
+                    && (!spaceExtractionStatements.isEmpty() || !invalidateStatements.isEmpty())) {
                 runTask.accept(() -> loadToSpacesRepo(np.getUri(), allStatements, spaceExtractionStatements));
             }
 
