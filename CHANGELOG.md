@@ -1,3 +1,15 @@
+## [1.13.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.13.0...nanopub-query-1.13.1) (2026-05-19)
+
+### Bug Fixes
+
+* **AuthorityResolver:** join raw npx:invalidates so materialiser is symmetric in load order ([68d6149](https://github.com/knowledgepixels/nanopub-query/commit/68d6149b647b67a2aae15f45e79c5f1b3f1c4c12))
+* **NanopubLoader:** trigger spaces-repo write for pure-retraction nanopubs too ([e10c355](https://github.com/knowledgepixels/nanopub-query/commit/e10c3555a694a28d815d50e6a593edc14b3290a0))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([6a0d2fc](https://github.com/knowledgepixels/nanopub-query/commit/6a0d2fcdad33560bd8e5c697890e7b28b8ff46a4))
+* **spaces:** remove dead npa:Invalidation extraction now that no reader consumes it ([528ac47](https://github.com/knowledgepixels/nanopub-query/commit/528ac47952cb78c261205243209457e3c51f0809))
+
 ## [1.13.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.12.0...nanopub-query-1.13.0) (2026-05-19)
 
 ### Features
