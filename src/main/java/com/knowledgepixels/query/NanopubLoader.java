@@ -51,16 +51,34 @@ public class NanopubLoader {
     private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
 
     /**
-     * Cached count of nanopubs ever loaded into the {@code full} repo. Maintained
+     * Cached count of nanopubs ever loaded into the {@code meta} repo. Maintained
      * for {@link MainVerticle}'s {@code Nanopub-Query-Loaded-Nanopub-Count}
      * response header. Mirrors the persisted {@code npa:hasNanopubCount} triple
      * that {@link #loadNanopubToRepo} maintains; invalidations don't decrement
      * (they're recorded as separate {@code npx:invalidates} markers), so this
      * is a cumulative count including superseded/retracted nanopubs — matching
      * the registry-side {@code Nanopub-Registry-Nanopub-Count} semantics.
-     * Populated lazily on first read; bumped post-commit on each fresh load.
+     *
+     * <p>The {@code meta} repo (not {@code full}) is the source because the meta
+     * task is submitted only after all other per-nanopub tasks succeed (see
+     * {@link #executeLoading}), making it the authoritative "fully completed
+     * loads" indicator. The {@code full} repo is feature-flagged and may be
+     * disabled, in which case it cannot be the source. Populated lazily on first
+     * read; bumped post-commit on each fresh meta load.
      */
     static volatile Long loadedNanopubCount = null;
+
+    /**
+     * Cached checksum of nanopubs ever loaded into the {@code meta} repo.
+     * Maintained for {@link MainVerticle}'s
+     * {@code Nanopub-Query-Loaded-Nanopub-Checksum} response header. Mirrors the
+     * persisted {@code npa:hasNanopubChecksum} triple that {@link #loadNanopubToRepo}
+     * maintains — an order-independent XOR over the trusty URIs of all loaded
+     * nanopubs, Base64-encoded. Sourced from {@code meta} for the same reasons
+     * as {@link #loadedNanopubCount}; the two fields are bumped together so the
+     * count and checksum always describe the same point in the load sequence.
+     */
+    static volatile String loadedNanopubChecksum = null;
 
     /**
      * Retry budget for the five (with #71 merged: six) structurally identical
@@ -547,6 +565,7 @@ public class NanopubLoader {
         while (!success) {
             RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
             long newCountForCache = -1;
+            String newChecksumForCache = null;
             try (conn) {
                 // Serializable, because write skew would cause the chain of hashes to be broken.
                 // The inserts must be done serially.
@@ -569,13 +588,17 @@ public class NanopubLoader {
                     conn.add(npId, NPA.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), NPA.GRAPH);
                     // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
                     conn.add(statements);
-                    if ("full".equals(repoName)) {
+                    if ("meta".equals(repoName)) {
                         newCountForCache = repoStatus.count + 1;
+                        newChecksumForCache = newChecksum;
                     }
                 }
                 conn.commit();
                 if (newCountForCache >= 0) {
                     loadedNanopubCount = newCountForCache;
+                }
+                if (newChecksumForCache != null) {
+                    loadedNanopubChecksum = newChecksumForCache;
                 }
                 success = true;
             } catch (Exception ex) {
@@ -660,7 +683,7 @@ public class NanopubLoader {
     }
 
     /**
-     * Returns the cumulative count of nanopubs ever loaded into the {@code full}
+     * Returns the cumulative count of nanopubs ever loaded into the {@code meta}
      * repo, or {@code null} if the value cannot be determined (e.g. the store
      * hasn't been initialised yet). Reads the persisted {@code npa:hasNanopubCount}
      * triple on first call and caches it in {@link #loadedNanopubCount};
@@ -669,7 +692,7 @@ public class NanopubLoader {
     public static Long getLoadedNanopubCount() {
         Long v = loadedNanopubCount;
         if (v != null) return v;
-        try (RepositoryConnection conn = TripleStore.get().getRepoConnection("full")) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection("meta")) {
             Value val = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT);
             if (val != null) {
                 v = Long.parseLong(val.stringValue());
@@ -677,9 +700,33 @@ public class NanopubLoader {
                 return v;
             }
         } catch (NumberFormatException ex) {
-            log.warn("Invalid npa:hasNanopubCount literal in full repo", ex);
+            log.warn("Invalid npa:hasNanopubCount literal in meta repo", ex);
         } catch (Exception ex) {
-            log.warn("Could not read npa:hasNanopubCount from full repo", ex);
+            log.warn("Could not read npa:hasNanopubCount from meta repo", ex);
+        }
+        return null;
+    }
+
+    /**
+     * Returns the order-independent XOR checksum (Base64-encoded) of trusty URIs
+     * of all nanopubs ever loaded into the {@code meta} repo, or {@code null} if
+     * the value cannot be determined (e.g. the store hasn't been initialised
+     * yet). Reads the persisted {@code npa:hasNanopubChecksum} triple on first
+     * call and caches it in {@link #loadedNanopubChecksum}; subsequent fresh
+     * loads update the cache in-place alongside {@link #loadedNanopubCount}.
+     */
+    public static String getLoadedNanopubChecksum() {
+        String v = loadedNanopubChecksum;
+        if (v != null) return v;
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection("meta")) {
+            Value val = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM);
+            if (val != null) {
+                v = val.stringValue();
+                loadedNanopubChecksum = v;
+                return v;
+            }
+        } catch (Exception ex) {
+            log.warn("Could not read npa:hasNanopubChecksum from meta repo", ex);
         }
         return null;
     }

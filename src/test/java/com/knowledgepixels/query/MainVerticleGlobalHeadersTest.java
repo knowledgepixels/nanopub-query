@@ -227,4 +227,20 @@ class MainVerticleGlobalHeadersTest {
             NanopubLoader.loadedNanopubCount = null;
         }
     }
+
+    @Test
+    void emitsLoadedNanopubChecksumWhenPresent() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            NanopubLoader.loadedNanopubChecksum = "JfE2EFk0EFgTXmY6B-ftuZFl0S-WELl3yMiaRuRpIME";
+
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+
+            verify(response).putHeader("Nanopub-Query-Loaded-Nanopub-Checksum", "JfE2EFk0EFgTXmY6B-ftuZFl0S-WELl3yMiaRuRpIME");
+            NanopubLoader.loadedNanopubChecksum = null;
+        }
+    }
 }
