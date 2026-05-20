@@ -1,3 +1,14 @@
+## [1.14.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.13.1...nanopub-query-1.14.0) (2026-05-20)
+
+### Features
+
+* **headers:** expose Nanopub-Query-Loaded-Nanopub-Checksum and source count from meta ([faa3298](https://github.com/knowledgepixels/nanopub-query/commit/faa3298836f5d82eeb6adf34779bd9bac765207a))
+* **NanopubLoader:** index retractions under invalidated nanopub's types with full content ([09eeb32](https://github.com/knowledgepixels/nanopub-query/commit/09eeb32c7d97da1571b050c7a8d4d2a04d36c434)), closes [Utils#defaultQuery](https://github.com/knowledgepixels/Utils/issues/defaultQuery)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([0147430](https://github.com/knowledgepixels/nanopub-query/commit/014743049d73b049f276934ef7f766930ba28674))
+
 ## [1.13.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.13.0...nanopub-query-1.13.1) (2026-05-19)
 
 ### Bug Fixes
