@@ -14,6 +14,7 @@ import org.eclipse.rdf4j.query.QueryLanguage;
 import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.repository.RepositoryResult;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
 import org.nanopub.SimpleCreatorPattern;
@@ -97,7 +98,7 @@ public class NanopubLoader {
     private List<Statement> nanopubStatements = new ArrayList<>();
     private List<Statement> literalStatements = new ArrayList<>();
     private List<Statement> invalidateStatements = new ArrayList<>();
-    private List<Statement> textStatements, allStatements;
+    private List<Statement> textStatements, allStatements, invalidatingStatements;
     private List<Statement> spaceExtractionStatements = new ArrayList<>();
     private Calendar timestamp = null;
     private Statement pubkeyStatement, pubkeyStatementX;
@@ -311,7 +312,7 @@ public class NanopubLoader {
         }
 
         // Any statements that express that the currently processed nanopub is already invalidated:
-        List<Statement> invalidatingStatements = getInvalidatingStatements(np.getUri());
+        invalidatingStatements = getInvalidatingStatements(np.getUri());
 
         metaStatements.addAll(invalidateStatements);
 
@@ -435,7 +436,25 @@ public class NanopubLoader {
             }
 
             for (Statement st : invalidateStatements) {
-                runTask.accept(() -> loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX));
+                runTask.accept(() -> loadInvalidateStatements(np, el.getPublicKeyString(), st, pubkeyStatement, pubkeyStatementX, allStatements));
+            }
+
+            // Reverse-order symmetry: when retractors were loaded before this nanopub,
+            // getInvalidatingStatements (in the constructor) captured their
+            // `npx:invalidates` markers into invalidatingStatements. Mirror what
+            // loadInvalidateStatements does in the forward case — load each retractor's
+            // full content into this nanopub's per-type repos (those types the
+            // retractor doesn't itself carry), sourced from the retractor's per-pubkey
+            // repo (the one shard guaranteed to be populated for every successfully
+            // loaded nanopub).
+            Map<IRI, String> invalidatorPubkeys = collectInvalidatorPubkeys(invalidatingStatements);
+            if (!invalidatorPubkeys.isEmpty()) {
+                Set<IRI> thisNpTypes = NanopubUtils.getTypes(np);
+                for (Map.Entry<IRI, String> e : invalidatorPubkeys.entrySet()) {
+                    IRI invIri = e.getKey();
+                    String invPubkey = e.getValue();
+                    runTask.accept(() -> loadInvalidatorIntoTypeRepos(invIri, invPubkey, np.getUri(), thisNpTypes));
+                }
             }
 
             // Wait for all non-meta tasks to complete successfully before submitting the meta task.
@@ -703,10 +722,12 @@ public class NanopubLoader {
     }
 
     @GeneratedFlagForDependentElements
-    private static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX) {
+    private static void loadInvalidateStatements(Nanopub thisNp, String thisPubkey, Statement invalidateStatement, Statement pubkeyStatement, Statement pubkeyStatementX, List<Statement> thisAllStatements) {
         boolean success = false;
         int retries = 0;
+        List<IRI> typesToLoadFullInto = new ArrayList<>();
         while (!success) {
+            typesToLoadFullInto.clear();
             List<RepositoryConnection> connections = new ArrayList<>();
             RepositoryConnection metaConn = TripleStore.get().getRepoConnection("meta");
             try {
@@ -727,9 +748,10 @@ public class NanopubLoader {
                     Set<IRI> thisNpTypes = NanopubUtils.getTypes(thisNp);
                     for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invalidatedNpId, NPX.HAS_NANOPUB_TYPE)) {
                         if (v instanceof IRI typeIri && !thisNpTypes.contains(typeIri)) {
-                            //log.info("Adding invalidation expressed in " + thisNp.getUri() + " also to repo for type " + typeIri);
-                            connections.add(loadStatements("type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement, pubkeyStatementX));
-//							connections.add(loadStatements("text-type_" + Utils.createHash(typeIri), invalidateStatement, pubkeyStatement));
+                            // Defer until after the meta-read commits — full load goes
+                            // through loadNanopubToRepo, which has its own transaction
+                            // and retry loop (see post-loop block below).
+                            typesToLoadFullInto.add(typeIri);
                         }
                     }
 
@@ -771,6 +793,212 @@ public class NanopubLoader {
                 }
             }
         }
+        // Mirror the Registries' behaviour: index a retraction under the types of the
+        // nanopub it invalidates, even when the retractor itself doesn't carry those
+        // types. Load the full retracting nanopub (not just the npx:invalidates marker)
+        // so a query against a type repo can fetch the retractor's own assertion /
+        // provenance / pubinfo, not only the join handle.
+        // loadNanopubToRepo is idempotent (early-exit on npa:hasLoadNumber) and runs
+        // its own SERIALIZABLE transaction + retry loop, so it's safe to call here.
+        for (IRI typeIri : typesToLoadFullInto) {
+            loadNanopubToRepo(thisNp.getUri(), thisAllStatements, "type_" + Utils.createHash(typeIri));
+        }
+    }
+
+    /**
+     * Extracts a map from invalidator IRI to that invalidator's pubkey literal
+     * out of an {@code invalidatingStatements} list as produced by
+     * {@link #getInvalidatingStatements}. The list interleaves
+     * {@code (?inv, npx:invalidates, ?np)} and
+     * {@code (?inv, npa:hasValidSignatureForPublicKey, ?pubkey)} triples per
+     * invalidator; this helper picks out only the pubkey-binding triples.
+     */
+    private static Map<IRI, String> collectInvalidatorPubkeys(List<Statement> invalidatingStatements) {
+        Map<IRI, String> result = new LinkedHashMap<>();
+        for (Statement st : invalidatingStatements) {
+            if (st.getPredicate().equals(NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY)
+                    && st.getSubject() instanceof IRI invIri) {
+                result.put(invIri, st.getObject().stringValue());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Reverse-order counterpart of the forward-order full-content propagation in
+     * {@link #loadInvalidateStatements}: when this nanopub had already-loaded
+     * retractors at the time of its own load (captured by
+     * {@link #getInvalidatingStatements}), load each retractor's full content
+     * into this nanopub's per-type repos — restricted to those types the
+     * retractor doesn't itself carry (the retractor's own load already populated
+     * the type repos it covers).
+     *
+     * <p>Source is the retractor's per-pubkey repo, which is the one shard
+     * unconditionally populated for every successfully-loaded nanopub. The
+     * retractor's types are read from the meta repo so we can skip type repos
+     * the retractor's own regular load already populated.
+     */
+    @GeneratedFlagForDependentElements
+    private static void loadInvalidatorIntoTypeRepos(IRI invIri, String invPubkey, IRI thisNpId, Set<IRI> thisNpTypes) {
+        Set<IRI> invTypes = readInvalidatorTypesFromMeta(invIri, thisNpId);
+
+        List<IRI> typesToLoadInto = new ArrayList<>();
+        for (IRI typeIri : thisNpTypes) {
+            // Match the regular per-type load loop's exclusion of locally-minted IRIs.
+            if (typeIri.stringValue().startsWith(thisNpId.stringValue())) continue;
+            if (!typeIri.stringValue().matches("https?://.*")) continue;
+            if (!invTypes.contains(typeIri)) typesToLoadInto.add(typeIri);
+        }
+        if (typesToLoadInto.isEmpty()) return;
+
+        List<Statement> invContent = fetchNanopubAllStatementsFromPubkeyRepo(invIri, invPubkey);
+        for (IRI typeIri : typesToLoadInto) {
+            loadNanopubToRepo(invIri, invContent, "type_" + Utils.createHash(typeIri));
+        }
+    }
+
+    @GeneratedFlagForDependentElements
+    private static Set<IRI> readInvalidatorTypesFromMeta(IRI invIri, IRI thisNpId) {
+        Set<IRI> invTypes = new HashSet<>();
+        boolean success = false;
+        int retries = 0;
+        while (!success) {
+            invTypes.clear();
+            RepositoryConnection metaConn = TripleStore.get().getRepoConnection("meta");
+            try (metaConn) {
+                metaConn.begin(IsolationLevels.READ_COMMITTED);
+                for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invIri, NPX.HAS_NANOPUB_TYPE)) {
+                    if (v instanceof IRI ti) invTypes.add(ti);
+                }
+                metaConn.commit();
+                success = true;
+            } catch (Exception ex) {
+                log.warn("Could not read invalidator types for {} (target nanopub {}).", invIri, thisNpId, ex);
+                if (metaConn.isActive()) metaConn.rollback();
+            }
+            if (!success) {
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to read invalidator types for " + invIri + " after " + MAX_RETRIES + " retries");
+                }
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms for invalidator types of {} (attempt {}/{})...", delay, invIri, retries, MAX_RETRIES);
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        return invTypes;
+    }
+
+    /**
+     * Reads a nanopub's content back from its per-pubkey repo as a list of
+     * statements that mirrors what its original load produced into
+     * {@code allStatements}, minus the per-repo bookkeeping triples
+     * ({@code npa:hasLoadNumber}, {@code npa:hasLoadChecksum},
+     * {@code npa:hasLoadTimestamp}). {@link #loadNanopubToRepo} stamps those
+     * fresh on every destination repo, so they must be filtered out of the
+     * source set.
+     *
+     * <p>Fetched content:
+     * <ul>
+     *   <li>All triples in the nanopub's four named graphs, discovered via
+     *       {@code <npId> npa:hasGraph ?g} in {@code npa:graph}.</li>
+     *   <li>{@code (<npId>, ?p, ?o)} in {@code npa:graph}, excluding the per-repo
+     *       bookkeeping predicates above.</li>
+     *   <li>{@code (?inv, npx:invalidates, <npId>)} in {@code npa:graph}, plus
+     *       the matching {@code npa:hasValidSignatureForPublicKey[Hash]} triples
+     *       of each {@code ?inv}, so propagation carries the nanopub's full
+     *       invalidator history (which doesn't affect query results — see the
+     *       one-hop filter in {@code Utils#defaultQuery} — but keeps repos
+     *       consistent).</li>
+     *   <li>{@code (<npId>, ?p, ?o)} in {@code npa:networkGraph}.</li>
+     * </ul>
+     */
+    @GeneratedFlagForDependentElements
+    private static List<Statement> fetchNanopubAllStatementsFromPubkeyRepo(IRI npId, String pubkey) {
+        String repoName = "pubkey_" + Utils.createHash(pubkey);
+        boolean success = false;
+        int retries = 0;
+        List<Statement> result = new ArrayList<>();
+        while (!success) {
+            result.clear();
+            RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
+            try (conn) {
+                // Append-only data + idempotent re-load downstream: READ_COMMITTED suffices.
+                conn.begin(IsolationLevels.READ_COMMITTED);
+
+                List<IRI> npGraphs = new ArrayList<>();
+                try (RepositoryResult<Statement> r = conn.getStatements(npId, NPA.HAS_GRAPH, null, NPA.GRAPH)) {
+                    while (r.hasNext()) {
+                        Value o = r.next().getObject();
+                        if (o instanceof IRI iri) npGraphs.add(iri);
+                    }
+                }
+
+                for (IRI g : npGraphs) {
+                    try (RepositoryResult<Statement> r = conn.getStatements(null, null, null, g)) {
+                        while (r.hasNext()) result.add(r.next());
+                    }
+                }
+
+                try (RepositoryResult<Statement> r = conn.getStatements(npId, null, null, NPA.GRAPH)) {
+                    while (r.hasNext()) {
+                        Statement st = r.next();
+                        IRI p = st.getPredicate();
+                        if (p.equals(NPA.HAS_LOAD_NUMBER)
+                                || p.equals(NPA.HAS_LOAD_CHECKSUM)
+                                || p.equals(NPA.HAS_LOAD_TIMESTAMP)) {
+                            continue;
+                        }
+                        result.add(st);
+                    }
+                }
+
+                Set<IRI> invalidators = new HashSet<>();
+                try (RepositoryResult<Statement> r = conn.getStatements(null, NPX.INVALIDATES, npId, NPA.GRAPH)) {
+                    while (r.hasNext()) {
+                        Statement st = r.next();
+                        result.add(st);
+                        if (st.getSubject() instanceof IRI invIri) invalidators.add(invIri);
+                    }
+                }
+                for (IRI invIri : invalidators) {
+                    try (RepositoryResult<Statement> r = conn.getStatements(invIri, NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, null, NPA.GRAPH)) {
+                        while (r.hasNext()) result.add(r.next());
+                    }
+                    try (RepositoryResult<Statement> r = conn.getStatements(invIri, NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, null, NPA.GRAPH)) {
+                        while (r.hasNext()) result.add(r.next());
+                    }
+                }
+
+                try (RepositoryResult<Statement> r = conn.getStatements(npId, null, null, NPA.NETWORK_GRAPH)) {
+                    while (r.hasNext()) result.add(r.next());
+                }
+
+                conn.commit();
+                success = true;
+            } catch (Exception ex) {
+                log.warn("Could not fetch nanopub content from {} for {}.", repoName, npId, ex);
+                if (conn.isActive()) conn.rollback();
+            }
+            if (!success) {
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    throw new RuntimeException("Failed to fetch nanopub content from " + repoName + " for " + npId + " after " + MAX_RETRIES + " retries");
+                }
+                long delay = computeBackoffMillis(retries);
+                log.info("Retrying in {} ms for fetching nanopub content of {} from {} (attempt {}/{})...", delay, npId, repoName, retries, MAX_RETRIES);
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException x) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        return result;
     }
 
     @GeneratedFlagForDependentElements
