@@ -667,5 +667,9 @@ public class MainVerticle extends AbstractVerticle {
         if (loadedCount != null) {
             response.putHeader("Nanopub-Query-Loaded-Nanopub-Count", loadedCount.toString());
         }
+        String loadedChecksum = NanopubLoader.getLoadedNanopubChecksum();
+        if (loadedChecksum != null) {
+            response.putHeader("Nanopub-Query-Loaded-Nanopub-Checksum", loadedChecksum);
+        }
     }
 }
