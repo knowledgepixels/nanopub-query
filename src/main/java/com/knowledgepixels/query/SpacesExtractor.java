@@ -55,7 +55,48 @@ public final class SpacesExtractor {
 
     private static final IRI GRAPH = SpacesVocab.SPACES_GRAPH;
 
+    /**
+     * The set of nanopub-level type/predicate IRIs that make a nanopub "space-relevant"
+     * — i.e., that dispatch to one of the per-shape extractors in {@link #extract}.
+     * Shared with {@link NanopubLoader} so the spaces-load gate and the invalidation
+     * propagation paths agree on a single definition of "space-relevant" without
+     * needing to re-run the extractor.
+     *
+     * <p>Membership is checked against {@link NanopubUtils#getTypes(Nanopub)}, which
+     * includes both {@code rdf:type} / {@code npx:hasNanopubType} declarations and,
+     * for single-predicate-assertion nanopubs, the predicate itself — so predicate
+     * markers like {@link GEN#HAS_ROLE} and {@link GEN#IS_MAINTAINED_BY} can appear
+     * as types here.
+     */
+    public static final Set<IRI> TRIGGER_TYPES;
+    static {
+        Set<IRI> s = new LinkedHashSet<>();
+        s.add(GEN.SPACE);
+        s.add(GEN.HAS_ROLE);
+        s.add(GEN.SPACE_MEMBER_ROLE);
+        s.add(GEN.ROLE_INSTANTIATION);
+        s.add(GEN.IS_SUB_SPACE_OF);
+        s.add(GEN.MAINTAINED_RESOURCE);
+        s.add(GEN.IS_MAINTAINED_BY);
+        s.addAll(BackcompatRolePredicates.ALL);
+        TRIGGER_TYPES = Collections.unmodifiableSet(s);
+    }
+
     private SpacesExtractor() {
+    }
+
+    /**
+     * Returns {@code true} iff at least one of {@code types} is in
+     * {@link #TRIGGER_TYPES} — i.e., the nanopub carries a type that dispatches
+     * to one of the extractor branches. Callers should typically pass
+     * {@code NanopubUtils.getTypes(np)} so that single-predicate-assertion
+     * auto-typing is included.
+     */
+    public static boolean isSpaceRelevant(Set<IRI> types) {
+        for (IRI t : types) {
+            if (TRIGGER_TYPES.contains(t)) return true;
+        }
+        return false;
     }
 
     /**
@@ -81,6 +122,8 @@ public final class SpacesExtractor {
      */
     public static List<Statement> extract(Nanopub np, Context ctx) {
         Set<IRI> types = NanopubUtils.getTypes(np);
+        if (!isSpaceRelevant(types)) return Collections.emptyList();
+
         List<Statement> out = new ArrayList<>();
 
         boolean isSpace = types.contains(GEN.SPACE);
@@ -96,11 +139,6 @@ public final class SpacesExtractor {
         // same <r> gen:isMaintainedBy <s> triple in the assertion.
         boolean isMaintainedResource = types.contains(GEN.MAINTAINED_RESOURCE)
                 || types.contains(GEN.IS_MAINTAINED_BY);
-
-        if (!isSpace && !isHasRole && !isSpaceMemberRole && !isRoleInstantiation
-                && !isSubSpaceOf && !isMaintainedResource) {
-            return Collections.emptyList();
-        }
 
         if (isSpace) extractSpace(np, ctx, out);
         if (isHasRole) extractHasRole(np, ctx, out);

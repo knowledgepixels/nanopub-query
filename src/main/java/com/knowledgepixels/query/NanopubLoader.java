@@ -440,16 +440,16 @@ public class NanopubLoader {
             //			loadNanopubToRepo(np.getUri(), textStatements, "text-user_" + Utils.createHash(authorIri));
             //		}
 
-            // Write to the spaces repo whenever the nanopub has its own space-relevant
-            // extractions OR carries an npx:invalidates / npx:retracts / npx:supersedes
-            // triple. The latter case keeps pure-retraction nanopubs (no own space-typed
-            // content) visible to the materialiser's invalidation joins: they need
-            // ?invNp <npx:invalidates> ?np AND ?invNp <npa:hasLoadNumber> ?ln in
-            // npa:graph of the spaces repo, both of which loadToSpacesRepo writes.
-            // Without this, an A-before-B load order with a pure-retraction B would
-            // leave A's row in the materialised state graph forever.
-            if (FeatureFlags.spacesEnabled()
-                    && (!spaceExtractionStatements.isEmpty() || !invalidateStatements.isEmpty())) {
+            // Write to the spaces repo only when the nanopub carries its own space-relevant
+            // extractions. Invalidators of space-relevant nanopubs are propagated to spaces
+            // symmetrically below (forward path in loadInvalidateStatements, reverse path in
+            // the invalidatorPubkeys block) — mirrors the per-type-repo propagation added in
+            // PR #103 (commit 09eeb32). The materialiser's invalidation joins
+            // (?invNp npx:invalidates ?np + ?invNp npa:hasLoadNumber ?ln in the spaces repo's
+            // npa:graph) stay populated because the invalidators that matter are exactly the
+            // ones we propagate.
+            boolean thisNpIsSpaceRelevant = FeatureFlags.spacesEnabled() && !spaceExtractionStatements.isEmpty();
+            if (thisNpIsSpaceRelevant) {
                 runTask.accept(() -> loadToSpacesRepo(np.getUri(), allStatements, spaceExtractionStatements));
             }
 
@@ -464,7 +464,9 @@ public class NanopubLoader {
             // full content into this nanopub's per-type repos (those types the
             // retractor doesn't itself carry), sourced from the retractor's per-pubkey
             // repo (the one shard guaranteed to be populated for every successfully
-            // loaded nanopub).
+            // loaded nanopub). When this nanopub is space-relevant, additionally load
+            // each retractor into the spaces repo so the materialiser's invalidation
+            // join sees them regardless of load order.
             Map<IRI, String> invalidatorPubkeys = collectInvalidatorPubkeys(invalidatingStatements);
             if (!invalidatorPubkeys.isEmpty()) {
                 Set<IRI> thisNpTypes = NanopubUtils.getTypes(np);
@@ -472,6 +474,9 @@ public class NanopubLoader {
                     IRI invIri = e.getKey();
                     String invPubkey = e.getValue();
                     runTask.accept(() -> loadInvalidatorIntoTypeRepos(invIri, invPubkey, np.getUri(), thisNpTypes));
+                    if (thisNpIsSpaceRelevant) {
+                        runTask.accept(() -> loadInvalidatorIntoSpacesRepo(invIri, invPubkey, np.getUri()));
+                    }
                 }
             }
 
@@ -773,8 +778,10 @@ public class NanopubLoader {
         boolean success = false;
         int retries = 0;
         List<IRI> typesToLoadFullInto = new ArrayList<>();
+        boolean targetIsSpaceRelevant = false;
         while (!success) {
             typesToLoadFullInto.clear();
+            targetIsSpaceRelevant = false;
             List<RepositoryConnection> connections = new ArrayList<>();
             RepositoryConnection metaConn = TripleStore.get().getRepoConnection("meta");
             try {
@@ -794,11 +801,19 @@ public class NanopubLoader {
 
                     Set<IRI> thisNpTypes = NanopubUtils.getTypes(thisNp);
                     for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invalidatedNpId, NPX.HAS_NANOPUB_TYPE)) {
-                        if (v instanceof IRI typeIri && !thisNpTypes.contains(typeIri)) {
-                            // Defer until after the meta-read commits — full load goes
-                            // through loadNanopubToRepo, which has its own transaction
-                            // and retry loop (see post-loop block below).
-                            typesToLoadFullInto.add(typeIri);
+                        if (v instanceof IRI typeIri) {
+                            if (!thisNpTypes.contains(typeIri)) {
+                                // Defer until after the meta-read commits — full load goes
+                                // through loadNanopubToRepo, which has its own transaction
+                                // and retry loop (see post-loop block below).
+                                typesToLoadFullInto.add(typeIri);
+                            }
+                            if (SpacesExtractor.TRIGGER_TYPES.contains(typeIri)) {
+                                // Target carries a space-relevant type — propagate the
+                                // retractor into the spaces repo too (deferred, same
+                                // reason as above).
+                                targetIsSpaceRelevant = true;
+                            }
                         }
                     }
 
@@ -849,6 +864,15 @@ public class NanopubLoader {
         // its own SERIALIZABLE transaction + retry loop, so it's safe to call here.
         for (IRI typeIri : typesToLoadFullInto) {
             loadNanopubToRepo(thisNp.getUri(), thisAllStatements, "type_" + Utils.createHash(typeIri));
+        }
+        // Same rationale for the spaces repo: when the invalidated nanopub is itself
+        // space-relevant, the retractor needs to land in the spaces repo so the
+        // materialiser's invalidation join (?invNp npx:invalidates ?np +
+        // ?invNp npa:hasLoadNumber ?ln in npa:graph) finds it. spaceExtractionStatements
+        // is empty here — the retractor is not space-relevant by itself, otherwise it
+        // would have already been loaded to spaces by the regular spaces-load task.
+        if (targetIsSpaceRelevant && FeatureFlags.spacesEnabled()) {
+            loadToSpacesRepo(thisNp.getUri(), thisAllStatements, Collections.emptyList());
         }
     }
 
@@ -902,6 +926,28 @@ public class NanopubLoader {
         for (IRI typeIri : typesToLoadInto) {
             loadNanopubToRepo(invIri, invContent, "type_" + Utils.createHash(typeIri));
         }
+    }
+
+    /**
+     * Reverse-order counterpart for the spaces repo: when a space-relevant nanopub
+     * is loaded and {@link #getInvalidatingStatements} captured already-loaded
+     * retractors of it, load each retractor's full content into the spaces repo so
+     * the materialiser's invalidation join (?invNp npx:invalidates ?np +
+     * ?invNp npa:hasLoadNumber ?ln in npa:graph) finds it regardless of the
+     * load order between target and retractor.
+     *
+     * <p>Source is the retractor's per-pubkey repo (the one shard unconditionally
+     * populated for every successfully-loaded nanopub). Passes an empty
+     * {@code spaceExtraction} list to {@link #loadToSpacesRepo}: by construction
+     * the retractor would already be in the spaces repo by its regular spaces-load
+     * task if it carried space-relevant extractions of its own.
+     * {@link #loadToSpacesRepo} is idempotent on {@code npa:hasLoadNumber}, so
+     * the double-load case is a no-op.
+     */
+    @GeneratedFlagForDependentElements
+    private static void loadInvalidatorIntoSpacesRepo(IRI invIri, String invPubkey, IRI thisNpId) {
+        List<Statement> invContent = fetchNanopubAllStatementsFromPubkeyRepo(invIri, invPubkey);
+        loadToSpacesRepo(invIri, invContent, Collections.emptyList());
     }
 
     @GeneratedFlagForDependentElements
