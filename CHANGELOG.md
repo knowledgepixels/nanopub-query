@@ -1,3 +1,13 @@
+## [1.14.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.0...nanopub-query-1.14.1) (2026-05-21)
+
+### Bug Fixes
+
+* **NanopubLoader:** narrow spaces-repo load gate to space-relevant nanopubs and their invalidators ([71ea9e1](https://github.com/knowledgepixels/nanopub-query/commit/71ea9e1635d45bacba4a1b83d66e49c71372d461)), closes [#103](https://github.com/knowledgepixels/nanopub-query/issues/103)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([d88f78e](https://github.com/knowledgepixels/nanopub-query/commit/d88f78e16e19e259c7f2aa4c16055f9b84ae7ef8))
+
 ## [1.14.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.13.1...nanopub-query-1.14.0) (2026-05-20)
 
 ### Features
