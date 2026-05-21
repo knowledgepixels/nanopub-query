@@ -635,6 +635,41 @@ class SpacesExtractorTest {
                 vf.createIRI("urn:nbn:de:0287-2003-12345")).isEmpty());
     }
 
+    // ---------------- isSpaceRelevant / TRIGGER_TYPES ----------------
+
+    @Test
+    void triggerTypes_containsAllDispatchTypes() {
+        // The constant is the public source of truth NanopubLoader checks against
+        // when deciding whether a retractor's invalidation target is space-relevant.
+        // Locking in the membership here prevents drift from the dispatch in extract().
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.SPACE));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.HAS_ROLE));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.SPACE_MEMBER_ROLE));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.ROLE_INSTANTIATION));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.IS_SUB_SPACE_OF));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.MAINTAINED_RESOURCE));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.IS_MAINTAINED_BY));
+        for (IRI p : com.knowledgepixels.query.vocabulary.BackcompatRolePredicates.ALL) {
+            assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(p),
+                    "backcompat role predicate missing from TRIGGER_TYPES: " + p);
+        }
+    }
+
+    @Test
+    void isSpaceRelevant_truePositiveAndTrueNegative() {
+        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.SPACE)));
+        assertTrue(SpacesExtractor.isSpaceRelevant(Set.of(GEN.IS_MAINTAINED_BY)));
+        assertTrue(SpacesExtractor.isSpaceRelevant(
+                Set.of(vf.createIRI("https://example.org/Foo"), GEN.HAS_ROLE)));
+        // Non-space types — including a template-typed nanopub, which is the
+        // collateral case the spaces-load narrowing exists to exclude.
+        assertFalse(SpacesExtractor.isSpaceRelevant(Set.of()));
+        assertFalse(SpacesExtractor.isSpaceRelevant(
+                Set.of(vf.createIRI("https://w3id.org/np/o/ntemplate/AssertionTemplate"))));
+        assertFalse(SpacesExtractor.isSpaceRelevant(
+                Set.of(vf.createIRI("http://purl.org/nanopub/x/ExampleNanopub"))));
+    }
+
     // ---------------- Load-counter stamping ----------------
 
     @Test
