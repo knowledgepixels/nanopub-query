@@ -52,6 +52,7 @@ public final class BackcompatRolePredicates {
             // FAIR 3pff
             Map.entry(iri("https://w3id.org/fair/3pff/has-event-assistant"),                Direction.INVERSE),
             Map.entry(iri("https://w3id.org/fair/3pff/has-event-facilitator"),              Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/fair/3pff/has-event-organizer"),                Direction.INVERSE),
             Map.entry(iri("https://w3id.org/fair/3pff/participatedAsFacilitatorAssistantIn"), Direction.REGULAR),
             Map.entry(iri("https://w3id.org/fair/3pff/participatedAsFacilitatorIn"),          Direction.REGULAR),
             Map.entry(iri("https://w3id.org/fair/3pff/participatedAsImplementerAspirantIn"),  Direction.REGULAR),

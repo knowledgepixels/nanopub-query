@@ -162,6 +162,17 @@ public final class SpacesVocab {
         return vf.createIRI(NPARI_NAMESPACE, artifactCode);
     }
 
+    /**
+     * Mints {@code npari:<artifactCode>_<discriminatorHash>} for a role-instantiation
+     * entry where a single nanopub emits multiple RIs (e.g. a {@code gen:Space}
+     * nanopub with inline role-predicate triples for several distinct roles).
+     * The hash is on the predicate IRI so RIs for different roles in the same
+     * nanopub get distinct subjects.
+     */
+    public static IRI forRoleInstantiation(String artifactCode, String discriminatorHash) {
+        return vf.createIRI(NPARI_NAMESPACE, artifactCode + "_" + discriminatorHash);
+    }
+
     /** Mints {@code npara:<artifactCode>} for a role-attachment entry. */
     public static IRI forRoleAssignment(String artifactCode) {
         return vf.createIRI(NPARA_NAMESPACE, artifactCode);

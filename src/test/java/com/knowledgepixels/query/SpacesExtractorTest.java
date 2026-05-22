@@ -152,6 +152,53 @@ class SpacesExtractorTest {
     }
 
     @Test
+    void extract_spaceWithInlineRoleTriples_emitsAdditionalRoleInstantiations() throws Exception {
+        // A gen:Space nanopub may also declare other role-predicate assignments
+        // inline alongside hasAdmin (event facilitators, participants, etc.).
+        // Each distinct predicate should mint its own RoleInstantiation entry
+        // — gen:hasAdmin keeps the unhashed subject npari:<artifactCode> (existing
+        // behaviour); others use npari:<artifactCode>_<predicateHash> to avoid
+        // collision.
+        IRI facilitatorPred = vf.createIRI("https://w3id.org/fair/3pff/has-event-facilitator");
+        IRI participantPred = vf.createIRI("https://w3id.org/fair/3pff/participatedAsParticipantIn");
+        IRI participantAgent = vf.createIRI("https://orcid.org/0000-0000-0000-0004");
+
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(SPACE_IRI_1, facilitatorPred, ADMIN_AGENT_1)
+                .assertion(SPACE_IRI_1, facilitatorPred, ADMIN_AGENT_2)
+                .assertion(participantAgent, participantPred, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI adminRi = forRoleInstantiation(ARTIFACT_CODE);
+        IRI facilitatorRi = forRoleInstantiation(ARTIFACT_CODE, Utils.createHash(facilitatorPred.stringValue()));
+        IRI participantRi = forRoleInstantiation(ARTIFACT_CODE, Utils.createHash(participantPred.stringValue()));
+
+        // Admin RI unchanged (same subject as before).
+        assertContains(out, adminRi, RDF.TYPE, GEN.ROLE_INSTANTIATION);
+        assertContains(out, adminRi, INVERSE_PROPERTY, GEN.HAS_ADMIN);
+        assertContains(out, adminRi, FOR_AGENT, ADMIN_AGENT_1);
+
+        // Facilitator RI: INVERSE (space-centric), multi-valued forAgent.
+        assertContains(out, facilitatorRi, RDF.TYPE, GEN.ROLE_INSTANTIATION);
+        assertContains(out, facilitatorRi, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, facilitatorRi, INVERSE_PROPERTY, facilitatorPred);
+        assertContains(out, facilitatorRi, FOR_AGENT, ADMIN_AGENT_1);
+        assertContains(out, facilitatorRi, FOR_AGENT, ADMIN_AGENT_2);
+        assertContains(out, facilitatorRi, VIA_NANOPUB, NP_URI);
+
+        // Participant RI: REGULAR (agent-centric).
+        assertContains(out, participantRi, RDF.TYPE, GEN.ROLE_INSTANTIATION);
+        assertContains(out, participantRi, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, participantRi, REGULAR_PROPERTY, participantPred);
+        assertContains(out, participantRi, FOR_AGENT, participantAgent);
+    }
+
+    @Test
     void extract_spaceUpdate_emitsSpaceEntryButNoRootAdminSeed() throws Exception {
         // Update: gen:hasRootDefinition points at a different (original root) nanopub.
         IRI originalRoot = vf.createIRI("https://w3id.org/np/RA-origAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");

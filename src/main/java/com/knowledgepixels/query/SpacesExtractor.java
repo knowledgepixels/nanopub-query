@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.rdf4j.model.IRI;
@@ -248,6 +250,65 @@ public final class SpacesExtractor {
             out.add(vf.createStatement(riIri, SpacesVocab.INVERSE_PROPERTY, GEN.HAS_ADMIN, GRAPH));
             for (IRI adminAgent : adminAgents) {
                 out.add(vf.createStatement(riIri, SpacesVocab.FOR_AGENT, adminAgent, GRAPH));
+            }
+            out.add(vf.createStatement(riIri, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+            addProvenance(riIri, ctx, out);
+        }
+
+        // Inline non-hasAdmin role triples: a gen:Space nanopub may also assert
+        // <space> <pred> <agent> (INVERSE) or <agent> <pred> <space> (REGULAR)
+        // for any of the back-compat role predicates (has-event-facilitator,
+        // participatedAsParticipantIn, …). Without an extraction path here those
+        // are silently dropped because gen:Space nanopubs are not auto-typed
+        // with back-compat predicates (only single-triple-assertion nanopubs are).
+        // Emit one RoleInstantiation per distinct predicate found, grouping
+        // multi-agent like the admin case. The subject is disambiguated by a
+        // hash of the predicate IRI so multiple predicates in one nanopub don't
+        // collide on the same npari:<artifactCode> subject as the admin RI.
+        emitInlineRoleInstantiations(np, ctx, spaceIri, out);
+    }
+
+    /**
+     * Scans the assertion of a {@code gen:Space} nanopub for inline role triples
+     * (excluding {@code gen:hasAdmin}, which is handled separately as the trust
+     * seed), grouping by predicate and emitting one {@link GEN#ROLE_INSTANTIATION}
+     * per (predicate, direction) pair with multi-valued {@code npa:forAgent}.
+     */
+    private static void emitInlineRoleInstantiations(Nanopub np, Context ctx, IRI spaceIri,
+                                                     List<Statement> out) {
+        Map<IRI, BackcompatRolePredicates.Direction> directionByPred = new LinkedHashMap<>();
+        Map<IRI, Set<IRI>> agentsByPred = new LinkedHashMap<>();
+        for (Statement st : np.getAssertion()) {
+            IRI predicate = st.getPredicate();
+            if (GEN.HAS_ADMIN.equals(predicate)) continue; // already emitted above
+            BackcompatRolePredicates.Direction direction = BackcompatRolePredicates.DIRECTIONS.get(predicate);
+            if (direction == null) continue;
+            if (!(st.getSubject() instanceof IRI subjIri)) continue;
+            if (!(st.getObject() instanceof IRI objIri)) continue;
+            IRI agent;
+            if (direction == BackcompatRolePredicates.Direction.INVERSE) {
+                if (!spaceIri.equals(subjIri)) continue;
+                agent = objIri;
+            } else {
+                if (!spaceIri.equals(objIri)) continue;
+                agent = subjIri;
+            }
+            directionByPred.put(predicate, direction);
+            agentsByPred.computeIfAbsent(predicate, k -> new LinkedHashSet<>()).add(agent);
+        }
+        for (Map.Entry<IRI, Set<IRI>> entry : agentsByPred.entrySet()) {
+            IRI predicate = entry.getKey();
+            BackcompatRolePredicates.Direction direction = directionByPred.get(predicate);
+            String predHash = Utils.createHash(predicate.stringValue());
+            IRI riIri = SpacesVocab.forRoleInstantiation(ctx.artifactCode(), predHash);
+            out.add(vf.createStatement(riIri, RDF.TYPE, GEN.ROLE_INSTANTIATION, GRAPH));
+            out.add(vf.createStatement(riIri, SpacesVocab.FOR_SPACE, spaceIri, GRAPH));
+            IRI directionPredicate = (direction == BackcompatRolePredicates.Direction.REGULAR)
+                    ? SpacesVocab.REGULAR_PROPERTY
+                    : SpacesVocab.INVERSE_PROPERTY;
+            out.add(vf.createStatement(riIri, directionPredicate, predicate, GRAPH));
+            for (IRI agent : entry.getValue()) {
+                out.add(vf.createStatement(riIri, SpacesVocab.FOR_AGENT, agent, GRAPH));
             }
             out.add(vf.createStatement(riIri, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
             addProvenance(riIri, ctx, out);
