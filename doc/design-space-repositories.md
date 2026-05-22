@@ -155,7 +155,7 @@ GRAPH npa:spacesGraph {
 
 Prefix: `npx:` = `<http://purl.org/nanopub/x/>`. `npa:forSpace` points to the Space IRI (not the space-ref form), as used in the source nanopub's assertion. The attached `<roleIri>` is the IRI of a role instance defined in some `gen:SpaceMemberRole` nanopub; consumers JOIN against that def for the role's predicates and tier.
 
-A single role (one `gen:SpaceMemberRole` nanopub) may be attached to multiple spaces via separate `gen:hasRole` nanopubs — each attachment is independent, gated by the respective space's admin closure, and produces its own `npa:RoleAssignment` entry.
+A single role (one `gen:SpaceMemberRole` nanopub) may be attached to multiple spaces via separate `gen:hasRole` nanopubs — each attachment is independent, gated by the respective space's admin closure, and produces its own `gen:RoleAssignment` entry.
 
 ### Triples added per `gen:SpaceMemberRole` nanopub
 
