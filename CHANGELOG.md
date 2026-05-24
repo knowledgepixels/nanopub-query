@@ -1,3 +1,23 @@
+## [1.14.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.1...nanopub-query-1.14.2) (2026-05-24)
+
+### Bug Fixes
+
+* **SpacesExtractor:** emit inline non-hasAdmin role RIs from gen:Space ([0dd70bc](https://github.com/knowledgepixels/nanopub-query/commit/0dd70bc477e3f51324161617bb1ccad3bb2afa37)), closes [knowledgepixels/nanodash#468](https://github.com/knowledgepixels/nanodash/issues/468)
+
+### Documentation
+
+* add sparql-quirks.md with the GRAPH/OPTIONAL gotcha ([1eff821](https://github.com/knowledgepixels/nanopub-query/commit/1eff821597f084c4454e807a9e2d0d6fb689972c)), closes [knowledgepixels/nanodash#468](https://github.com/knowledgepixels/nanodash/issues/468)
+* **spaces:** correct npa:RoleAssignment → gen:RoleAssignment in prose ([bdc5a77](https://github.com/knowledgepixels/nanopub-query/commit/bdc5a77d69340d37930aeca3d1b51fd172822997))
+* **sparql-quirks:** note the pointer-pattern planner blow-up ([c63fbc9](https://github.com/knowledgepixels/nanopub-query/commit/c63fbc9f462f2f3aaf6e34d1c6ff7218b8558e35))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([7b589da](https://github.com/knowledgepixels/nanopub-query/commit/7b589daf97cc0bd40324e0f38b536e6a740fc266))
+
+### Refactoring
+
+* **GrlcSpec:** delegate parsing/expansion to QueryTemplate from nanopub-java 1.89.0 ([c7b82a8](https://github.com/knowledgepixels/nanopub-query/commit/c7b82a8e1edb1511e2fd16065628314314284409))
+
 ## [1.14.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.0...nanopub-query-1.14.1) (2026-05-21)
 
 ### Bug Fixes
