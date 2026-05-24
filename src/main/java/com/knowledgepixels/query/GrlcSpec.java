@@ -1,31 +1,19 @@
 package com.knowledgepixels.query;
 
-import com.knowledgepixels.query.vocabulary.KPXL_GRLC;
 import io.vertx.core.MultiMap;
 import net.trustyuri.TrustyUriUtils;
 import org.eclipse.rdf4j.model.IRI;
-import org.eclipse.rdf4j.model.Statement;
-import org.eclipse.rdf4j.model.ValueFactory;
-import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
-import org.eclipse.rdf4j.model.vocabulary.RDFS;
-import org.eclipse.rdf4j.query.MalformedQueryException;
 import org.eclipse.rdf4j.query.QueryLanguage;
 import org.eclipse.rdf4j.query.TupleQueryResult;
-import org.eclipse.rdf4j.query.algebra.Var;
-import org.eclipse.rdf4j.query.algebra.helpers.AbstractSimpleQueryModelVisitor;
-import org.eclipse.rdf4j.query.parser.ParsedGraphQuery;
-import org.eclipse.rdf4j.query.parser.ParsedQuery;
-import org.eclipse.rdf4j.query.parser.sparql.SPARQLParser;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.nanopub.MalformedNanopubException;
-import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubImpl;
 import org.nanopub.SimpleCreatorPattern;
 import org.nanopub.extra.server.GetNanopub;
-
-import java.util.concurrent.ConcurrentHashMap;
+import org.nanopub.extra.services.QueryTemplate;
 import org.nanopub.vocabulary.NPA;
 import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
@@ -33,17 +21,32 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.*;
-
-//TODO merge this class with GrlcQuery of Nanodash and move to a library like nanopub-java
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * This class produces a page with the grlc specification. This is needed internally to tell grlc
- * how to execute a particular query template.
+ * Nanopub Query-specific wrapper around {@link QueryTemplate} that adds:
+ * <ul>
+ *   <li>request-URL parsing ({@code /…/RA…/{name}.rq})</li>
+ *   <li>nanopub fetch cache</li>
+ *   <li>the {@code _nanopub_trig} inline-nanopub parameter</li>
+ *   <li>{@code api-version=latest} resolution against the local meta repo</li>
+ *   <li>rewriting the canonical {@code https://w3id.org/np/l/nanopub-query-1.1/repo/}
+ *       endpoint prefix to the in-cluster {@code NANOPUB_QUERY_URL/repo/}, plus
+ *       validation that the endpoint matches the canonical prefix</li>
+ *   <li>{@link #getSpec()} YAML rendering for the legacy {@code /grlc-spec/} route</li>
+ *   <li>{@link #getRepoName()} derived from the rewritten endpoint</li>
+ * </ul>
+ * <p>Parsing, placeholder extraction and SPARQL expansion are delegated to
+ * {@link QueryTemplate}. Static placeholder helpers are forwarded so existing
+ * callers ({@link OpenApiSpecPage}) keep compiling.
  */
 public class GrlcSpec {
-
-    private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
     private static final Logger logger = LoggerFactory.getLogger(GrlcSpec.class);
 
@@ -71,19 +74,13 @@ public class GrlcSpec {
 
     private static final String NANOPUB_QUERY_REPO_URL = "https://w3id.org/np/l/nanopub-query-1.1/repo/";
 
-    private MultiMap parameters;
-    private Nanopub np;
-    private String requestUrlBase;
-    private String artifactCode;
-    private String queryPart;
-    private String queryName;
-    private String label;
-    private String desc;
-    private String license;
-    private String queryContent;
-    private String endpoint;
-    private List<String> placeholdersList;
-    private boolean isConstructQuery;
+    private final MultiMap parameters;
+    private final QueryTemplate template;
+    private final String requestUrlBase;
+    private final String artifactCode;
+    private final String queryPart;
+    private final String queryContent;
+    private final String endpoint;
 
     /**
      * Creates a new page instance.
@@ -97,12 +94,14 @@ public class GrlcSpec {
         if (!requestUrl.matches(".*/RA[A-Za-z0-9\\-_]{43}/(.*)?")) {
             throw new InvalidGrlcSpecException("Invalid grlc API request: " + requestUrl);
         }
-        artifactCode = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$2");
+        String parsedArtifactCode = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$2");
         requestUrlBase = requestUrl.replaceFirst("^/(.*/)(RA[A-Za-z0-9\\-_]{43})/(.*)?$", "$1");
 
-        queryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
-        queryPart = queryPart.replaceFirst(".rq$", "");
+        String parsedQueryPart = requestUrl.replaceFirst("^(.*/)(RA[A-Za-z0-9\\-_]{43}/)(.*)?$", "$3");
+        parsedQueryPart = parsedQueryPart.replaceFirst(".rq$", "");
+        queryPart = parsedQueryPart;
 
+        Nanopub np;
         String nanopubParam = parameters.get("_nanopub_trig");
         if (nanopubParam != null && !nanopubParam.isEmpty()) {
             try {
@@ -112,7 +111,7 @@ public class GrlcSpec {
                 throw new InvalidGrlcSpecException("Failed to parse nanopub from 'nanopub' parameter", ex);
             }
         } else {
-            np = nanopubCache.computeIfAbsent(artifactCode, GetNanopub::get);
+            np = nanopubCache.computeIfAbsent(parsedArtifactCode, GetNanopub::get);
         }
         // TODO rename "api-version" to "_api_version" for consistency
         if (parameters.get("api-version") != null && parameters.get("api-version").equals("latest")) {
@@ -120,62 +119,37 @@ public class GrlcSpec {
             if (!latestUri.equals(np.getUri().stringValue())) {
                 np = nanopubCache.computeIfAbsent(TrustyUriUtils.getArtifactCode(latestUri), GetNanopub::get);
             }
-            artifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
+            parsedArtifactCode = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
         }
-        for (Statement st : np.getAssertion()) {
-            if (!st.getSubject().stringValue().startsWith(np.getUri().stringValue())) {
-                continue;
-            }
-            String qn = st.getSubject().stringValue().replaceFirst("^.*[#/](.*)$", "$1");
-            if (queryName != null && !qn.equals(queryName)) {
-                throw new InvalidGrlcSpecException("Subject suffixes don't match: " + queryName);
-            }
-            queryName = qn;
-            if (st.getPredicate().equals(RDFS.LABEL)) {
-                label = st.getObject().stringValue();
-            } else if (st.getPredicate().equals(DCTERMS.DESCRIPTION)) {
-                desc = st.getObject().stringValue();
-            } else if (st.getPredicate().equals(DCTERMS.LICENSE) && st.getObject() instanceof IRI) {
-                license = st.getObject().stringValue();
-            } else if (st.getPredicate().equals(KPXL_GRLC.SPARQL)) {
-                // TODO Improve this:
-                queryContent = st.getObject().stringValue().replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
-            } else if (st.getPredicate().equals(KPXL_GRLC.ENDPOINT) && st.getObject() instanceof IRI) {
-                endpoint = st.getObject().stringValue();
-                if (endpoint.startsWith(NANOPUB_QUERY_REPO_URL)) {
-                    endpoint = endpoint.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
-                } else {
-                    throw new InvalidGrlcSpecException("Invalid/non-recognized endpoint: " + endpoint);
-                }
-            }
-        }
+        artifactCode = parsedArtifactCode;
 
-        if (!queryPart.isEmpty() && !queryPart.equals(queryName)) {
-            throw new InvalidGrlcSpecException("Query part doesn't match query name: " + queryPart + " / " + queryName);
-        }
-
-        final Set<String> placeholders = new HashSet<>();
         try {
-            ParsedQuery query = new SPARQLParser().parseQuery(queryContent, null);
-            isConstructQuery = query instanceof ParsedGraphQuery;
-            query.getTupleExpr().visitChildren(new AbstractSimpleQueryModelVisitor<>() {
-
-                @Override
-                public void meet(Var node) throws RuntimeException {
-                    super.meet(node);
-                    if (!node.isConstant() && !node.isAnonymous() && node.getName().startsWith("_")) {
-                        placeholders.add(node.getName());
-                    }
-                }
-
-            });
-        } catch (MalformedQueryException ex) {
-            throw new InvalidGrlcSpecException("Invalid SPARQL string", ex);
+            if (queryPart.isEmpty()) {
+                template = new QueryTemplate(np);
+            } else {
+                template = new QueryTemplate(np, artifactCode + "/" + queryPart);
+            }
+        } catch (IllegalArgumentException ex) {
+            throw new InvalidGrlcSpecException(ex.getMessage(), ex);
         }
-        List<String> placeholdersListPre = new ArrayList<>(placeholders);
-        Collections.sort(placeholdersListPre);
-        placeholdersListPre.sort(Comparator.comparing(String::length));
-        placeholdersList = Collections.unmodifiableList(placeholdersListPre);
+
+        if (!queryPart.isEmpty() && !queryPart.equals(template.getQuerySuffix())) {
+            throw new InvalidGrlcSpecException(
+                    "Query part doesn't match query name: " + queryPart + " / " + template.getQuerySuffix());
+        }
+
+        queryContent = template.getSparql().replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
+
+        IRI rawEndpoint = template.getEndpoint();
+        if (rawEndpoint != null) {
+            String ep = rawEndpoint.stringValue();
+            if (!ep.startsWith(NANOPUB_QUERY_REPO_URL)) {
+                throw new InvalidGrlcSpecException("Invalid/non-recognized endpoint: " + ep);
+            }
+            endpoint = ep.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
+        } else {
+            endpoint = null;
+        }
     }
 
     /**
@@ -185,15 +159,19 @@ public class GrlcSpec {
      */
     public String getSpec() {
         String s = "";
+        String label = template.getLabel();
+        String desc = template.getDescription();
+        IRI license = template.getLicense();
+        String queryName = template.getQuerySuffix();
         if (queryPart.isEmpty()) {
             if (label == null) {
                 s += "title: \"untitled query\"\n";
             } else {
-                s += "title: \"" + escapeLiteral(label) + "\"\n";
+                s += "title: \"" + QueryTemplate.escapeLiteral(label) + "\"\n";
             }
-            s += "description: \"" + escapeLiteral(desc) + "\"\n";
+            s += "description: \"" + QueryTemplate.escapeLiteral(desc) + "\"\n";
             StringBuilder userName = new StringBuilder();
-            Set<IRI> creators = SimpleCreatorPattern.getCreators(np);
+            Set<IRI> creators = SimpleCreatorPattern.getCreators(template.getNanopub());
             for (IRI userIri : creators) {
                 userName.append(", ").append(userIri);
             }
@@ -205,22 +183,22 @@ public class GrlcSpec {
                 url = creators.iterator().next().stringValue();
             }
             s += "contact:\n";
-            s += "  name: \"" + escapeLiteral(userName.toString()) + "\"\n";
+            s += "  name: \"" + QueryTemplate.escapeLiteral(userName.toString()) + "\"\n";
             s += "  url: " + url + "\n";
             if (license != null) {
-                s += "licence: " + license + "\n";
+                s += "licence: " + license.stringValue() + "\n";
             }
             s += "queries:\n";
             s += "  - " + nanopubQueryUrl + requestUrlBase + artifactCode + "/" + queryName + ".rq";
         } else if (queryPart.equals(queryName)) {
             if (label != null) {
-                s += "#+ summary: \"" + escapeLiteral(label) + "\"\n";
+                s += "#+ summary: \"" + QueryTemplate.escapeLiteral(label) + "\"\n";
             }
             if (desc != null) {
-                s += "#+ description: \"" + escapeLiteral(desc) + "\"\n";
+                s += "#+ description: \"" + QueryTemplate.escapeLiteral(desc) + "\"\n";
             }
             if (license != null) {
-                s += "#+ licence: " + license + "\n";
+                s += "#+ licence: " + license.stringValue() + "\n";
             }
             if (endpoint != null) {
                 s += "#+ endpoint: " + endpoint + "\n";
@@ -248,7 +226,7 @@ public class GrlcSpec {
      * @return the nanopub
      */
     public Nanopub getNanopub() {
-        return np;
+        return template.getNanopub();
     }
 
     /**
@@ -266,7 +244,7 @@ public class GrlcSpec {
      * @return the label
      */
     public String getLabel() {
-        return label;
+        return template.getLabel();
     }
 
     /**
@@ -275,7 +253,7 @@ public class GrlcSpec {
      * @return the description
      */
     public String getDescription() {
-        return desc;
+        return template.getDescription();
     }
 
     /**
@@ -284,7 +262,7 @@ public class GrlcSpec {
      * @return the query name
      */
     public String getQueryName() {
-        return queryName;
+        return template.getQuerySuffix();
     }
 
     /**
@@ -293,7 +271,7 @@ public class GrlcSpec {
      * @return the list of placeholders
      */
     public List<String> getPlaceholdersList() {
-        return placeholdersList;
+        return template.getPlaceholdersList();
     }
 
     /**
@@ -306,7 +284,8 @@ public class GrlcSpec {
     }
 
     /**
-     * Returns the query content.
+     * Returns the query content (with the canonical repo URL rewritten to the
+     * in-cluster {@link #nanopubQueryUrl}{@code /repo/}).
      *
      * @return the query content
      */
@@ -315,56 +294,28 @@ public class GrlcSpec {
     }
 
     public boolean isConstructQuery() {
-        return isConstructQuery;
+        return template.isConstructQuery();
     }
 
     /**
-     * Expands the query by replacing the placeholders with the provided parameter values.
+     * Expands the query by replacing the placeholders with the provided parameter
+     * values, and rewrites the canonical repo URL to the in-cluster one.
      *
      * @return the expanded query
      * @throws InvalidGrlcSpecException if a non-optional placeholder is missing a value
      */
     public String expandQuery() throws InvalidGrlcSpecException {
-        String expandedQueryContent = queryContent;
-        logger.info("Expanding grlc query with parameters: {}", parameters);
-        for (String ph : placeholdersList) {
-            logger.info("Processing placeholder <{}> associated to parameter with name <{}>", ph, getParamName(ph));
-            if (isMultiPlaceholder(ph)) {
-                // TODO multi placeholders need proper documentation
-                List<String> val = parameters.getAll(getParamName(ph));
-                if (!isOptionalPlaceholder(ph) && val.isEmpty()) {
-                    throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
-                }
-                if (val.isEmpty()) {
-                    expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}(\\s*\\.)?", "");
-                    continue;
-                }
-                String valueList = "";
-                for (String v : val) {
-                    if (isIriPlaceholder(ph)) {
-                        valueList += serializeIri(v) + " ";
-                    } else {
-                        valueList += serializeLiteral(v) + " ";
-                    }
-                }
-                expandedQueryContent = expandedQueryContent.replaceAll("values\\s*\\?" + ph + "\\s*\\{\\s*\\}", "values ?" + ph + " { " + escapeSlashes(valueList) + "}");
-            } else {
-                String val = parameters.get(getParamName(ph));
-                logger.info("Value for placeholder <{}>: {}", ph, val);
-                if (!isOptionalPlaceholder(ph) && val == null) {
-                    throw new InvalidGrlcSpecException("Missing value for non-optional placeholder: " + ph);
-                }
-                if (val == null) {
-                    continue;
-                }
-                if (isIriPlaceholder(ph)) {
-                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, escapeSlashes(serializeIri(val)));
-                } else {
-                    expandedQueryContent = expandedQueryContent.replaceAll("\\?" + ph, escapeSlashes(serializeLiteral(val)));
-                }
-            }
+        Map<String, List<String>> params = new LinkedHashMap<>();
+        for (String name : parameters.names()) {
+            params.put(name, new ArrayList<>(parameters.getAll(name)));
         }
-        return expandedQueryContent;
+        logger.info("Expanding grlc query with parameters: {}", parameters);
+        try {
+            String expanded = template.expandQuery(params);
+            return expanded.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
+        } catch (IllegalArgumentException ex) {
+            throw new InvalidGrlcSpecException(ex.getMessage(), ex);
+        }
     }
 
     /**
@@ -374,7 +325,7 @@ public class GrlcSpec {
      * @return The escaped string
      */
     public static String escapeLiteral(String s) {
-        return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\"", "\\\"");
+        return QueryTemplate.escapeLiteral(s);
     }
 
     /**
@@ -384,7 +335,7 @@ public class GrlcSpec {
      * @return true if it is an optional placeholder, false otherwise
      */
     public static boolean isOptionalPlaceholder(String placeholder) {
-        return placeholder.startsWith("__");
+        return QueryTemplate.isOptionalPlaceholder(placeholder);
     }
 
     /**
@@ -394,7 +345,7 @@ public class GrlcSpec {
      * @return true if it is a multi-value placeholder, false otherwise
      */
     public static boolean isMultiPlaceholder(String placeholder) {
-        return placeholder.endsWith("_multi") || placeholder.endsWith("_multi_iri");
+        return QueryTemplate.isMultiPlaceholder(placeholder);
     }
 
     /**
@@ -404,7 +355,7 @@ public class GrlcSpec {
      * @return true if it is an IRI placeholder, false otherwise
      */
     public static boolean isIriPlaceholder(String placeholder) {
-        return placeholder.endsWith("_iri");
+        return QueryTemplate.isIriPlaceholder(placeholder);
     }
 
     /**
@@ -414,7 +365,7 @@ public class GrlcSpec {
      * @return The parameter name
      */
     public static String getParamName(String placeholder) {
-        return placeholder.replaceFirst("^_+", "").replaceFirst("_iri$", "").replaceFirst("_multi$", "");
+        return QueryTemplate.getParamName(placeholder);
     }
 
     /**
@@ -424,17 +375,7 @@ public class GrlcSpec {
      * @return The serialized IRI
      */
     public static String serializeIri(String iriString) {
-        return "<" + iriString + ">";
-    }
-
-    /**
-     * Escapes slashes in a string.
-     *
-     * @param string The string
-     * @return The escaped string
-     */
-    private static String escapeSlashes(String string) {
-        return string.replace("\\", "\\\\");
+        return QueryTemplate.serializeIri(iriString);
     }
 
     /**
@@ -444,7 +385,7 @@ public class GrlcSpec {
      * @return The serialized literal
      */
     public static String serializeLiteral(String literalString) {
-        return "\"" + escapeLiteral(literalString) + "\"";
+        return QueryTemplate.serializeLiteral(literalString);
     }
 
     /**
