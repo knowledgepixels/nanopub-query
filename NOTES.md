@@ -24,7 +24,7 @@ Test internal connection from query to rdf4j container:
 
 Stop all services:
 
-    $ sudo docker compose stop
+    $ docker compose stop
 
 Create zip file of rdf4j:
 
@@ -32,7 +32,7 @@ Create zip file of rdf4j:
 
 Start the services again:
 
-    $ sudo docker-compose start
+    $ docker compose start
 
 To clarify versions:
 
