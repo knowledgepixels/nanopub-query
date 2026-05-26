@@ -1,3 +1,13 @@
+## [1.14.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.2...nanopub-query-1.14.3) (2026-05-26)
+
+### Bug Fixes
+
+* **AuthorityResolver:** keep admin seed alive across root-def supersession ([#110](https://github.com/knowledgepixels/nanopub-query/issues/110)) ([7659017](https://github.com/knowledgepixels/nanopub-query/commit/76590179a6fddec776cf2dc0ddb52fc7888429cd))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([eac158e](https://github.com/knowledgepixels/nanopub-query/commit/eac158e55243f5ee852ca7579f3a0f438712f316))
+
 ## [1.14.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.1...nanopub-query-1.14.2) (2026-05-24)
 
 ### Bug Fixes
