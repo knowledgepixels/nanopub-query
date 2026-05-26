@@ -133,7 +133,9 @@ If the loaded nanopub is additionally the space's root — detectable by `npa:ro
   npadef:<artifactCode> npa:hasRootAdmin <adminAgent1>, <adminAgent2> .
 ```
 
-These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref. Invalidating the root gen:Space nanopub DELETEs the `npadef:` entry (via `npa:viaNanopub`), taking the `npa:hasRootAdmin` seeds with it.
+These are the trust seed for the admin closure — trusted by construction because the root's NPID is part of the space ref, so no publisher-agent validation is needed. In the rootless transition case the nanopub is its own root, so the same rule applies and its admins seed the per-declaration space ref.
+
+The seed is anchored to the root NPID, which *is* the space-ref identity, so it must outlive supersession of the root *nanopub*. Updating a space publishes a new revision that `npx:supersedes` the prior root and re-roots to the same ref (`gen:hasRootDefinition`); being a continuation, it carries no `npa:hasRootAdmin` of its own. The materialiser therefore does **not** gate the seed on the root definition's own invalidation — it gates on the space ref still having at least one non-invalidated definition (see [Validation rule](#validation-rule) and issue #110). Only retracting *every* definition of the ref — the ref going dead — drops the seed. (An earlier design gated the seed with the per-`npa:viaNanopub` invalidation filter, which silently unmaterialised the entire role state of any space whose definition had ever been updated.)
 
 If the assertion contains one or more `<spaceIri> gen:isSubSpaceOf <parentIri>` triples for any declared `<spaceIri>` (rooted or transitional), additionally emit one `npa:SubSpaceDeclaration` per `(spaceIri, parentIri)` pair into `npa:spacesGraph`. See [Sub-space relations](#sub-space-relations).
 
@@ -278,7 +280,20 @@ FILTER NOT EXISTS {
 }
 ```
 
-where `?np` is the source nanopub of the candidate being considered (`?entry npa:viaNanopub ?np`, or `?def npa:viaNanopub ?np` for the admin-seed query). `npa:spacesGraph` itself remains purely add-only — the materialiser doesn't write invalidation records there; it reads the raw `npx:invalidates` triple in `npa:graph`, which the loader maintains symmetrically in both load orderings. Covers the out-of-order case where an invalidation lands before its target.
+where `?np` is the source nanopub of the candidate being considered (`?entry npa:viaNanopub ?np`). `npa:spacesGraph` itself remains purely add-only — the materialiser doesn't write invalidation records there; it reads the raw `npx:invalidates` triple in `npa:graph`, which the loader maintains symmetrically in both load orderings. Covers the out-of-order case where an invalidation lands before its target.
+
+The **admin seed** is the exception: it is *not* filtered on the seed definition's own `npa:viaNanopub`. The `npa:hasRootAdmin` seed is anchored to the immutable space-ref identity, so it must survive supersession of the root nanopub by a continuation revision (issue #110). Instead the seed gates on the space ref still being alive — i.e. some definition of the same ref is non-invalidated:
+
+```sparql
+FILTER EXISTS {
+  GRAPH npa:spacesGraph {
+    ?liveDef a npa:SpaceDefinition ; npa:forSpaceRef ?spaceRef ; npa:viaNanopub ?liveNp .
+  }
+  FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_liveNp npx:invalidates ?liveNp . } }
+}
+```
+
+A fully-retracted ref (every definition invalidated) has no live definition, so the `FILTER EXISTS` fails and the seed correctly disappears. The candidate-side admin `RoleInstantiation` is still filtered by the per-`?np` invalidation rule above (and its `npa:pubkeyHash` must still resolve to the seeded root admin), so a superseding party cannot seed themselves — only re-affirm the founding admin.
 
 ### Mirror step
 
@@ -367,14 +382,21 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
              npa:agent  ?publisher ;
              npa:pubkey ?pkh .
        {
-         # Seed: a root-definition entry's hasRootAdmin for this space
+         # Seed: a root-definition entry's hasRootAdmin for this space. Gated on the
+         # space ref still being alive (NOT on ?def's own invalidation) so the seed
+         # survives supersession of the root nanopub by a continuation — issue #110.
          GRAPH npa:spacesGraph {
            ?def a npa:SpaceDefinition ;
-                npa:forSpaceRef [ npa:spaceIri ?space ] ;
-                npa:hasRootAdmin ?publisher ;
-                npa:viaNanopub   ?defNp .
+                npa:forSpaceRef ?spaceRef ;
+                npa:hasRootAdmin ?publisher .
+           ?spaceRef npa:spaceIri ?space .
          }
-         FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_defNp npx:invalidates ?defNp . } }
+         FILTER EXISTS {
+           GRAPH npa:spacesGraph {
+             ?liveDef a npa:SpaceDefinition ; npa:forSpaceRef ?spaceRef ; npa:viaNanopub ?liveNp .
+           }
+           FILTER NOT EXISTS { GRAPH npa:graph { ?_inv_liveNp npx:invalidates ?liveNp . } }
+         }
        }
        UNION
        { ?prev a gen:RoleInstantiation ;
@@ -387,7 +409,7 @@ Triggered by a space-relevant nanopub load or invalidation (which bumps `current
      } }
    }
    ```
-   For the admin closure's seed triples (`npadef:<…> npa:hasRootAdmin <agent>`), the load-number filter is the usual `?def npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)` — same shape as every other extraction entry. Maintainer / member / observer tiers follow the same shape: join `?entry npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)`, swap the tier-specific publisher constraints.
+   The admin seed itself carries no load-number or invalidation filter on the seed definition (it is re-evaluated every cycle and gated only on the space ref being alive, per [Validation rule](#validation-rule)); the delta filter `?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)` applies to the candidate admin `RoleInstantiation`'s source `?np`, so a seed contributes work only when a matching instantiation lands in the window. Maintainer / member / observer tiers follow the same shape: join `?entry npa:viaNanopub ?np. ?np npa:hasLoadNumber ?ln. FILTER(?ln > ?lastProcessed)`, swap the tier-specific publisher constraints.
 3. Bump `processedUpTo` to the max load number consumed.
 
 **Late-arrival handling.** A candidate whose enabling structural event (admin grant, `gen:hasRole` attachment, or `npa:RoleDeclaration`) hasn't happened yet at its own load-time gets filtered by `FILTER(?ln > ?lastProcessed)` and is never retried via delta-only scans. Rule: if a cycle's INSERTs add any new admin grant, validated attachment, or role declaration, immediately re-run the *downstream* tier INSERTs without the load-number filter on the candidate side (keeping only `FILTER NOT EXISTS` dedup). This catches candidates that landed before their enabler, at the cost of a full-scan pass on cycles with structural changes. Pure instantiation-add cycles stay on the fast delta path.

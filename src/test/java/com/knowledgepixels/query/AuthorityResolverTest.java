@@ -95,6 +95,31 @@ class AuthorityResolverTest {
     }
 
     @Test
+    void adminTierUpdate_seedSurvivesRootSupersession_issue110() {
+        // Issue #110: the hasRootAdmin seed is anchored to the immutable space-ref
+        // identity (the root NPID), so superseding the root *nanopub* with a
+        // continuation revision (which re-roots to the same ref and carries no
+        // hasRootAdmin of its own) must NOT strip the seed. The previous code gated
+        // the seed on the root definition's own invalidation (invalidationFilter
+        // on ?defNp), which dropped it the moment the root was superseded — leaving
+        // the whole admin closure (and everything cascading from it) unmaterialized
+        // for any space whose definition had ever been updated.
+        //
+        // Semantics verified end-to-end against the three live instances (the
+        // in-memory UPDATE path is unusable here — see this class's javadoc); this
+        // test locks in the seed-branch structure that produced the fix.
+        String sparql = AuthorityResolver.adminTierUpdate(TEST_GRAPH, 17);
+        assertFalse(sparql.contains("?defNp"),
+                "seed must not be gated on the root definition's own invalidation");
+        assertTrue(sparql.contains("?liveDef") && sparql.contains("?liveNp"),
+                "seed gated on a live (non-invalidated) definition of the same space ref");
+        assertTrue(sparql.contains("FILTER EXISTS"),
+                "space-ref-alive gate expressed as FILTER EXISTS");
+        assertTrue(sparql.contains("?_inv_liveNp"),
+                "live-definition gate has an inner invalidation check on ?liveNp");
+    }
+
+    @Test
     void attachmentValidationUpdate_requiresAdminPublisher() {
         String sparql = AuthorityResolver.attachmentValidationUpdate(TEST_GRAPH, 5);
         assertTrue(sparql.contains("gen:RoleAssignment"),
