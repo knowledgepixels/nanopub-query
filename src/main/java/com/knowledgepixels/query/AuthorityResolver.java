@@ -700,6 +700,12 @@ public final class AuthorityResolver {
      * plus closed-over admin grants; insert any {@code gen:RoleInstantiation} with
      * {@code npa:inverseProperty gen:hasAdmin} whose publisher (resolved via mirrored
      * trust-approved AccountState) is already in the admin set.
+     *
+     * <p>The seed is gated by {@link #spaceRefAliveFilter} (not the per-nanopub
+     * {@code invalidationFilter("defNp")}): the {@code hasRootAdmin} seed is anchored
+     * to the root NPID, which is the immutable space-ref identity, so superseding the
+     * root <em>nanopub</em> with a continuation revision must not strip the seed —
+     * only retracting every definition of the ref removes it. See issue #110.
      */
     static String adminTierUpdate(IRI graph, long lastProcessed) {
         // Order tuned for RDF4J's evaluator:
@@ -723,12 +729,15 @@ public final class AuthorityResolver {
                 WHERE {
                   # 1. Anchor: who is already an admin of which space?
                   {
-                    # Seed branch: root-admin in a non-invalidated SpaceDefinition.
+                    # Seed branch: root-admin of a space ref that is still alive
+                    # (has at least one non-invalidated definition). NOT filtered on
+                    # ?def's own invalidation — superseding the root nanopub with a
+                    # continuation revision must keep the seed; only a fully-retracted
+                    # ref drops it (issue #110).
                     GRAPH <%4$s> {
                       ?def a npa:SpaceDefinition ;
                            npa:forSpaceRef  ?spaceRef ;
-                           npa:hasRootAdmin ?publisher ;
-                           npa:viaNanopub   ?defNp .
+                           npa:hasRootAdmin ?publisher .
                       ?spaceRef npa:spaceIri ?space .
                     }
                     %7$s
@@ -779,8 +788,38 @@ public final class AuthorityResolver {
                 SpacesVocab.SPACES_GRAPH,
                 lastProcessed,
                 invalidationFilter("np"),
-                invalidationFilter("defNp"),
+                spaceRefAliveFilter(),
                 NPA.GRAPH);
+    }
+
+    /**
+     * Seed-survival filter for the admin tier (issue #110). The {@code hasRootAdmin}
+     * seed is anchored to the root NPID, which is the immutable space-ref identity, so
+     * it must survive supersession of the root <em>nanopub</em> by a continuation
+     * revision (a later definition re-roots to the same ref via
+     * {@code gen:hasRootDefinition} and so carries no {@code hasRootAdmin} of its own).
+     * The previous {@code invalidationFilter("defNp")} dropped the seed the moment the
+     * root revision was superseded, leaving the whole admin closure — and everything
+     * cascading from it — unmaterialized for any space whose definition had ever been
+     * updated.
+     *
+     * <p>Expressed positively: the seed survives iff the space ref still has at least
+     * one non-invalidated {@link SpacesVocab#SPACE_DEFINITION}. A fully-retracted ref
+     * (every definition invalidated) has no live definition, so the {@code FILTER
+     * EXISTS} fails and the seed correctly disappears. Anchored on the already-bound
+     * {@code ?spaceRef}, so it's a targeted lookup over that ref's (few) definitions.
+     */
+    private static String spaceRefAliveFilter() {
+        return """
+                FILTER EXISTS {
+                  GRAPH <%1$s> {
+                    ?liveDef a npa:SpaceDefinition ;
+                             npa:forSpaceRef ?spaceRef ;
+                             npa:viaNanopub  ?liveNp .
+                  }
+                  %2$s
+                }
+                """.formatted(SpacesVocab.SPACES_GRAPH, invalidationFilter("liveNp"));
     }
 
     /**
