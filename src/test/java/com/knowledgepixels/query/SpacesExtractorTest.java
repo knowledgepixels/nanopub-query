@@ -348,6 +348,30 @@ class SpacesExtractorTest {
     }
 
     @Test
+    void extract_backcompatHasGuestAndHost_emitsRoleInstantiation_issue114() throws Exception {
+        // gen:hasGuest / gen:hasHost are space-centric (INVERSE), like hasObserver/hasAdmin.
+        // They were missing from BackcompatRolePredicates, so the extractor dropped
+        // guest/host member RIs entirely (issue #114).
+        for (String pred : new String[] {
+                "https://w3id.org/kpxl/gen/terms/hasGuest",
+                "https://w3id.org/kpxl/gen/terms/hasHost" }) {
+            IRI predicate = vf.createIRI(pred);
+            // Single-triple assertion → auto-typed by the predicate via NanopubUtils.getTypes.
+            Nanopub np = creator()
+                    .assertion(SPACE_IRI_1, predicate, MEMBER_AGENT)
+                    .finalizeNanopub();
+
+            List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+            IRI subject = forRoleInstantiation(ARTIFACT_CODE);
+
+            assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
+            assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);
+            assertContains(out, subject, INVERSE_PROPERTY, predicate);
+            assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);
+        }
+    }
+
+    @Test
     void extract_backcompatRegularDirection_swapsSpaceAndAgent() throws Exception {
         // Agent-centric source: <agent> <predicate> <space>. REGULAR under the publisher
         // convention. plansToAttend is classified REGULAR in BackcompatRolePredicates.
