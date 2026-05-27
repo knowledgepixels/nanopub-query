@@ -17,6 +17,7 @@ import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
+import org.eclipse.rdf4j.model.vocabulary.OWL;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.nanopub.Nanopub;
 import org.nanopub.NanopubUtils;
@@ -226,6 +227,14 @@ public final class SpacesExtractor {
         // MaintainedResourceDeclaration per (resourceIri, spaceIri) pair where the
         // object equals the Space being defined. Same shape as the standalone path.
         emitMaintainedResourceDeclarations(np, ctx, spaceIri, out);
+
+        // Embedded owl:sameAs triples: <spaceIri> owl:sameAs <aliasIri> declares that
+        // <aliasIri> is an alias of the Space being defined. Emit one
+        // SpaceAliasDeclaration per (spaceIri, aliasIri) pair so the materializer can
+        // let this space's admin authority cover roles/members attached to the alias
+        // (issue #113). Carries provenance — the materializer gates the edge on the
+        // declaration's publisher being an admin of the canonical space.
+        emitSpaceAliasDeclarations(np, ctx, spaceIri, out);
 
         // Per-contributor entry: signer, pubkey, created-at, link back to nanopub.
         out.add(vf.createStatement(defIri, RDF.TYPE, SpacesVocab.SPACE_DEFINITION, GRAPH));
@@ -608,6 +617,52 @@ public final class SpacesExtractor {
         out.add(typeSt);
         out.add(vf.createStatement(subject, SpacesVocab.RESOURCE_IRI, resourceIri, GRAPH));
         out.add(vf.createStatement(subject, SpacesVocab.MAINTAINER_SPACE, spaceIri, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+        addProvenance(subject, ctx, out);
+    }
+
+    // ---------------- owl:sameAs (space aliases) ----------------
+
+    /**
+     * Scans a {@code gen:Space} nanopub's assertion for
+     * {@code <spaceIri> owl:sameAs <aliasIri>} triples (subject must equal the Space IRI
+     * being emitted, so the alias declaration is bound to this particular Space) and emits
+     * one {@code npa:SpaceAliasDeclaration} per {@code (spaceIri, aliasIri)} pair. The
+     * Space IRI is the canonical side; the {@code owl:sameAs} object is the alias.
+     * Self-aliases ({@code <X> owl:sameAs <X>}) are rejected.
+     */
+    private static void emitSpaceAliasDeclarations(Nanopub np, Context ctx, IRI spaceIri,
+                                                   List<Statement> out) {
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(OWL.SAMEAS)) continue;
+            if (!spaceIri.equals(st.getSubject())) continue;
+            if (!(st.getObject() instanceof IRI aliasIri)) continue;
+            emitSpaceAliasDeclaration(np, ctx, spaceIri, aliasIri, out);
+        }
+    }
+
+    /**
+     * Emits one {@code npa:SpaceAliasDeclaration} entry, keyed by
+     * {@code (artifactCode, aliasHash)} so a single nanopub can declare multiple aliases
+     * without subject collision. Self-aliases are silently dropped.
+     */
+    private static void emitSpaceAliasDeclaration(Nanopub np, Context ctx, IRI canonicalIri,
+                                                  IRI aliasIri, List<Statement> out) {
+        if (canonicalIri.equals(aliasIri)) {
+            log.debug("Ignoring self-alias declaration on {} in {}", canonicalIri, np.getUri());
+            return;
+        }
+        String aliasHash = Utils.createHash(aliasIri);
+        IRI subject = SpacesVocab.forSpaceAliasDeclaration(ctx.artifactCode(), aliasHash);
+
+        // Idempotence: a single (np, canonical, alias) combination should produce one entry
+        // even if emitSpaceAliasDeclarations somehow sees the triple twice.
+        Statement typeSt = vf.createStatement(subject, RDF.TYPE, SpacesVocab.SPACE_ALIAS_DECLARATION, GRAPH);
+        if (out.contains(typeSt)) return;
+
+        out.add(typeSt);
+        out.add(vf.createStatement(subject, SpacesVocab.CANONICAL_SPACE, canonicalIri, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.ALIAS_SPACE, aliasIri, GRAPH));
         out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
         addProvenance(subject, ctx, out);
     }
