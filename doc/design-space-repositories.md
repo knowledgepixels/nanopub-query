@@ -53,6 +53,8 @@ Two things in one repo:
    - `<https://w3id.org/fair/3pff/participatedAsImplementerAspirantIn>`
    - `<https://w3id.org/fair/3pff/participatedAsParticipantIn>`
    - `<https://w3id.org/kpxl/gen/terms/hasAdmin>`
+   - `<https://w3id.org/kpxl/gen/terms/hasGuest>`
+   - `<https://w3id.org/kpxl/gen/terms/hasHost>`
    - `<https://w3id.org/kpxl/gen/terms/hasObserver>`
    - `<https://w3id.org/kpxl/gen/terms/hasProjectLead>`
    - `<https://w3id.org/kpxl/gen/terms/hasTeamMember>`
