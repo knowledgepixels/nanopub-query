@@ -1,5 +1,7 @@
 package com.knowledgepixels.query;
 
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.ALIAS_SPACE;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.CANONICAL_SPACE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.CHILD_SPACE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.FOR_AGENT;
@@ -20,6 +22,7 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROLE;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROLE_DECLARATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROOT_NANOPUB;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACES_GRAPH;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_ALIAS_DECLARATION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_DEFINITION;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_IRI;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_REF;
@@ -28,6 +31,7 @@ import static com.knowledgepixels.query.vocabulary.SpacesVocab.VIA_NANOPUB;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleAssignment;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleDeclaration;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleInstantiation;
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceAliasDeclaration;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceDefinition;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forMaintainedResourceDeclaration;
 import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceRef;
@@ -52,6 +56,7 @@ import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.OWL;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -490,6 +495,71 @@ class SpacesExtractorTest {
         List<Statement> out = SpacesExtractor.extract(np, defaultContext());
         IRI rejectedSubject = forSubSpaceDeclaration(ARTIFACT_CODE, Utils.createHash(parentSpace));
         assertDoesNotContain(out, rejectedSubject, RDF.TYPE, SUB_SPACE_DECLARATION);
+    }
+
+    // ---------------- owl:sameAs (space aliases, issue #113) ----------------
+
+    @Test
+    void extract_sameAsEmbeddedInGenSpace_emitsSpaceAliasDeclaration() throws Exception {
+        IRI alias = vf.createIRI("https://example.org/spaces/old-alpha");
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(SPACE_IRI_1, OWL.SAMEAS, alias)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forSpaceAliasDeclaration(ARTIFACT_CODE, Utils.createHash(alias));
+
+        // Alias declaration emitted alongside the SpaceRef / SpaceDefinition, with the
+        // declared Space IRI as the canonical side and the owl:sameAs object as alias.
+        assertContains(out, subject, RDF.TYPE, SPACE_ALIAS_DECLARATION);
+        assertContains(out, subject, CANONICAL_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, ALIAS_SPACE, alias);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+        // Provenance carried so the materializer can gate on the publisher.
+        assertContains(out, subject, NPX.SIGNED_BY, SIGNER_AGENT);
+
+        // SpaceRef + SpaceDefinition still present (regression guard).
+        String spaceRef = ARTIFACT_CODE + "_" + Utils.createHash(SPACE_IRI_1);
+        assertContains(out, forSpaceRef(spaceRef), RDF.TYPE, SPACE_REF);
+        assertContains(out, forSpaceDefinition(ARTIFACT_CODE), RDF.TYPE, SPACE_DEFINITION);
+    }
+
+    @Test
+    void extract_sameAsEmbeddedInGenSpace_subjectMustBeDeclaredSpaceIri() throws Exception {
+        // An owl:sameAs triple whose subject isn't the declared Space IRI is ignored:
+        // the alias must be declared by the space claiming it.
+        IRI unrelated = vf.createIRI("https://example.org/somewhere/else");
+        IRI alias = vf.createIRI("https://example.org/spaces/old-alpha");
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(unrelated, OWL.SAMEAS, alias)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI rejectedSubject = forSpaceAliasDeclaration(ARTIFACT_CODE, Utils.createHash(alias));
+        assertDoesNotContain(out, rejectedSubject, RDF.TYPE, SPACE_ALIAS_DECLARATION);
+    }
+
+    @Test
+    void extract_sameAsSelfAlias_isRejected() throws Exception {
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(SPACE_IRI_1, OWL.SAMEAS, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI rejectedSubject = forSpaceAliasDeclaration(ARTIFACT_CODE, Utils.createHash(SPACE_IRI_1));
+        assertDoesNotContain(out, rejectedSubject, RDF.TYPE, SPACE_ALIAS_DECLARATION);
     }
 
     // ---------------- gen:isMaintainedBy ----------------

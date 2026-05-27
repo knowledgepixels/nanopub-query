@@ -43,7 +43,7 @@ import com.knowledgepixels.query.vocabulary.SpacesVocab;
  *
  * <p>Incremental cycle order: invalidation DELETEs (admin RI / RoleAssignment /
  * non-admin RI) → mirror-step delta is implicit (rebuilt only on full build) →
- * per-tier INSERTs (admin → attachment → maintainer → member → observer) →
+ * per-tier INSERTs (admin → alias → attachment → maintainer → member → observer) →
  * late-arrival sweep (re-run downstream tiers without the load-number filter
  * iff this cycle added any structural rows). Sets {@code npa:needsFullRebuild}
  * when an admin RI / RoleAssignment / RoleDeclaration was invalidated; periodic
@@ -241,18 +241,18 @@ public final class AuthorityResolver {
         TierSubjectTotals totals = computeTierSubjectTotals(newGraph);
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
-        lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
+        lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.attachment
                 + counts.maintainer + counts.member + counts.observer
                 + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} "
+                        + "(inserted-triples: admin={} alias={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={}) durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.admin, counts.alias, counts.attachment, counts.maintainer, counts.member, counts.observer,
                 counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
                 durationMs);
     }
@@ -297,6 +297,7 @@ public final class AuthorityResolver {
         boolean structuralInvalidation = applyInvalidations(graph, lastProcessed);
         TierInsertedTriples counts = runAllTierLoops(graph, lastProcessed);
         boolean structuralAdds = (counts.admin > 0)
+                || (counts.alias > 0)
                 || (counts.attachment > 0)
                 || (counts.subSpace > 0)
                 || newRoleDeclarationsArrived(lastProcessed);
@@ -310,6 +311,7 @@ public final class AuthorityResolver {
             // admin tier — its only enabling event is the admin grant itself,
             // already handled by the regular pass.
             TierInsertedTriples lateCounts = runDownstreamWithoutLoadFilter(graph);
+            counts.alias              += lateCounts.alias;
             counts.attachment         += lateCounts.attachment;
             counts.maintainer         += lateCounts.maintainer;
             counts.member             += lateCounts.member;
@@ -324,18 +326,18 @@ public final class AuthorityResolver {
         TierSubjectTotals totals = computeTierSubjectTotals(graph);
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
-        lastInsertedTriplesTotal = (long) counts.admin + counts.attachment
+        lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.attachment
                 + counts.maintainer + counts.member + counts.observer
                 + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastIncrementalCycleDurationMs = durationMs;
         log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} attachment={} maintainer={} member={} observer={} "
+                        + "(inserted-triples: admin={} alias={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.admin, counts.alias, counts.attachment, counts.maintainer, counts.member, counts.observer,
                 counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
                 structuralInvalidation, structuralAdds, durationMs);
     }
@@ -376,6 +378,16 @@ public final class AuthorityResolver {
             executeUpdate(subSpaceInvalidationDelete(graph, lastProcessed));
             structural = true;
         }
+        // Space-alias declarations are structural — invalidating one removes an
+        // owl:sameAs edge that feeds the admin-authority closure (issue #113). The
+        // DELETE removes the per-declaration row; the convenience npa:sameAsSpace edge
+        // is left sticky and cleaned on the next periodic rebuild (same policy as
+        // sub-space declarations).
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+                            aliasInvalidationCheckWhere(graph, lastProcessed))) {
+            executeUpdate(aliasInvalidationDelete(graph, lastProcessed));
+            structural = true;
+        }
         // Leaf-tier RI deletes — no flag.
         executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
         // Maintained-resource declaration deletes — no flag (leaf relation, no
@@ -393,6 +405,11 @@ public final class AuthorityResolver {
      */
     TierInsertedTriples runDownstreamWithoutLoadFilter(IRI graph) {
         TierInsertedTriples c = new TierInsertedTriples();
+        // Alias late-arrival: catches alias declarations whose canonical admin grant
+        // became valid only in this same cycle (the load-number filter on the
+        // declaration's nanopub would otherwise exclude it). Runs first so the
+        // attachment / role tiers below see this cycle's fresh npa:sameAsSpace edges.
+        c.alias = runTierLabeled("alias(late)", graph, aliasAdmitUpdate(graph, -1));
         // Sub-space late-arrival: catches Mode-B candidates whose primary
         // declaration is older than lastProcessed but whose partner just landed.
         c.subSpace = runTierLabeled("subspace(late)", graph,
@@ -467,6 +484,7 @@ public final class AuthorityResolver {
      */
     static final class TierInsertedTriples {
         int admin;
+        int alias;
         int attachment;
         int maintainer;
         int member;
@@ -493,6 +511,11 @@ public final class AuthorityResolver {
     TierInsertedTriples runAllTierLoops(IRI graph, long lastProcessed) {
         TierInsertedTriples c = new TierInsertedTriples();
         c.admin = runTierLabeled("admin", graph, adminTierUpdate(graph, lastProcessed));
+        // Alias admit runs after the admin closure has settled (both the authority
+        // gate and the anti-hijack check read the admin set) and before attachment /
+        // role tiers (their alias-aware admin lookups consume the npa:sameAsSpace edge
+        // this pass emits). See issue #113.
+        c.alias = runTierLabeled("alias", graph, aliasAdmitUpdate(graph, lastProcessed));
         // Sub-space admit runs after admin closure has settled (Mode A + Mode B both
         // need the admin set). Independent of role tiers — order between subspace
         // and attachment / maintainer / member / observer doesn't matter.
@@ -548,9 +571,20 @@ public final class AuthorityResolver {
                 ?acct a npa:AccountState ;
                       npa:pubkey ?pkh ;
                       npa:agent  ?publisher .
-                ?tierRI a gen:RoleInstantiation ;
-                        npa:forSpace ?space ;
-                        npa:forAgent ?publisher .
+                # Tier-role holder in ?space directly, or in a canonical space that
+                # ?space is an owl:sameAs alias of (issue #113).
+                {
+                  ?tierRI a gen:RoleInstantiation ;
+                          npa:forSpace ?space ;
+                          npa:forAgent ?publisher .
+                }
+                UNION
+                {
+                  ?space npa:sameAsSpace ?canon .
+                  ?tierRI a gen:RoleInstantiation ;
+                          npa:forSpace ?canon ;
+                          npa:forAgent ?publisher .
+                }
                 ?rdT a npa:RoleDeclaration ;
                      npa:hasRoleType <%1$s> .
                 { ?tierRI npa:regularProperty ?predT . ?rdT gen:hasRegularProperty ?predT . }
@@ -853,10 +887,22 @@ public final class AuthorityResolver {
                     ?acct a npa:AccountState ;
                           npa:agent  ?publisher ;
                           npa:pubkey ?pkh .
-                    ?adminRI a gen:RoleInstantiation ;
-                             npa:forSpace ?space ;
-                             npa:inverseProperty gen:hasAdmin ;
-                             npa:forAgent ?publisher .
+                    # Admin of ?space directly, or admin of a canonical space that
+                    # ?space is an owl:sameAs alias of (issue #113).
+                    {
+                      ?adminRI a gen:RoleInstantiation ;
+                               npa:forSpace ?space ;
+                               npa:inverseProperty gen:hasAdmin ;
+                               npa:forAgent ?publisher .
+                    }
+                    UNION
+                    {
+                      ?space npa:sameAsSpace ?canon .
+                      ?adminRI a gen:RoleInstantiation ;
+                               npa:forSpace ?canon ;
+                               npa:inverseProperty gen:hasAdmin ;
+                               npa:forAgent ?publisher .
+                    }
                   }
                   %6$s
                   FILTER NOT EXISTS { GRAPH <%3$s> {
@@ -888,10 +934,22 @@ public final class AuthorityResolver {
             ?acct a npa:AccountState ;
                   npa:pubkey ?pkh ;
                   npa:agent  ?publisher .
-            ?adminRI a gen:RoleInstantiation ;
-                     npa:forSpace ?space ;
-                     npa:inverseProperty gen:hasAdmin ;
-                     npa:forAgent ?publisher .
+            # Admin of ?space directly, or admin of a canonical space that ?space is
+            # an owl:sameAs alias of (issue #113).
+            {
+              ?adminRI a gen:RoleInstantiation ;
+                       npa:forSpace ?space ;
+                       npa:inverseProperty gen:hasAdmin ;
+                       npa:forAgent ?publisher .
+            }
+            UNION
+            {
+              ?space npa:sameAsSpace ?canon .
+              ?adminRI a gen:RoleInstantiation ;
+                       npa:forSpace ?canon ;
+                       npa:inverseProperty gen:hasAdmin ;
+                       npa:forAgent ?publisher .
+            }
             """;
 
     /** Observer self-evidence: the assignee's own pubkey signed the instantiation. */
@@ -1190,6 +1248,107 @@ public final class AuthorityResolver {
     }
 
     /**
+     * Space-alias admit pass (issue #113). Copies validated
+     * {@code npa:SpaceAliasDeclaration} extraction rows into the space-state graph
+     * (preserving the {@code npaalias:} subject) and emits the directional
+     * {@code <alias> npa:sameAsSpace <canonical>} edge consumed by the alias-aware
+     * admin-authority lookups in {@link #attachmentValidationUpdate},
+     * {@link #PUBLISHER_IS_ADMIN}, and {@link #publisherIsTieredRole}.
+     *
+     * <p>Two gates, both read against the (already-settled) admin closure in the
+     * space-state graph:
+     * <ul>
+     *   <li><b>Authority</b> — the declaration's publisher (resolved via the mirrored
+     *       trust-approved {@code AccountState}) is a validated admin of the
+     *       <em>canonical</em> space. The alias is declared inside the canonical
+     *       space's own {@code gen:Space} nanopub, so this is the same evidence rule
+     *       as a {@code gen:hasRole} attachment.</li>
+     *   <li><b>Anti-hijack</b> — the alias must not be an independently-governed live
+     *       space: it must have no admin who is not also an admin of the canonical
+     *       space ({@code admins(alias) ⊆ admins(canonical)}). The common rename case
+     *       (the alias's own definition was superseded, so it has no live admin
+     *       closure) passes trivially; an attacker publishing
+     *       {@code <evil> owl:sameAs <activeSpace>} is rejected because the active
+     *       space has admins not in evil's set.</li>
+     * </ul>
+     *
+     * <p>Late-arrival: when the canonical admin grant only becomes valid in the same
+     * cycle as the declaration, the load-number filter on {@code ?np} excludes the
+     * candidate; the late-arrival sweep ({@link #runDownstreamWithoutLoadFilter})
+     * re-runs this pass without the load filter and catches it.
+     */
+    static String aliasAdmitUpdate(IRI graph, long lastProcessed) {
+        return """
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?d a npa:SpaceAliasDeclaration ;
+                     npa:canonicalSpace ?canonical ;
+                     npa:aliasSpace     ?alias ;
+                     npa:viaNanopub     ?np .
+                  ?alias npa:sameAsSpace ?canonical .
+                } }
+                WHERE {
+                  # 1. Anchor: candidate alias declarations from the extraction graph.
+                  GRAPH <%4$s> {
+                    ?d a npa:SpaceAliasDeclaration ;
+                       npa:canonicalSpace ?canonical ;
+                       npa:aliasSpace     ?alias ;
+                       npa:pubkeyHash     ?pkh ;
+                       npa:viaNanopub     ?np .
+                  }
+                  # 2. Mirror + authority gate: publisher is a validated admin of the
+                  #    canonical space.
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:pubkey ?pkh ;
+                          npa:agent  ?publisher .
+                    ?adminRI a gen:RoleInstantiation ;
+                             npa:inverseProperty gen:hasAdmin ;
+                             npa:forSpace ?canonical ;
+                             npa:forAgent ?publisher .
+                  }
+                  # 3. Anti-hijack: the alias must have no admin who is not also an
+                  #    admin of the canonical space (admins(alias) ⊆ admins(canonical)).
+                  FILTER NOT EXISTS {
+                    GRAPH <%3$s> {
+                      ?aliasAdmin a gen:RoleInstantiation ;
+                                  npa:inverseProperty gen:hasAdmin ;
+                                  npa:forSpace ?alias ;
+                                  npa:forAgent ?otherAgent .
+                    }
+                    FILTER NOT EXISTS {
+                      GRAPH <%3$s> {
+                        ?canonAdmin a gen:RoleInstantiation ;
+                                    npa:inverseProperty gen:hasAdmin ;
+                                    npa:forSpace ?canonical ;
+                                    npa:forAgent ?otherAgent .
+                      }
+                    }
+                  }
+                  # 4. Invalidation filter on the declaration's nanopub.
+                  %6$s
+                  # 5. Load-number filter on bound ?np.
+                  GRAPH <%7$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  # 6. Dedup last.
+                  FILTER NOT EXISTS { GRAPH <%3$s> {
+                    ?d a npa:SpaceAliasDeclaration .
+                  } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                invalidationFilter("np"),
+                NPA.GRAPH);
+    }
+
+    /**
      * URL-prefix sub-space fallback admit pass. For every pair of {@code SpaceRef}
      * aggregates where the child's {@code npa:hasIdPrefix} matches the parent's
      * {@code npa:spaceIri}, emits convenience {@code <child> npa:isSubSpaceOf <parent>}
@@ -1459,6 +1618,50 @@ public final class AuthorityResolver {
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+    }
+
+    /**
+     * WHERE clause shared by the alias invalidation ASK precheck and the matching
+     * DELETE. Identifies validated {@code npa:SpaceAliasDeclaration} rows in the
+     * space-state graph whose {@code npa:viaNanopub} is the target of an
+     * {@code npx:invalidates} triple in {@code npa:graph} whose subject nanopub has a
+     * load number in {@code (lastProcessed, ∞)}.
+     */
+    static String aliasInvalidationCheckWhere(IRI graph, long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?d a npa:SpaceAliasDeclaration ;
+                       npa:viaNanopub ?np .
+                  }
+                  GRAPH <%2$s> {
+                    ?invNp <%3$s> ?np ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
+                  }
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+    }
+
+    /**
+     * DELETE template for validated {@code npa:SpaceAliasDeclaration} rows whose
+     * source nanopub was invalidated. Removes the per-declaration row by subject; the
+     * convenience {@code <alias> npa:sameAsSpace <canonical>} edge is left sticky and
+     * cleaned by the next periodic full rebuild (same staleness policy as sub-space
+     * declaration invalidation — the alias feeds the authority closure, so this kind
+     * is structural and flips {@code npa:needsFullRebuild}).
+     */
+    static String aliasInvalidationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?d ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?d ?p ?o . }
+                %4$s
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                aliasInvalidationCheckWhere(graph, lastProcessed));
     }
 
     /** Wraps an ASK by joining the shared prefixes. */

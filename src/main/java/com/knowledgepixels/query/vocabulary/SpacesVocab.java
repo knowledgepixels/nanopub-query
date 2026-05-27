@@ -22,6 +22,7 @@ import org.nanopub.vocabulary.NPA;
  *   <li>{@link #NPARD_NAMESPACE} ({@code npard:}) — {@link #forRoleDeclaration(String) role-declaration} entries (from {@code gen:SpaceMemberRole} nanopubs).
  *   <li>{@link #NPASUB_NAMESPACE} ({@code npasub:}) — {@link #forSubSpaceDeclaration(String, String) sub-space-declaration} entries (one per {@code (child, parent)} pair).
  *   <li>{@link #NPAMRD_NAMESPACE} ({@code npamrd:}) — {@link #forMaintainedResourceDeclaration(String, String) maintained-resource-declaration} entries (one per {@code (resource, space)} pair).
+ *   <li>{@link #NPAALIAS_NAMESPACE} ({@code npaalias:}) — {@link #forSpaceAliasDeclaration(String, String) space-alias-declaration} entries (one per {@code owl:sameAs} pair).
  *   <li>{@link #NPASS_NAMESPACE} ({@code npass:}) — space-state graph IRIs (used by the materializer in a later PR).
  * </ul>
  */
@@ -43,6 +44,8 @@ public final class SpacesVocab {
     public static final String NPASUB_NAMESPACE = "http://purl.org/nanopub/admin/subspace/";
     /** Namespace for maintained-resource-declaration entries ({@code npamrd:<artifactCode>_<resourceHash>}). */
     public static final String NPAMRD_NAMESPACE = "http://purl.org/nanopub/admin/maintainedresource/";
+    /** Namespace for space-alias-declaration entries ({@code npaalias:<artifactCode>_<aliasHash>}). */
+    public static final String NPAALIAS_NAMESPACE = "http://purl.org/nanopub/admin/spacealias/";
     /** Namespace for space-state graph IRIs ({@code npass:<trustStateHash>_<loadCounter>}). */
     public static final String NPASS_NAMESPACE = "http://purl.org/nanopub/admin/spacestate/";
 
@@ -62,6 +65,9 @@ public final class SpacesVocab {
 
     /** RDF type for a maintained-resource-declaration extraction entry. */
     public static final IRI MAINTAINED_RESOURCE_DECLARATION = vf.createIRI(NPA.NAMESPACE, "MaintainedResourceDeclaration");
+
+    /** RDF type for a space-alias-declaration extraction entry (from {@code owl:sameAs} in a {@code gen:Space} nanopub). */
+    public static final IRI SPACE_ALIAS_DECLARATION = vf.createIRI(NPA.NAMESPACE, "SpaceAliasDeclaration");
 
     // -------- Properties on extraction entries --------
 
@@ -115,6 +121,19 @@ public final class SpacesVocab {
 
     /** Links a {@link #MAINTAINED_RESOURCE_DECLARATION} to the maintaining Space IRI. */
     public static final IRI MAINTAINER_SPACE = vf.createIRI(NPA.NAMESPACE, "maintainerSpace");
+
+    /** Links a {@link #SPACE_ALIAS_DECLARATION} to the canonical Space IRI (the {@code owl:sameAs} subject). */
+    public static final IRI CANONICAL_SPACE = vf.createIRI(NPA.NAMESPACE, "canonicalSpace");
+
+    /** Links a {@link #SPACE_ALIAS_DECLARATION} to the alias Space IRI (the {@code owl:sameAs} object). */
+    public static final IRI ALIAS_SPACE = vf.createIRI(NPA.NAMESPACE, "aliasSpace");
+
+    /**
+     * Validated alias edge written into the space-state graph: {@code <alias> npa:sameAsSpace <canonical>}.
+     * Materialized by the alias-admit tier once a {@link #SPACE_ALIAS_DECLARATION} passes the
+     * publisher-admin and anti-hijack gates; consumed by the alias-aware admin-authority lookups.
+     */
+    public static final IRI SAME_AS_SPACE = vf.createIRI(NPA.NAMESPACE, "sameAsSpace");
 
     /**
      * Links a {@link #SPACE_REF} aggregate to each intermediate path-prefix of its
@@ -205,6 +224,18 @@ public final class SpacesVocab {
      */
     public static IRI forMaintainedResourceDeclaration(String artifactCode, String resourceHash) {
         return vf.createIRI(NPAMRD_NAMESPACE, artifactCode + "_" + resourceHash);
+    }
+
+    /**
+     * Mints {@code npaalias:<artifactCode>_<aliasHash>} for a space-alias-declaration entry.
+     * Including the alias-IRI hash in the local name lets a single nanopub declare multiple
+     * aliases without subject collision.
+     *
+     * @param artifactCode trusty-URI artifact code of the originating nanopub
+     * @param aliasHash    {@code Utils.createHash(<aliasSpaceIri>)}
+     */
+    public static IRI forSpaceAliasDeclaration(String artifactCode, String aliasHash) {
+        return vf.createIRI(NPAALIAS_NAMESPACE, artifactCode + "_" + aliasHash);
     }
 
     /**

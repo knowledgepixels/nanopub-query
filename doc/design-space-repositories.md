@@ -753,10 +753,60 @@ SELECT DISTINCT ?resource WHERE {
 
 The inverse direction (find the maintaining space(s) of a resource) uses `<RESOURCE_IRI> npa:isMaintainedBy ?space` with the same shape.
 
+## Space aliases (`owl:sameAs`)
+
+A space may declare `<canonical> owl:sameAs <alias>` in its `gen:Space` nanopub — typically when a space is renamed/re-created under a new IRI and earlier role/member nanopubs still point at the old (alias) IRI. Without alias handling, a `gen:hasRole` attachment or role instantiation whose `npa:forSpace` is the alias is keyed on an IRI that has no admin closure (the alias's own definition was superseded when the canonical one was created), so the attachment never validates and the role — with all its members — silently vanishes from the materialized state. See issue #113.
+
+The design **honors** `owl:sameAs`: an admin of the canonical space governs roles/members attached to a declared alias. Role assignments and instantiations stay keyed on the IRI they were attached to (no row rewriting); authority flows canonical→alias via the admin-authority lookups.
+
+### Extraction entry (in `npa:spacesGraph`)
+
+For each `<spaceIri> owl:sameAs <aliasIri>` triple in a `gen:Space` nanopub whose subject is the Space IRI being defined (the embedded path; standalone `owl:sameAs` nanopubs are out of scope), emit one entry. Self-aliases (`<X> owl:sameAs <X>`) are rejected. Prefix `npaalias:` = `<http://purl.org/nanopub/admin/spacealias/>`:
+
+```turtle
+GRAPH npa:spacesGraph {
+  npaalias:<artifactCode>_<aliasHash> a npa:SpaceAliasDeclaration ;
+                       npa:canonicalSpace <spaceIRI> ;   # owl:sameAs subject — the space declaring the alias
+                       npa:aliasSpace     <aliasIRI> ;   # owl:sameAs object — the absorbed alias
+                       npa:viaNanopub     <thisNP> ;
+                       npx:signedBy       <publishingAgent> ;
+                       npa:pubkeyHash     "<pubkeyHash>" ;
+                       dct:created        "<timestamp>"^^xsd:dateTime .
+}
+```
+
+### Authority rule
+
+The alias-admit pass runs after the admin closure has settled and before the attachment / role tiers. An alias edge is validated — emitting `<alias> npa:sameAsSpace <canonical>` into the space-state graph — iff **both** hold against the current admin closure:
+
+1. **Authority** — the declaration's publisher (resolved via the mirrored trust-approved `AccountState`) is a validated admin of the **canonical** space. Same evidence rule as a `gen:hasRole` attachment; the alias is declared inside the canonical space's own `gen:Space` nanopub.
+2. **Anti-hijack** — the alias must have **no admin who is not also an admin of the canonical space** (`admins(alias) ⊆ admins(canonical)`). The common rename case (`admins(alias) = ∅`, because the alias's definition was superseded) passes trivially; an attacker publishing `<evil> owl:sameAs <activeSpace>` is rejected because the active space has admins not in evil's set. This protects *active* spaces; it is intentionally permissive about fully-defunct alias IRIs (no current stakeholder to harm).
+
+### Alias-aware authority lookups
+
+Wherever a tier checks "publisher is an admin (or tier-role holder) of `?space`", the check also accepts authority over a canonical space that `?space` is an alias of:
+
+```sparql
+{ ?adminRI npa:forSpace ?space ; npa:inverseProperty gen:hasAdmin ; npa:forAgent ?publisher . }
+UNION
+{ ?space npa:sameAsSpace ?canon .
+  ?adminRI npa:forSpace ?canon ; npa:inverseProperty gen:hasAdmin ; npa:forAgent ?publisher . }
+```
+
+This branch is added to the `gen:hasRole` attachment validation and to the admin / tiered-role publisher constraints of the maintainer/member/observer tiers. Single alias hop only (no transitive `sameAs` chains).
+
+### Invalidation
+
+Invalidating an alias declaration's nanopub is **structural** (flips `npa:needsFullRebuild`): the `npa:SpaceAliasDeclaration` row is DELETEd by subject, while the convenience `<alias> npa:sameAsSpace <canonical>` edge is left sticky and cleaned by the next periodic full rebuild — same staleness policy as sub-space declarations.
+
+### Consumer pattern
+
+Roles/members remain queryable under the alias IRI directly (they keep their `npa:forSpace`); the canonical view resolves the alias via the alt-ids Nanodash forwards from the space's `owl:sameAs`. The validated equivalence is also readable as `<alias> npa:sameAsSpace <canonical>` in the current space-state graph.
+
 ## Implementation phases
 
-1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples into `npa:spacesGraph` with `npa:hasLoadNumber` stamps. Includes `npa:SubSpaceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isSubSpaceOf` paths), `npa:MaintainedResourceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isMaintainedBy` paths; see [Maintained resources](#maintained-resources)), and `npa:hasIdPrefix` triples on `npa:SpaceRef` aggregates (see [Sub-space relations](#sub-space-relations)). Invalidations land in `npa:graph` as raw `npx:invalidates` triples (no separate extraction entry); see [Invalidations](#invalidations).
-2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup. Includes the explicit-declaration sub-space admit pass (Mode A + Mode B, copying validated `npa:SubSpaceDeclaration` rows into `npass:<…>`), the URL-prefix fallback admit pass (suppressed per child by any non-invalidated declaration), the maintained-resource admit pass (Mode A only, copying validated `npa:MaintainedResourceDeclaration` rows into `npass:<…>` plus convenience `<r> npa:isMaintainedBy <s>` / `<s> npa:hasMaintainedResource <r>` triples), and the structural-rebuild flag on validated-declaration DELETE.
+1. **Raw loading** — `TripleStore` init, loader writes full nanopubs of predefined types into `spaces` and emits add-only extraction triples into `npa:spacesGraph` with `npa:hasLoadNumber` stamps. Includes `npa:SubSpaceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isSubSpaceOf` paths), `npa:MaintainedResourceDeclaration` extraction (both embedded-in-`gen:Space` and standalone `gen:isMaintainedBy` paths; see [Maintained resources](#maintained-resources)), `npa:SpaceAliasDeclaration` extraction (embedded `owl:sameAs` in `gen:Space` nanopubs; see [Space aliases](#space-aliases-owlsameas)), and `npa:hasIdPrefix` triples on `npa:SpaceRef` aggregates (see [Sub-space relations](#sub-space-relations)). Invalidations land in `npa:graph` as raw `npx:invalidates` triples (no separate extraction entry); see [Invalidations](#invalidations).
+2. **Materialization** — new `AuthorityResolver` drives per-tier SPARQL UPDATE loops on load-number deltas for incremental updates; runs full rebuilds on trust-state flips and on the periodic `npa:needsFullRebuild` signal; manages the `npa:hasCurrentSpaceState` pointer and old-graph cleanup. Includes the explicit-declaration sub-space admit pass (Mode A + Mode B, copying validated `npa:SubSpaceDeclaration` rows into `npass:<…>`), the URL-prefix fallback admit pass (suppressed per child by any non-invalidated declaration), the maintained-resource admit pass (Mode A only, copying validated `npa:MaintainedResourceDeclaration` rows into `npass:<…>` plus convenience `<r> npa:isMaintainedBy <s>` / `<s> npa:hasMaintainedResource <r>` triples), the alias-admit pass (publisher-admin + anti-hijack gates, emitting `<alias> npa:sameAsSpace <canonical>` consumed by the alias-aware authority lookups; see [Space aliases](#space-aliases-owlsameas)), and the structural-rebuild flag on validated-declaration DELETE.
 3. **Routes / metrics** — `/spaces` listing route (HTML + JSON), Prometheus gauges (rebuild duration, delta size, `processedUpTo` lag, distinct-subject totals).
 4. **Nanodash migration** — publish with `gen:hasRootDefinition` and the predefined type IRIs; replace the 4-query chain with one query that resolves the current `npass:*` graph from the pointer (see [Querying the current space-state graph](#querying-the-current-space-state-graph)); drop `isAdminPubkey` gate and pinned templates/queries. Replace `SpaceRepository.findSubspaces(...)` URL regex with the single-query consumer pattern in [Sub-space relations](#sub-space-relations).
 

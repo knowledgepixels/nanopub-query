@@ -473,4 +473,95 @@ class AuthorityResolverTest {
                 "direct triples are not part of the DELETE — sticky until rebuild");
     }
 
+    // ---------------- Space-alias admit + invalidation (issue #113) ----------------
+
+    @Test
+    void aliasAdmitUpdate_validatesAndEmitsSameAsEdge() {
+        String sparql = AuthorityResolver.aliasAdmitUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        assertTrue(sparql.contains("npa:SpaceAliasDeclaration"),
+                "anchors on alias-declaration extraction rows");
+        assertTrue(sparql.contains("?alias npa:sameAsSpace ?canonical"),
+                "emits the directional alias -> canonical edge");
+        // Authority gate: publisher must be a validated admin of the canonical space.
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin")
+                        && sparql.contains("npa:forSpace ?canonical"),
+                "publisher-is-admin-of-canonical gate");
+        assertTrue(sparql.contains("npa:AccountState"), "resolves pubkey -> publisher");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the declaration nanopub");
+        assertTrue(sparql.contains("FILTER NOT EXISTS"),
+                "anti-hijack + dedup filters present");
+    }
+
+    @Test
+    void aliasAdmitUpdate_antiHijackRequiresAliasAdminsSubsetOfCanonical() {
+        // The alias must have no admin who is not also an admin of the canonical
+        // space (admins(alias) ⊆ admins(canonical)); otherwise an attacker could
+        // publish <evil> owl:sameAs <activeSpace> and govern the active space.
+        String sparql = AuthorityResolver.aliasAdmitUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("?aliasAdmin") && sparql.contains("npa:forSpace ?alias"),
+                "anti-hijack inspects admins of the alias space");
+        assertTrue(sparql.contains("?canonAdmin") && sparql.contains("npa:forSpace ?canonical"),
+                "anti-hijack compares against admins of the canonical space");
+        // Nested NOT EXISTS = "no alias admin who is not a canonical admin".
+        assertTrue(sparql.indexOf("FILTER NOT EXISTS") != sparql.lastIndexOf("FILTER NOT EXISTS"),
+                "anti-hijack uses a nested FILTER NOT EXISTS");
+    }
+
+    @Test
+    void aliasAdmitUpdate_hasInvalidationFilterAndDedup() {
+        String sparql = AuthorityResolver.aliasAdmitUpdate(TEST_GRAPH, 0);
+        assertTrue(sparql.contains("?_inv_np"),
+                "invalidation filter on the declaration nanopub");
+        // The declaration type appears in the INSERT, the anchor, and the dedup
+        // FILTER NOT EXISTS — at least three occurrences.
+        assertTrue(countOccurrences(sparql, "a npa:SpaceAliasDeclaration") >= 3,
+                "dedup on the declaration subject already in the state graph");
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) {
+            count++;
+        }
+        return count;
+    }
+
+    @Test
+    void attachmentValidationUpdate_honorsSameAsAlias() {
+        String sparql = AuthorityResolver.attachmentValidationUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("?space npa:sameAsSpace ?canon"),
+                "attachment admin gate also accepts admin of an owl:sameAs canonical");
+        assertTrue(sparql.contains("npa:forSpace ?canon"),
+                "alias branch looks up admins on the canonical space");
+        assertTrue(sparql.contains("UNION"), "direct + alias branches joined by UNION");
+    }
+
+    @Test
+    void nonAdminTierUpdate_adminConstraintHonorsSameAsAlias() {
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 5,
+                com.knowledgepixels.query.vocabulary.GEN.MEMBER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_ADMIN);
+        assertTrue(sparql.contains("?space npa:sameAsSpace ?canon"),
+                "admin publisher constraint accepts admin of an owl:sameAs canonical");
+    }
+
+    @Test
+    void aliasInvalidationDelete_targetsAliasDeclarationRowsOnly() {
+        String sparql = AuthorityResolver.aliasInvalidationDelete(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("npa:SpaceAliasDeclaration"),
+                "scoped to SpaceAliasDeclaration rows");
+        assertTrue(sparql.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
+                "joins the raw npx:invalidates triple in npa:graph");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the invalidator's load number");
+        // The npa:sameAsSpace edge (subject = ?alias) is NOT removed here — sticky
+        // until the next periodic rebuild, same policy as sub-space declarations.
+        assertFalse(sparql.contains("npa:sameAsSpace"),
+                "the alias edge is not part of the DELETE — sticky until rebuild");
+    }
+
 }
