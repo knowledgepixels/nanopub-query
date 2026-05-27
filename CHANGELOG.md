@@ -1,3 +1,14 @@
+## [1.14.4](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.3...nanopub-query-1.14.4) (2026-05-27)
+
+### Bug Fixes
+
+* **spaces:** honor owl:sameAs space aliases in /repo/spaces materializer ([#113](https://github.com/knowledgepixels/nanopub-query/issues/113)) ([782743b](https://github.com/knowledgepixels/nanopub-query/commit/782743b11819806dd11cdee32c31f9cc9f7f6fad))
+* **spaces:** ingest gen:hasGuest / gen:hasHost member RIs ([#114](https://github.com/knowledgepixels/nanopub-query/issues/114)) ([0f7a8ad](https://github.com/knowledgepixels/nanopub-query/commit/0f7a8ad8270c3af312087e4465c2027b7795d496))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([b0fa01f](https://github.com/knowledgepixels/nanopub-query/commit/b0fa01f720cfb26eb6c7bc80f1e309e31f8cb2bc))
+
 ## [1.14.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.2...nanopub-query-1.14.3) (2026-05-26)
 
 ### Bug Fixes
