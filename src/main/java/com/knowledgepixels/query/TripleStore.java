@@ -1,6 +1,5 @@
 package com.knowledgepixels.query;
 
-import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -79,10 +78,14 @@ public class TripleStore {
     }
 
     private TripleStore() throws IOException {
-        Map<String, String> env = EnvironmentUtils.getProcEnvironment();
-        endpointBase = env.get("ENDPOINT_BASE");
+        // Read directly from the JVM's in-memory environment block rather than via
+        // Apache Commons Exec's EnvironmentUtils.getProcEnvironment(), which forks a
+        // subprocess and can throw under memory pressure / a restart storm — leaving
+        // the singleton uninitialised. Same fragile mechanism that caused issue #117
+        // on the per-nanopub hot path (see Utils.getEnvString); retired here too.
+        endpointBase = System.getenv("ENDPOINT_BASE");
         log.info("Endpoint base: {}", endpointBase);
-        endpointType = env.get("ENDPOINT_TYPE");
+        endpointType = System.getenv("ENDPOINT_TYPE");
 
         getRepository("empty");  // Make sure empty repo exists
     }

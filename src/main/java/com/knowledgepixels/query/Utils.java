@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
@@ -165,13 +164,17 @@ public class Utils {
      * @return environment variable value
      */
     public static String getEnvString(String envVarName, String defaultValue) {
-        try {
-            String s = EnvironmentUtils.getProcEnvironment().get(envVarName);
-            if (s != null && !s.isEmpty()) {
-                return s;
-            }
-        } catch (Exception ex) {
-            log.info("Could not get environment variable", ex);
+        // Read straight from the JVM's in-memory environment block. The previous
+        // implementation used Apache Commons Exec's EnvironmentUtils.getProcEnvironment(),
+        // which forks a subprocess (env/sh) and parses its stdout on every call. That is
+        // neither thread-safe nor robust under load, and since this method is on the
+        // per-nanopub hot path (FeatureFlags.fullRepoEnabled() and friends, called from
+        // the 4-thread loading pool) an intermittently mangled read made
+        // fullRepoEnabled() evaluate to false and silently skip the full-repo write for
+        // individual nanopubs — leaving full behind meta undetectably (issue #117).
+        String s = System.getenv(envVarName);
+        if (s != null && !s.isEmpty()) {
+            return s;
         }
         return defaultValue;
     }
