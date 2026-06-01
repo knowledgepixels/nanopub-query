@@ -164,19 +164,33 @@ public class Utils {
      * @return environment variable value
      */
     public static String getEnvString(String envVarName, String defaultValue) {
-        // Read straight from the JVM's in-memory environment block. The previous
-        // implementation used Apache Commons Exec's EnvironmentUtils.getProcEnvironment(),
-        // which forks a subprocess (env/sh) and parses its stdout on every call. That is
-        // neither thread-safe nor robust under load, and since this method is on the
-        // per-nanopub hot path (FeatureFlags.fullRepoEnabled() and friends, called from
-        // the 4-thread loading pool) an intermittently mangled read made
-        // fullRepoEnabled() evaluate to false and silently skip the full-repo write for
-        // individual nanopubs — leaving full behind meta undetectably (issue #117).
-        String s = System.getenv(envVarName);
+        String s = getRawEnv(envVarName);
         if (s != null && !s.isEmpty()) {
             return s;
         }
         return defaultValue;
+    }
+
+    /**
+     * Reads a single environment variable from the JVM's in-memory environment
+     * block. The previous implementation used Apache Commons Exec's
+     * {@code EnvironmentUtils.getProcEnvironment()}, which forks a subprocess
+     * ({@code env}/{@code sh}) and parses its stdout on every call. That is neither
+     * thread-safe nor robust under load, and since {@link #getEnvString} is on the
+     * per-nanopub hot path ({@link FeatureFlags#fullRepoEnabled()} and friends,
+     * called from the 4-thread loading pool) an intermittently mangled read made
+     * {@code fullRepoEnabled()} evaluate to {@code false} and silently skip the
+     * full-repo write for individual nanopubs — leaving {@code full} behind
+     * {@code meta} undetectably (issue #117).
+     *
+     * <p>Extracted as a package-private seam because {@link System} static methods
+     * cannot be mocked directly with Mockito; tests stub this instead.
+     *
+     * @param envVarName environment variable name
+     * @return the raw value, or {@code null} if unset
+     */
+    static String getRawEnv(String envVarName) {
+        return System.getenv(envVarName);
     }
 
     /**
