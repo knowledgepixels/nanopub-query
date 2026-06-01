@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
@@ -165,15 +164,33 @@ public class Utils {
      * @return environment variable value
      */
     public static String getEnvString(String envVarName, String defaultValue) {
-        try {
-            String s = EnvironmentUtils.getProcEnvironment().get(envVarName);
-            if (s != null && !s.isEmpty()) {
-                return s;
-            }
-        } catch (Exception ex) {
-            log.info("Could not get environment variable", ex);
+        String s = getRawEnv(envVarName);
+        if (s != null && !s.isEmpty()) {
+            return s;
         }
         return defaultValue;
+    }
+
+    /**
+     * Reads a single environment variable from the JVM's in-memory environment
+     * block. The previous implementation used Apache Commons Exec's
+     * {@code EnvironmentUtils.getProcEnvironment()}, which forks a subprocess
+     * ({@code env}/{@code sh}) and parses its stdout on every call. That is neither
+     * thread-safe nor robust under load, and since {@link #getEnvString} is on the
+     * per-nanopub hot path ({@link FeatureFlags#fullRepoEnabled()} and friends,
+     * called from the 4-thread loading pool) an intermittently mangled read made
+     * {@code fullRepoEnabled()} evaluate to {@code false} and silently skip the
+     * full-repo write for individual nanopubs — leaving {@code full} behind
+     * {@code meta} undetectably (issue #117).
+     *
+     * <p>Extracted as a package-private seam because {@link System} static methods
+     * cannot be mocked directly with Mockito; tests stub this instead.
+     *
+     * @param envVarName environment variable name
+     * @return the raw value, or {@code null} if unset
+     */
+    static String getRawEnv(String envVarName) {
+        return System.getenv(envVarName);
     }
 
     /**

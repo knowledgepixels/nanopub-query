@@ -1,7 +1,6 @@
 package com.knowledgepixels.query;
 
 import com.github.jsonldjava.shaded.com.google.common.hash.Hashing;
-import org.apache.commons.exec.environment.EnvironmentUtils;
 import org.apache.http.client.config.RequestConfig;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
@@ -14,7 +13,6 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nanopub.vocabulary.NPA;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -128,24 +126,20 @@ class UtilsTest {
     @Test
     void getEnvString() {
         final String defaultValue = "default";
+        final String mockValueString = "value";
 
-        Map<String, String> mockEnv = new HashMap<>();
-        String mockValueString = "value";
-        mockEnv.put("EXISTING_VAR", mockValueString);
-        mockEnv.put("EMPTY_VAR", "");
-        mockEnv.put("NULL_VAR", null);
-
-        try (MockedStatic<EnvironmentUtils> mockedEnvUtils = Mockito.mockStatic(EnvironmentUtils.class)) {
-            mockedEnvUtils.when(EnvironmentUtils::getProcEnvironment).thenReturn(mockEnv);
+        // getEnvString now reads the env via the Utils.getRawEnv seam (System.getenv
+        // cannot be mocked directly — see #117). CALLS_REAL_METHODS keeps getEnvString real.
+        try (MockedStatic<Utils> mockedUtils = Mockito.mockStatic(Utils.class, Mockito.CALLS_REAL_METHODS)) {
+            mockedUtils.when(() -> Utils.getRawEnv("EXISTING_VAR")).thenReturn(mockValueString);
+            mockedUtils.when(() -> Utils.getRawEnv("EMPTY_VAR")).thenReturn("");
+            mockedUtils.when(() -> Utils.getRawEnv("NULL_VAR")).thenReturn(null);
+            mockedUtils.when(() -> Utils.getRawEnv("NON_EXISTING_VAR")).thenReturn(null);
 
             assertEquals(mockValueString, Utils.getEnvString("EXISTING_VAR", defaultValue));
             assertEquals(defaultValue, Utils.getEnvString("NON_EXISTING_VAR", defaultValue));
             assertEquals(defaultValue, Utils.getEnvString("EMPTY_VAR", defaultValue));
             assertEquals(defaultValue, Utils.getEnvString("NULL_VAR", defaultValue));
-
-            mockedEnvUtils.when(EnvironmentUtils::getProcEnvironment).thenThrow(IOException.class);
-            assertEquals(defaultValue, Utils.getEnvString("EXISTING_VAR", defaultValue));
-
         }
     }
 
@@ -156,14 +150,12 @@ class UtilsTest {
         final int validInt = Integer.parseInt(validIntValue);
         final String invalidIntValue = "not_an_int";
 
-        Map<String, String> mockEnv = new HashMap<>();
-        mockEnv.put("VALID_INT", validIntValue);
-        mockEnv.put("INVALID_INT", invalidIntValue);
-        mockEnv.put("EMPTY_VAR", "");
-        mockEnv.put("NULL_VAR", null);
-
-        try (MockedStatic<EnvironmentUtils> mockedEnvUtils = Mockito.mockStatic(EnvironmentUtils.class)) {
-            mockedEnvUtils.when(EnvironmentUtils::getProcEnvironment).thenReturn(mockEnv);
+        try (MockedStatic<Utils> mockedUtils = Mockito.mockStatic(Utils.class, Mockito.CALLS_REAL_METHODS)) {
+            mockedUtils.when(() -> Utils.getRawEnv("VALID_INT")).thenReturn(validIntValue);
+            mockedUtils.when(() -> Utils.getRawEnv("INVALID_INT")).thenReturn(invalidIntValue);
+            mockedUtils.when(() -> Utils.getRawEnv("EMPTY_VAR")).thenReturn("");
+            mockedUtils.when(() -> Utils.getRawEnv("NULL_VAR")).thenReturn(null);
+            mockedUtils.when(() -> Utils.getRawEnv("NON_EXISTING_VAR")).thenReturn(null);
 
             assertEquals(validInt, Utils.getEnvInt("VALID_INT", defaultValue));
             assertEquals(defaultValue, Utils.getEnvInt("NON_EXISTING_VAR", defaultValue));
