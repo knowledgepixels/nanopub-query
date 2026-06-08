@@ -4,8 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class SpacesListingRouteTest {
 
@@ -36,8 +35,7 @@ class SpacesListingRouteTest {
         assertTrue(html.contains("https://example.org/space/beta"));
         // The space-ref prefix should be stripped to its local name in the UI.
         assertTrue(html.contains("RA_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_aaaaaaaa"));
-        assertTrue(!html.contains("http://purl.org/nanopub/admin/space/"),
-                "spaceref namespace should be stripped from the displayed local name");
+        assertFalse(html.contains("http://purl.org/nanopub/admin/space/"), "spaceref namespace should be stripped from the displayed local name");
     }
 
     @Test
