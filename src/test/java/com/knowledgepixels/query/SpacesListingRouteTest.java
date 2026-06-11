@@ -47,8 +47,7 @@ class SpacesListingRouteTest {
         String html = SpacesListingRoute.renderHtml(List.of(hostile));
         assertTrue(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"),
                 "HTML special characters in spaceIri must be escaped");
-        assertTrue(!html.contains("<script>alert"),
-                "raw <script> must not survive the renderer");
+        assertFalse(html.contains("<script>alert"), "raw <script> must not survive the renderer");
     }
 
     @Test

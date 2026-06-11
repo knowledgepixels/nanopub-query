@@ -54,7 +54,7 @@ import com.knowledgepixels.query.vocabulary.SpacesVocab;
  */
 public final class AuthorityResolver {
 
-    private static final Logger log = LoggerFactory.getLogger(AuthorityResolver.class);
+    private static final Logger logger = LoggerFactory.getLogger(AuthorityResolver.class);
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
@@ -131,14 +131,14 @@ public final class AuthorityResolver {
         if (!FeatureFlags.spacesEnabled()) return;
         String trustStateHash = TrustStateRegistry.get().getCurrentHash().orElse(null);
         if (trustStateHash == null) {
-            log.debug("AuthorityResolver.tick: no current trust state yet — skipping");
+            logger.debug("AuthorityResolver.tick: no current trust state yet — skipping");
             return;
         }
         IRI currentGraph = getCurrentSpaceStateGraph();
         String currentGraphName = (currentGraph == null) ? null
                 : currentGraph.stringValue().substring(SpacesVocab.NPASS_NAMESPACE.length());
         if (currentGraphName == null || !currentGraphName.startsWith(trustStateHash + "_")) {
-            log.info("AuthorityResolver.tick: trust-state flip detected (now {}); running full build",
+            logger.info("AuthorityResolver.tick: trust-state flip detected (now {}); running full build",
                     abbrev(trustStateHash));
             runFullBuild(trustStateHash);
             return;
@@ -159,10 +159,10 @@ public final class AuthorityResolver {
         if (!readNeedsFullRebuild()) return;
         String trustStateHash = TrustStateRegistry.get().getCurrentHash().orElse(null);
         if (trustStateHash == null) {
-            log.debug("AuthorityResolver.periodicRebuildTick: no current trust state — deferring");
+            logger.debug("AuthorityResolver.periodicRebuildTick: no current trust state — deferring");
             return;
         }
-        log.info("AuthorityResolver.periodicRebuildTick: needsFullRebuild flag set; rebuilding");
+        logger.info("AuthorityResolver.periodicRebuildTick: needsFullRebuild flag set; rebuilding");
         runFullBuild(trustStateHash);
         clearNeedsFullRebuild();
     }
@@ -191,14 +191,14 @@ public final class AuthorityResolver {
                     conn.clear(iri);
                     conn.commit();
                     dropped++;
-                    log.info("AuthorityResolver.cleanOrphans: dropped orphan graph {}", iri);
+                    logger.info("AuthorityResolver.cleanOrphans: dropped orphan graph {}", iri);
                 }
             }
             if (dropped == 0) {
-                log.debug("AuthorityResolver.cleanOrphans: no orphan space-state graphs");
+                logger.debug("AuthorityResolver.cleanOrphans: no orphan space-state graphs");
             }
         } catch (Exception ex) {
-            log.info("AuthorityResolver.cleanOrphans: failed: {}", ex.toString());
+            logger.info("AuthorityResolver.cleanOrphans: failed: {}", ex.toString());
         }
     }
 
@@ -216,7 +216,7 @@ public final class AuthorityResolver {
         IRI newGraph = SpacesVocab.forSpaceState(trustStateHash, loadCounter);
         IRI oldGraph = getCurrentSpaceStateGraph();
         if (newGraph.equals(oldGraph)) {
-            log.debug("AuthorityResolver.runFullBuild: already current at {}", newGraph);
+            logger.debug("AuthorityResolver.runFullBuild: already current at {}", newGraph);
             return;
         }
 
@@ -246,7 +246,7 @@ public final class AuthorityResolver {
                 + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
-        log.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
+        logger.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={}) durationMs={}",
@@ -283,13 +283,13 @@ public final class AuthorityResolver {
         long currentLoadCounter = getCurrentLoadCounter();
         long lastProcessed = readProcessedUpTo(graph);
         if (lastProcessed < 0) {
-            log.warn("AuthorityResolver.runIncrementalCycle: missing processedUpTo on {}; skipping",
+            logger.warn("AuthorityResolver.runIncrementalCycle: missing processedUpTo on {}; skipping",
                     graph);
             return;
         }
         lastProcessedUpToLag = currentLoadCounter - lastProcessed;
         if (currentLoadCounter <= lastProcessed) {
-            log.debug("AuthorityResolver.runIncrementalCycle: caught up at load {} on {}",
+            logger.debug("AuthorityResolver.runIncrementalCycle: caught up at load {} on {}",
                     currentLoadCounter, graph);
             return;
         }
@@ -330,7 +330,7 @@ public final class AuthorityResolver {
                 + counts.maintainer + counts.member + counts.observer
                 + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastIncrementalCycleDurationMs = durationMs;
-        log.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
+        logger.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={}) "
@@ -598,7 +598,7 @@ public final class AuthorityResolver {
         try {
             return runTierLoop(graph, sparqlUpdate);
         } catch (RuntimeException ex) {
-            log.error("AuthorityResolver: tier={} failed with SPARQL UPDATE:\n{}\n", tier, sparqlUpdate, ex);
+            logger.error("AuthorityResolver: tier={} failed with SPARQL UPDATE:\n{}\n", tier, sparqlUpdate, ex);
             throw ex;
         }
     }
@@ -674,7 +674,7 @@ public final class AuthorityResolver {
             if (!r.hasNext()) return 0;
             return Long.parseLong(r.next().getBinding("n").getValue().stringValue());
         } catch (Exception ex) {
-            log.warn("AuthorityResolver: countDistinctSubjects on {} failed: {}",
+            logger.warn("AuthorityResolver: countDistinctSubjects on {} failed: {}",
                     graph, ex.toString());
             return 0;
         }
@@ -1721,7 +1721,7 @@ public final class AuthorityResolver {
                     Value pubkey = trustConn.getStatements(accountStateIri, NPA_PUBKEY, null, trustStateIri)
                             .stream().findFirst().map(Statement::getObject).orElse(null);
                     if (agent == null || pubkey == null) {
-                        log.warn("AuthorityResolver.mirror: account {} missing agent or pubkey; skipping",
+                        logger.warn("AuthorityResolver.mirror: account {} missing agent or pubkey; skipping",
                                 accountStateIri);
                         continue;
                     }
@@ -1763,7 +1763,7 @@ public final class AuthorityResolver {
                     SpacesVocab.HAS_CURRENT_SPACE_STATE);
             return (v instanceof IRI iri) ? iri : null;
         } catch (Exception ex) {
-            log.warn("AuthorityResolver: failed to read hasCurrentSpaceState pointer: {}", ex.toString());
+            logger.warn("AuthorityResolver: failed to read hasCurrentSpaceState pointer: {}", ex.toString());
             return null;
         }
     }
@@ -1776,11 +1776,11 @@ public final class AuthorityResolver {
             try {
                 return Long.parseLong(v.stringValue());
             } catch (NumberFormatException ex) {
-                log.warn("AuthorityResolver: non-numeric currentLoadCounter: {}", v);
+                logger.warn("AuthorityResolver: non-numeric currentLoadCounter: {}", v);
                 return 0;
             }
         } catch (Exception ex) {
-            log.warn("AuthorityResolver: failed to read currentLoadCounter: {}", ex.toString());
+            logger.warn("AuthorityResolver: failed to read currentLoadCounter: {}", ex.toString());
             return 0;
         }
     }
@@ -1837,7 +1837,7 @@ public final class AuthorityResolver {
                 return Long.parseLong(b.getBinding("n").getValue().stringValue());
             }
         } catch (Exception ex) {
-            log.warn("AuthorityResolver: failed to read processedUpTo for {}: {}", graph, ex.toString());
+            logger.warn("AuthorityResolver: failed to read processedUpTo for {}: {}", graph, ex.toString());
             return -1;
         }
     }
@@ -1853,7 +1853,7 @@ public final class AuthorityResolver {
                     SpacesVocab.NEEDS_FULL_REBUILD);
             return v != null && Boolean.parseBoolean(v.stringValue());
         } catch (Exception ex) {
-            log.warn("AuthorityResolver: failed to read needsFullRebuild: {}", ex.toString());
+            logger.warn("AuthorityResolver: failed to read needsFullRebuild: {}", ex.toString());
             return false;
         }
     }
@@ -1887,7 +1887,7 @@ public final class AuthorityResolver {
             conn.begin(IsolationLevels.SERIALIZABLE);
             conn.clear(graph);
             conn.commit();
-            log.info("AuthorityResolver: dropped old space-state graph {}", graph);
+            logger.info("AuthorityResolver: dropped old space-state graph {}", graph);
         }
     }
 
@@ -1909,7 +1909,7 @@ public final class AuthorityResolver {
             if (!s.startsWith(NPAT.NAMESPACE)) return Optional.empty();
             return Optional.of(s.substring(NPAT.NAMESPACE.length()));
         } catch (Exception ex) {
-            log.warn("AuthorityResolver: failed to read trust-repo current pointer: {}", ex.toString());
+            logger.warn("AuthorityResolver: failed to read trust-repo current pointer: {}", ex.toString());
             return Optional.empty();
         }
     }

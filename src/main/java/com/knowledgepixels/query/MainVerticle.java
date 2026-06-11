@@ -37,7 +37,7 @@ public class MainVerticle extends AbstractVerticle {
 
     private static String css = null;
 
-    private static final Logger log = LoggerFactory.getLogger(MainVerticle.class);
+    private static final Logger logger = LoggerFactory.getLogger(MainVerticle.class);
 
     /**
      * Start the main verticle.
@@ -48,24 +48,24 @@ public class MainVerticle extends AbstractVerticle {
     @Override
     public void start(Promise<Void> startPromise) throws Exception {
         if (!FeatureFlags.trustStateEnabled()) {
-            log.warn("Trust state feature disabled via NANOPUB_QUERY_ENABLE_TRUST_STATE=false — "
+            logger.warn("Trust state feature disabled via NANOPUB_QUERY_ENABLE_TRUST_STATE=false — "
                     + "no trust snapshots will be fetched or materialised, and the 'trust' repo will not be auto-created.");
         }
         if (!FeatureFlags.spacesEnabled()) {
-            log.warn("Spaces feature disabled via NANOPUB_QUERY_ENABLE_SPACES=false — "
+            logger.warn("Spaces feature disabled via NANOPUB_QUERY_ENABLE_SPACES=false — "
                     + "no space-relevant nanopubs will be extracted into npa:spacesGraph, "
                     + "and the 'spaces' repo will not be auto-created.");
         }
         if (!FeatureFlags.fullRepoEnabled()) {
-            log.warn("Writes to the 'full' repo disabled via NANOPUB_QUERY_ENABLE_FULL_REPO=false — "
+            logger.warn("Writes to the 'full' repo disabled via NANOPUB_QUERY_ENABLE_FULL_REPO=false — "
                     + "generic SPARQL queries against /repo/full will return an empty store.");
         }
         if (!FeatureFlags.textRepoEnabled()) {
-            log.warn("Writes to the 'text' repo disabled via NANOPUB_QUERY_ENABLE_TEXT_REPO=false — "
+            logger.warn("Writes to the 'text' repo disabled via NANOPUB_QUERY_ENABLE_TEXT_REPO=false — "
                     + "full-text search via /repo/text will return nothing.");
         }
         if (!FeatureFlags.last30dRepoEnabled()) {
-            log.warn("Writes to the 'last30d' repo disabled via NANOPUB_QUERY_ENABLE_LAST30D_REPO=false — "
+            logger.warn("Writes to the 'last30d' repo disabled via NANOPUB_QUERY_ENABLE_LAST30D_REPO=false — "
                     + "the /repo/last30d endpoint will be empty; rewrite queries against /repo/full with a date filter.");
         }
         HttpClient httpClient = vertx.createHttpClient(
@@ -425,7 +425,7 @@ public class MainVerticle extends AbstractVerticle {
                         //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
 
                         req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
-                        log.info("Forwarding apix request to /rdf4j-server/repositories/", grlcSpec.getRepoName());
+                        logger.info("Forwarding apix request to /rdf4j-server/repositories/{}", grlcSpec.getRepoName());
                     } catch (InvalidGrlcSpecException ex) {
                         return Future.succeededFuture(context.request()
                                 .response()
@@ -446,7 +446,7 @@ public class MainVerticle extends AbstractVerticle {
             @Override
             @GeneratedFlagForDependentElements
             public Future<Void> handleProxyResponse(ProxyContext context) {
-                log.info("Receiving api response");
+                logger.info("Receiving api response");
                 ProxyResponse resp = context.response();
                 resp.putHeader("Access-Control-Allow-Origin", "*");
                 resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
@@ -482,12 +482,12 @@ public class MainVerticle extends AbstractVerticle {
         new Thread(() -> {
             try {
                 var status = StatusController.get().initialize();
-                log.info("Current state: {}, last committed counter: {}", status.state, status.loadCounter);
+                logger.info("Current state: {}, last committed counter: {}", status.state, status.loadCounter);
                 // Restore or fetch the registry setup ID
                 Long storedSetupId = StatusController.get().getRegistrySetupId();
                 if (storedSetupId != null) {
                     JellyNanopubLoader.setLastKnownSetupId(storedSetupId);
-                    log.info("Restored registry setupId: {}", storedSetupId);
+                    logger.info("Restored registry setupId: {}", storedSetupId);
                 } else if (status.state == StatusController.State.LAUNCHING
                         || status.state == StatusController.State.LOADING_INITIAL) {
                     // Fresh start or crashed during initial load – safe to adopt the current setupId
@@ -496,23 +496,23 @@ public class MainVerticle extends AbstractVerticle {
                         JellyNanopubLoader.setLastKnownSetupId(metadata.setupId());
                         if (metadata.setupId() != null) {
                             StatusController.get().setRegistrySetupId(metadata.setupId());
-                            log.info("Fetched initial registry setupId: {}", metadata.setupId());
+                            logger.info("Fetched initial registry setupId: {}", metadata.setupId());
                         }
                     } catch (Exception e) {
-                        log.warn("Could not fetch initial registry setupId", e);
+                        logger.warn("Could not fetch initial registry setupId", e);
                     }
                 } else {
                     // Upgrade from a version without setupId tracking. The DB has data but
                     // we can't verify it matches the current registry state. Leave lastKnownSetupId
                     // as null so that loadUpdates() will trigger a resync.
-                    log.warn("No stored registry setupId but DB has data (state: {}, counter: {}). "
+                    logger.warn("No stored registry setupId but DB has data (state: {}, counter: {}). "
                             + "A resync will be triggered on the first update poll.",
                             status.state, status.loadCounter);
                 }
                 boolean forceResync = "true".equalsIgnoreCase(
                         Utils.getEnvString("FORCE_RESYNC", "false"));
                 if (forceResync && status.state != StatusController.State.LAUNCHING) {
-                    log.warn("FORCE_RESYNC is set. Forcing full re-load from registry.");
+                    logger.warn("FORCE_RESYNC is set. Forcing full re-load from registry.");
                     var metadata = JellyNanopubLoader.fetchRegistryMetadata();
                     JellyNanopubLoader.setLastKnownSetupId(metadata.setupId());
                     if (metadata.setupId() != null) {
@@ -529,15 +529,15 @@ public class MainVerticle extends AbstractVerticle {
                     if (!LocalNanopubLoader.init()) {
                         JellyNanopubLoader.loadInitial(status.loadCounter);
                     } else {
-                        log.info("Local nanopublication loading finished");
+                        logger.info("Local nanopublication loading finished");
                     }
                     StatusController.get().setReady();
                 } else {
-                    log.info("Initial load is already done");
+                    logger.info("Initial load is already done");
                     StatusController.get().setReady();
                 }
             } catch (Exception ex) {
-                log.info("Initial load failed, terminating...", ex);
+                logger.info("Initial load failed, terminating...", ex);
                 Runtime.getRuntime().exit(1);
             }
 
@@ -553,7 +553,7 @@ public class MainVerticle extends AbstractVerticle {
             }
 
             // Start periodic nanopub loading
-            log.info("Starting periodic nanopub loading...");
+            logger.info("Starting periodic nanopub loading...");
             var executor = Executors.newSingleThreadScheduledExecutor();
             executor.scheduleWithFixedDelay(
                     JellyNanopubLoader::loadUpdates,
@@ -578,7 +578,7 @@ public class MainVerticle extends AbstractVerticle {
                             try {
                                 AuthorityResolver.get().tick();
                             } catch (Exception ex) {
-                                log.warn("AuthorityResolver tick failed", ex);
+                                logger.warn("AuthorityResolver tick failed", ex);
                             }
                         },
                         JellyNanopubLoader.UPDATES_POLL_INTERVAL,
@@ -590,7 +590,7 @@ public class MainVerticle extends AbstractVerticle {
                             try {
                                 AuthorityResolver.get().periodicRebuildTick();
                             } catch (Exception ex) {
-                                log.warn("AuthorityResolver periodic rebuild failed", ex);
+                                logger.warn("AuthorityResolver periodic rebuild failed", ex);
                             }
                         },
                         10, 10, TimeUnit.MINUTES
@@ -600,12 +600,12 @@ public class MainVerticle extends AbstractVerticle {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
-                log.info("Gracefully shutting down...");
+                logger.info("Gracefully shutting down...");
                 TripleStore.get().shutdownRepositories();
                 vertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
-                log.info("Graceful shutdown completed");
+                logger.info("Graceful shutdown completed");
             } catch (Exception ex) {
-                log.info("Graceful shutdown failed", ex);
+                logger.info("Graceful shutdown failed", ex);
             }
         }));
     }

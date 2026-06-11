@@ -1,8 +1,5 @@
 package com.knowledgepixels.query;
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicLong;
-
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
@@ -13,6 +10,9 @@ import org.nanopub.NanopubUtils;
 import org.nanopub.jelly.NanopubStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Loads nanopubs from the attached Nanopub Registry via a restartable Jelly stream.
@@ -73,14 +73,15 @@ public class JellyNanopubLoader {
     private static long loadUpdatesInvocations = 0L;
     private static final long HEARTBEAT_INTERVAL_INVOCATIONS = 30;
 
-    private static final Logger log = LoggerFactory.getLogger(JellyNanopubLoader.class);
+    private static final Logger logger = LoggerFactory.getLogger(JellyNanopubLoader.class);
 
     /**
      * Registry metadata returned by a HEAD request.
      */
     record RegistryMetadata(long loadCounter, Long setupId, String coverageTypes,
                             String coverageAgents, String testInstance, String nanopubCount,
-                            String trustStateHash) {}
+                            String trustStateHash) {
+    }
 
     /**
      * The interval in milliseconds at which the updates loader should poll for new nanopubs.
@@ -97,7 +98,9 @@ public class JellyNanopubLoader {
         var url = Utils.getEnvString(
                 "REGISTRY_FIXED_URL", "https://registry.knowledgepixels.com/"
         );
-        if (!url.endsWith("/")) url += "/";
+        if (!url.endsWith("/")) {
+            url += "/";
+        }
         registryUrl = url;
 
         metadataClient = HttpClientBuilder.create().setDefaultRequestConfig(Utils.getHttpRequestConfig()).build();
@@ -115,7 +118,7 @@ public class JellyNanopubLoader {
         updateForwardingMetadata(metadata);
         TrustStateLoader.maybeUpdate(metadata.trustStateHash());
         long targetCounter = metadata.loadCounter();
-        log.info("Fetched Registry load counter: {}", targetCounter);
+        logger.info("Fetched Registry load counter: {}", targetCounter);
         // Store setupId on initial load
         if (metadata.setupId() != null && lastKnownSetupId == null) {
             lastKnownSetupId = metadata.setupId();
@@ -128,7 +131,7 @@ public class JellyNanopubLoader {
             // (e.g. during a restart storm) can drain instead of being hammered on the
             // 5-second RETRY_DELAY_JELLY cadence.
             if (consecutiveBatchFailures >= BREAKER_THRESHOLD) {
-                log.warn("Circuit breaker active during initial load after {} consecutive batch failures; pausing {} ms before next attempt",
+                logger.warn("Circuit breaker active during initial load after {} consecutive batch failures; pausing {} ms before next attempt",
                         consecutiveBatchFailures, BREAKER_PAUSE_MS);
                 try {
                     Thread.sleep(BREAKER_PAUSE_MS);
@@ -140,12 +143,12 @@ public class JellyNanopubLoader {
             try {
                 loadBatch(lastCommittedCounter, LoadingType.INITIAL);
                 consecutiveBatchFailures = 0;
-                log.info("Initial load: loaded batch up to counter {}", lastCommittedCounter);
+                logger.info("Initial load: loaded batch up to counter {}", lastCommittedCounter);
             } catch (Exception e) {
                 consecutiveBatchFailures++;
-                log.info("Failed to load batch starting from counter {} (consecutive failures: {})",
+                logger.info("Failed to load batch starting from counter {} (consecutive failures: {})",
                         lastCommittedCounter, consecutiveBatchFailures);
-                log.info("Failure reason: ", e);
+                logger.info("Failure reason: ", e);
                 try {
                     Thread.sleep(RETRY_DELAY_JELLY);
                 } catch (InterruptedException e2) {
@@ -153,7 +156,7 @@ public class JellyNanopubLoader {
                 }
             }
         }
-        log.info("Initial load complete.");
+        logger.info("Initial load complete.");
     }
 
     /**
@@ -166,7 +169,7 @@ public class JellyNanopubLoader {
         // before the next attempt so a saturated RDF4J can drain. Check happens before
         // any RDF4J-touching work so the sleep isn't itself under the broken regime.
         if (consecutiveBatchFailures >= BREAKER_THRESHOLD) {
-            log.warn("Circuit breaker active after {} consecutive batch failures; pausing {} ms before next attempt",
+            logger.warn("Circuit breaker active after {} consecutive batch failures; pausing {} ms before next attempt",
                     consecutiveBatchFailures, BREAKER_PAUSE_MS);
             try {
                 Thread.sleep(BREAKER_PAUSE_MS);
@@ -188,16 +191,16 @@ public class JellyNanopubLoader {
 
             // Detect reset via setupId change
             if (lastKnownSetupId != null && currentSetupId != null
-                    && !lastKnownSetupId.equals(currentSetupId)) {
-                log.warn("Registry reset detected: setupId {} -> {}", lastKnownSetupId, currentSetupId);
+                && !lastKnownSetupId.equals(currentSetupId)) {
+                logger.warn("Registry reset detected: setupId {} -> {}", lastKnownSetupId, currentSetupId);
                 performResync(currentSetupId);
                 return;
             }
             // Detect reset via counter decrease (also covers first run after upgrade
             // where no setupId was persisted yet but the registry has already been reset)
             if (lastCommittedCounter > 0 && targetCounter >= 0
-                    && targetCounter < lastCommittedCounter) {
-                log.warn("Registry counter decreased {} -> {}, triggering resync",
+                && targetCounter < lastCommittedCounter) {
+                logger.warn("Registry counter decreased {} -> {}, triggering resync",
                         lastCommittedCounter, targetCounter);
                 performResync(currentSetupId);
                 return;
@@ -208,8 +211,8 @@ public class JellyNanopubLoader {
                 if (lastCommittedCounter > 0) {
                     // Upgrade from a version without setupId tracking. The DB has data but
                     // we can't verify it matches the current registry. Force a resync.
-                    log.warn("No stored setupId but DB has data (counter: {}). "
-                            + "Forcing resync to ensure data consistency.", lastCommittedCounter);
+                    logger.warn("No stored setupId but DB has data (counter: {}). "
+                                + "Forcing resync to ensure data consistency.", lastCommittedCounter);
                     performResync(currentSetupId);
                     return;
                 }
@@ -235,23 +238,21 @@ public class JellyNanopubLoader {
             consecutiveBatchFailures = 0;
             lastSuccessfulBatchAtMs = System.currentTimeMillis();
             maybeLogHeartbeat(targetCounter, false);
-            log.info("Loaded {} update(s). Counter: {}, target was: {}",
+            logger.info("Loaded {} update(s). Counter: {}, target was: {}",
                     lastCommittedCounter - status.loadCounter, lastCommittedCounter, targetCounter);
             if (lastCommittedCounter < targetCounter) {
-                log.info("Warning: expected to load nanopubs up to (inclusive) counter " +
-                        targetCounter + " based on the counter reported in Registry's headers, " +
-                        "but loaded only up to {}.", lastCommittedCounter);
+                logger.info("Warning: expected to load nanopubs up to (inclusive) counter {} based on the counter reported in Registry's headers, but loaded only up to {}.", targetCounter, lastCommittedCounter);
             }
         } catch (Exception e) {
             consecutiveBatchFailures++;
-            log.warn("Failed to load updates. Current counter: {} (consecutive failures: {})",
+            logger.warn("Failed to load updates. Current counter: {} (consecutive failures: {})",
                     lastCommittedCounter, consecutiveBatchFailures, e);
         } finally {
             try {
                 StatusController.get().setReady();
             } catch (Exception e) {
-                log.info("Update loader: failed to set status to READY.");
-                log.info("Failure Reason: ", e);
+                logger.info("Update loader: failed to set status to READY.");
+                logger.info("Failure Reason: ", e);
             }
         }
     }
@@ -264,8 +265,10 @@ public class JellyNanopubLoader {
      */
     private static void maybeLogHeartbeat(long targetCounter, boolean idle) {
         loadUpdatesInvocations++;
-        if (loadUpdatesInvocations % HEARTBEAT_INTERVAL_INVOCATIONS != 0) return;
-        log.info("Loader heartbeat: counter={} target={} idle={} consecutiveBatchFailures={} breakerActive={}",
+        if (loadUpdatesInvocations % HEARTBEAT_INTERVAL_INVOCATIONS != 0) {
+            return;
+        }
+        logger.info("Loader heartbeat: counter={} target={} idle={} consecutiveBatchFailures={} breakerActive={}",
                 lastCommittedCounter, targetCounter, idle, consecutiveBatchFailures,
                 consecutiveBatchFailures >= BREAKER_THRESHOLD);
     }
@@ -277,7 +280,7 @@ public class JellyNanopubLoader {
      * @param newSetupId the new setup ID from the registry, or null if unknown
      */
     private static void performResync(Long newSetupId) {
-        log.warn("Starting resync with registry. New setupId: {}", newSetupId);
+        logger.warn("Starting resync with registry. New setupId: {}", newSetupId);
         StatusController.get().setResetting();
         lastKnownSetupId = newSetupId;
         if (newSetupId != null) {
@@ -286,7 +289,7 @@ public class JellyNanopubLoader {
         StatusController.get().setLoadingInitial(-1);
         loadInitial(-1);
         StatusController.get().setReady();
-        log.warn("Resync complete. Counter: {}", lastCommittedCounter);
+        logger.warn("Resync complete. Counter: {}", lastCommittedCounter);
     }
 
     /**
@@ -324,14 +327,16 @@ public class JellyNanopubLoader {
             AtomicLong loaded = new AtomicLong(0L);
 
             npStream.forEach(m -> {
-                if (!m.isSuccess()) throw new RuntimeException("Failed to load " +
-                        "nanopub from Jelly stream. Last known counter: " + lastCommittedCounter,
-                        m.getException()
-                );
+                if (!m.isSuccess()) {
+                    throw new RuntimeException("Failed to load " +
+                                               "nanopub from Jelly stream. Last known counter: " + lastCommittedCounter,
+                            m.getException()
+                    );
+                }
                 if (m.getCounter() < lastCommittedCounter) {
                     throw new RuntimeException("Received a nanopub with a counter lower than " +
-                            "the last known counter. Last known counter: " + lastCommittedCounter +
-                            ", received counter: " + m.getCounter());
+                                               "the last known counter. Last known counter: " + lastCommittedCounter +
+                                               ", received counter: " + m.getCounter());
                 }
                 NanopubLoader.load(m.getNanopub(), m.getCounter());
                 // Bump the in-memory counter BEFORE persisting it. The previous order
@@ -349,8 +354,7 @@ public class JellyNanopubLoader {
                 if (loaded.get() % 50 == 0) {
                     long currTime = System.currentTimeMillis();
                     double speed = 50 / ((currTime - checkpointTime.get()) / 1000.0);
-                    log.info("Loading speed: " + String.format("%.2f", speed) +
-                            " np/s. Counter: " + lastCommittedCounter);
+                    logger.info("Loading speed: {} np/s. Counter: {}", String.format("%.2f", speed), lastCommittedCounter);
                     checkpointTime.set(currTime);
                     checkpointCounter.set(lastCommittedCounter);
                 }
@@ -365,7 +369,7 @@ public class JellyNanopubLoader {
             try {
                 response.close();
             } catch (IOException e) {
-                log.info("Failed to close the Jelly stream response.");
+                logger.info("Failed to close the Jelly stream response.");
             }
         }
     }
@@ -420,9 +424,8 @@ public class JellyNanopubLoader {
                 metadata = fetchRegistryMetadataInner();
             } catch (Exception e) {
                 tries++;
-                log.info("Failed to fetch registry metadata, try " + tries +
-                        ". Retrying in {}ms...", RETRY_DELAY_METADATA);
-                log.info("Failure Reason: ", e);
+                logger.info("Failed to fetch registry metadata, try {}. Retrying in {}ms...", tries, RETRY_DELAY_METADATA);
+                logger.info("Failure Reason: ", e);
                 try {
                     Thread.sleep(RETRY_DELAY_METADATA);
                 } catch (InterruptedException e2) {
@@ -432,8 +435,7 @@ public class JellyNanopubLoader {
             }
         }
         if (metadata == null) {
-            throw new RuntimeException("Failed to fetch registry metadata after " +
-                    MAX_RETRIES_METADATA + " retries.");
+            throw new RuntimeException("Failed to fetch registry metadata after " + MAX_RETRIES_METADATA + " retries.");
         }
         return metadata;
     }
@@ -451,7 +453,7 @@ public class JellyNanopubLoader {
             EntityUtils.consumeQuietly(response.getEntity());
             if (status < 200 || status >= 300) {
                 throw new RuntimeException("Registry metadata HTTP status is not 2xx: " +
-                        status + ".");
+                                           status + ".");
             }
 
             // Check if the registry is ready
@@ -477,7 +479,7 @@ public class JellyNanopubLoader {
                 try {
                     setupId = Long.parseLong(hSetupId[0].getValue());
                 } catch (NumberFormatException e) {
-                    log.info("Could not parse Nanopub-Registry-Setup-Id header: {}", hSetupId[0].getValue());
+                    logger.info("Could not parse Nanopub-Registry-Setup-Id header: {}", hSetupId[0].getValue());
                 }
             }
 
