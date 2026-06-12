@@ -1,15 +1,8 @@
 package com.knowledgepixels.query;
 
-import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-
+import com.google.common.hash.Hashing;
+import com.knowledgepixels.query.vocabulary.NPAA;
+import com.knowledgepixels.query.vocabulary.NPAT;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -28,9 +21,10 @@ import org.nanopub.vocabulary.NPA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.hash.Hashing;
-import com.knowledgepixels.query.vocabulary.NPAA;
-import com.knowledgepixels.query.vocabulary.NPAT;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 
 /**
  * Materializes a registry trust state into the local {@code trust} repository
@@ -46,12 +40,16 @@ import com.knowledgepixels.query.vocabulary.NPAT;
  */
 public class TrustStateLoader {
 
-    private static final Logger log = LoggerFactory.getLogger(TrustStateLoader.class);
+    private static final Logger logger = LoggerFactory.getLogger(TrustStateLoader.class);
 
-    /** Local name of the repository that holds all mirrored trust states. */
+    /**
+     * Local name of the repository that holds all mirrored trust states.
+     */
     static final String TRUST_REPO = "trust";
 
-    /** Default number of historical trust states retained locally. Matches the registry's own snapshot retention. */
+    /**
+     * Default number of historical trust states retained locally. Matches the registry's own snapshot retention.
+     */
     static final int DEFAULT_LOCAL_RETENTION = 100;
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
@@ -92,38 +90,40 @@ public class TrustStateLoader {
      * scratch.
      */
     public static void bootstrap() {
-        if (!FeatureFlags.trustStateEnabled()) return;
+        if (!FeatureFlags.trustStateEnabled()) {
+            return;
+        }
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TRUST_REPO)) {
             String query = String.format("""
-                    SELECT ?s WHERE {
-                      GRAPH <%s> {
-                        <%s> <%s> ?s .
-                      }
-                    } LIMIT 1
-                    """,
+                            SELECT ?s WHERE {
+                              GRAPH <%s> {
+                                <%s> <%s> ?s .
+                              }
+                            } LIMIT 1
+                            """,
                     NPA.GRAPH, NPA.THIS_REPO, NPA_HAS_CURRENT_TRUST_STATE);
             try (TupleQueryResult result =
                          conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
                 if (!result.hasNext()) {
-                    log.info("Trust state bootstrap: no current-state pointer yet");
+                    logger.info("Trust state bootstrap: no current-state pointer yet");
                     return;
                 }
                 IRI ptr = (IRI) result.next().getValue("s");
                 String iri = ptr.stringValue();
                 if (!iri.startsWith(NPAT.NAMESPACE)) {
-                    log.warn("Trust state bootstrap: unexpected pointer IRI {}", iri);
+                    logger.warn("Trust state bootstrap: unexpected pointer IRI {}", iri);
                     return;
                 }
                 String hash = iri.substring(NPAT.NAMESPACE.length());
                 if (hash.isEmpty()) {
-                    log.warn("Trust state bootstrap: pointer IRI has empty hash suffix");
+                    logger.warn("Trust state bootstrap: pointer IRI has empty hash suffix");
                     return;
                 }
                 TrustStateRegistry.get().setCurrentHash(hash);
-                log.info("Trust state bootstrap: seeded current hash {}", hash);
+                logger.info("Trust state bootstrap: seeded current hash {}", hash);
             }
         } catch (Exception ex) {
-            log.info("Trust state bootstrap: failed to read pointer: {}", ex.toString());
+            logger.info("Trust state bootstrap: failed to read pointer: {}", ex.toString());
         }
     }
 
@@ -140,21 +140,29 @@ public class TrustStateLoader {
      *                          expose one
      */
     public static void maybeUpdate(String newTrustStateHash) {
-        if (!FeatureFlags.trustStateEnabled()) return;
-        if (newTrustStateHash == null || newTrustStateHash.isEmpty()) return;
+        if (!FeatureFlags.trustStateEnabled()) {
+            return;
+        }
+        if (newTrustStateHash == null || newTrustStateHash.isEmpty()) {
+            return;
+        }
         String current = TrustStateRegistry.get().getCurrentHash().orElse(null);
-        if (newTrustStateHash.equals(current)) return;
+        if (newTrustStateHash.equals(current)) {
+            return;
+        }
 
-        log.info("Trust state hash change detected: {} -> {}",
+        logger.info("Trust state hash change detected: {} -> {}",
                 current == null ? "(none)" : current, newTrustStateHash);
 
         Optional<TrustStateSnapshot> snapshotOpt = fetchSnapshot(newTrustStateHash);
-        if (snapshotOpt.isEmpty()) return;
+        if (snapshotOpt.isEmpty()) {
+            return;
+        }
         TrustStateSnapshot snapshot = snapshotOpt.get();
 
         // Integrity check: the URL hash must match what's in the body.
         if (!newTrustStateHash.equals(snapshot.trustStateHash())) {
-            log.warn("Trust state envelope hash mismatch: URL was {}, body says {}",
+            logger.warn("Trust state envelope hash mismatch: URL was {}, body says {}",
                     newTrustStateHash, snapshot.trustStateHash());
             return;
         }
@@ -162,12 +170,12 @@ public class TrustStateLoader {
         try {
             materialize(snapshot);
             TrustStateRegistry.get().setCurrentHash(snapshot.trustStateHash());
-            log.info("Materialized trust state {} (counter={}, accounts={})",
+            logger.info("Materialized trust state {} (counter={}, accounts={})",
                     snapshot.trustStateHash(), snapshot.trustStateCounter(),
                     snapshot.accounts().size());
         } catch (Exception ex) {
-            log.warn("Failed to materialize trust state {}: {}",
-                    snapshot.trustStateHash(), ex.toString(), ex);
+            logger.warn("Failed to materialize trust state {}: {}",
+                    snapshot.trustStateHash(), ex, ex);
         }
     }
 
@@ -181,17 +189,17 @@ public class TrustStateLoader {
      */
     static Optional<TrustStateSnapshot> fetchSnapshot(String trustStateHash) {
         String url = JellyNanopubLoader.registryUrl
-                + "trust-state/" + URLEncoder.encode(trustStateHash, StandardCharsets.UTF_8) + ".json";
+                     + "trust-state/" + URLEncoder.encode(trustStateHash, StandardCharsets.UTF_8) + ".json";
         try (var response = httpClient.execute(new HttpGet(url))) {
             int status = response.getStatusLine().getStatusCode();
             if (status == 404) {
-                log.info("Trust state snapshot {} returned 404 (pruned by registry); skipping",
+                logger.info("Trust state snapshot {} returned 404 (pruned by registry); skipping",
                         trustStateHash);
                 EntityUtils.consumeQuietly(response.getEntity());
                 return Optional.empty();
             }
             if (status < 200 || status >= 300) {
-                log.info("Trust state snapshot {} returned HTTP {} ({}); skipping",
+                logger.info("Trust state snapshot {} returned HTTP {} ({}); skipping",
                         trustStateHash, status, response.getStatusLine().getReasonPhrase());
                 EntityUtils.consumeQuietly(response.getEntity());
                 return Optional.empty();
@@ -199,10 +207,10 @@ public class TrustStateLoader {
             String body = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
             return Optional.of(TrustStateSnapshot.parse(body));
         } catch (IOException ex) {
-            log.info("Failed to fetch trust state snapshot {}: {}", trustStateHash, ex.toString());
+            logger.info("Failed to fetch trust state snapshot {}: {}", trustStateHash, ex.toString());
             return Optional.empty();
         } catch (IllegalArgumentException ex) {
-            log.info("Failed to parse trust state snapshot {}: {}", trustStateHash, ex.toString());
+            logger.info("Failed to parse trust state snapshot {}: {}", trustStateHash, ex.toString());
             return Optional.empty();
         }
     }
@@ -282,7 +290,7 @@ public class TrustStateLoader {
             // 4. Prune any historical trust states beyond the retention window
             int pruned = pruneOldStates(conn);
             if (pruned > 0) {
-                log.info("Pruned {} trust state(s) beyond retention", pruned);
+                logger.info("Pruned {} trust state(s) beyond retention", pruned);
             }
 
             conn.commit();
@@ -299,13 +307,13 @@ public class TrustStateLoader {
         int retention = effectiveRetention();
         // ORDER BY DESC counter, then OFFSET retention → those beyond the keep window.
         String query = String.format("""
-                PREFIX npa: <%s>
-                SELECT ?s WHERE {
-                  GRAPH <%s> {
-                    ?s a <%s> ; <%s> ?c .
-                  }
-                } ORDER BY DESC(?c) OFFSET %d
-                """,
+                        PREFIX npa: <%s>
+                        SELECT ?s WHERE {
+                          GRAPH <%s> {
+                            ?s a <%s> ; <%s> ?c .
+                          }
+                        } ORDER BY DESC(?c) OFFSET %d
+                        """,
                 NPA.NAMESPACE, NPA.GRAPH, NPA_TRUST_STATE, NPA_HAS_TRUST_STATE_COUNTER, retention);
 
         List<IRI> toPrune = new ArrayList<>();
@@ -329,7 +337,7 @@ public class TrustStateLoader {
     static int effectiveRetention() {
         int n = Utils.getEnvInt("TRUST_STATE_LOCAL_RETENTION", DEFAULT_LOCAL_RETENTION);
         if (n < 1) {
-            log.warn("TRUST_STATE_LOCAL_RETENTION={} is invalid (must be >= 1); using default {}",
+            logger.warn("TRUST_STATE_LOCAL_RETENTION={} is invalid (must be >= 1); using default {}",
                     n, DEFAULT_LOCAL_RETENTION);
             return DEFAULT_LOCAL_RETENTION;
         }
@@ -347,9 +355,11 @@ public class TrustStateLoader {
         return Hashing.sha256().hashString(composite, StandardCharsets.UTF_8).toString();
     }
 
-    /** Trust-approved status set: rows with one of these {@code npa:trustStatus} values
-     *  are eligible to contribute the canonical agent name. Matches the set used by
-     *  {@code AuthorityResolver.mirrorTrustState}. */
+    /**
+     * Trust-approved status set: rows with one of these {@code npa:trustStatus} values
+     * are eligible to contribute the canonical agent name. Matches the set used by
+     * {@code AuthorityResolver.mirrorTrustState}.
+     */
     private static final Set<String> APPROVED_STATUSES = Set.of("loaded", "toLoad");
 
     /**
@@ -370,13 +380,17 @@ public class TrustStateLoader {
     static Map<String, String> resolveCanonicalNames(TrustStateSnapshot snapshot) {
         Map<String, TrustStateSnapshot.AccountEntry> chosen = new HashMap<>();
         for (TrustStateSnapshot.AccountEntry a : snapshot.accounts()) {
-            if (!APPROVED_STATUSES.contains(a.status())) continue;
-            if (a.name() == null || a.ratio() == null) continue;
+            if (!APPROVED_STATUSES.contains(a.status())) {
+                continue;
+            }
+            if (a.name() == null || a.ratio() == null) {
+                continue;
+            }
             TrustStateSnapshot.AccountEntry incumbent = chosen.get(a.agent());
             if (incumbent == null
-                    || a.ratio() > incumbent.ratio()
-                    || (a.ratio().equals(incumbent.ratio())
-                            && a.name().compareTo(incumbent.name()) < 0)) {
+                || a.ratio() > incumbent.ratio()
+                || (a.ratio().equals(incumbent.ratio())
+                    && a.name().compareTo(incumbent.name()) < 0)) {
                 chosen.put(a.agent(), a);
             }
         }

@@ -1,56 +1,6 @@
 package com.knowledgepixels.query;
 
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.ALIAS_SPACE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.CANONICAL_SPACE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.CHILD_SPACE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.FOR_AGENT;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.FOR_SPACE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.FOR_SPACE_REF;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_DEFINITION;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ID_PREFIX;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ROLE_TYPE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.HAS_ROOT_ADMIN;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.INVERSE_PROPERTY;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.MAINTAINED_RESOURCE_DECLARATION;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.MAINTAINER_SPACE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.PARENT_SPACE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.PUBKEY_HASH;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.RESOURCE_IRI;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.REGULAR_PROPERTY;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROLE;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROLE_DECLARATION;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.ROOT_NANOPUB;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACES_GRAPH;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_ALIAS_DECLARATION;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_DEFINITION;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_IRI;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.SPACE_REF;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.SUB_SPACE_DECLARATION;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.VIA_NANOPUB;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleAssignment;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleDeclaration;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forRoleInstantiation;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceAliasDeclaration;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceDefinition;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forMaintainedResourceDeclaration;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSpaceRef;
-import static com.knowledgepixels.query.vocabulary.SpacesVocab.forSubSpaceDeclaration;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.CALLS_REAL_METHODS;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.when;
-
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import com.knowledgepixels.query.vocabulary.GEN;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
@@ -67,7 +17,15 @@ import org.nanopub.NanopubCreator;
 import org.nanopub.vocabulary.NPA;
 import org.nanopub.vocabulary.NPX;
 
-import com.knowledgepixels.query.vocabulary.GEN;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static com.knowledgepixels.query.vocabulary.SpacesVocab.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for {@link SpacesExtractor}. Each test builds a fixture nanopub
@@ -78,9 +36,13 @@ class SpacesExtractorTest {
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
-    /** Stand-in nanopub base URI for fixtures (non-trusty; fixed artifact-code-like suffix). */
+    /**
+     * Stand-in nanopub base URI for fixtures (non-trusty; fixed artifact-code-like suffix).
+     */
     private static final String NP_BASE = "https://w3id.org/np/RA-testAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-    /** Artifact code derived from {@link #NP_BASE} — the 43 chars after "RA". */
+    /**
+     * Artifact code derived from {@link #NP_BASE} — the 43 chars after "RA".
+     */
     private static final String ARTIFACT_CODE = "RA-testAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     private static final IRI NP_URI = vf.createIRI(NP_BASE);
@@ -109,7 +71,9 @@ class SpacesExtractorTest {
 
     @AfterEach
     void tearDownMocks() {
-        if (mockedUtils != null) mockedUtils.close();
+        if (mockedUtils != null) {
+            mockedUtils.close();
+        }
     }
 
     // ---------------- gen:Space ----------------
@@ -357,9 +321,9 @@ class SpacesExtractorTest {
         // gen:hasGuest / gen:hasHost are space-centric (INVERSE), like hasObserver/hasAdmin.
         // They were missing from BackcompatRolePredicates, so the extractor dropped
         // guest/host member RIs entirely (issue #114).
-        for (String pred : new String[] {
+        for (String pred : new String[]{
                 "https://w3id.org/kpxl/gen/terms/hasGuest",
-                "https://w3id.org/kpxl/gen/terms/hasHost" }) {
+                "https://w3id.org/kpxl/gen/terms/hasHost"}) {
             IRI predicate = vf.createIRI(pred);
             // Single-triple assertion → auto-typed by the predicate via NanopubUtils.getTypes.
             Nanopub np = creator()
@@ -437,7 +401,7 @@ class SpacesExtractorTest {
         assertContains(out, subj2, RDF.TYPE, SUB_SPACE_DECLARATION);
         assertContains(out, subj2, PARENT_SPACE, parent2);
         // Distinct subjects — different parent hashes.
-        assertFalse(subj1.equals(subj2), "Per-parent subjects must differ");
+        assertNotEquals(subj1, subj2, "Per-parent subjects must differ");
     }
 
     @Test
@@ -604,7 +568,7 @@ class SpacesExtractorTest {
         assertContains(out, subj2, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
         assertContains(out, subj2, RESOURCE_IRI, resource2);
         // Distinct subjects — different resource hashes.
-        assertFalse(subj1.equals(subj2), "Per-resource subjects must differ");
+        assertNotEquals(subj1, subj2, "Per-resource subjects must differ");
     }
 
     @Test
@@ -871,41 +835,41 @@ class SpacesExtractorTest {
                                        org.eclipse.rdf4j.model.Value obj) {
         for (Statement st : out) {
             if (st.getSubject().equals(subj)
-                    && st.getPredicate().equals(pred)
-                    && st.getObject().equals(obj)
-                    && SPACES_GRAPH.equals(st.getContext())) {
+                && st.getPredicate().equals(pred)
+                && st.getObject().equals(obj)
+                && SPACES_GRAPH.equals(st.getContext())) {
                 return;
             }
         }
         throw new AssertionError(
                 "Expected statement not found in spaces graph: <" + subj + "> <" + pred + "> <"
-                        + obj + "> .\nActual statements:\n" + formatStatements(out));
+                + obj + "> .\nActual statements:\n" + formatStatements(out));
     }
 
     private static void assertContainsInContext(List<Statement> out, IRI subj, IRI pred,
                                                 org.eclipse.rdf4j.model.Value obj, IRI context) {
         for (Statement st : out) {
             if (st.getSubject().equals(subj)
-                    && st.getPredicate().equals(pred)
-                    && st.getObject().equals(obj)
-                    && context.equals(st.getContext())) {
+                && st.getPredicate().equals(pred)
+                && st.getObject().equals(obj)
+                && context.equals(st.getContext())) {
                 return;
             }
         }
         throw new AssertionError(
                 "Expected statement not found in context <" + context + ">: <" + subj + "> <" + pred
-                        + "> <" + obj + "> .\nActual statements:\n" + formatStatements(out));
+                + "> <" + obj + "> .\nActual statements:\n" + formatStatements(out));
     }
 
     private static void assertDoesNotContain(List<Statement> out, IRI subj, IRI pred,
                                              org.eclipse.rdf4j.model.Value obj) {
         for (Statement st : out) {
             if (st.getSubject().equals(subj)
-                    && st.getPredicate().equals(pred)
-                    && st.getObject().equals(obj)) {
+                && st.getPredicate().equals(pred)
+                && st.getObject().equals(obj)) {
                 throw new AssertionError(
                         "Did not expect statement: <" + subj + "> <" + pred + "> <" + obj + "> .\n"
-                                + "Actual statements:\n" + formatStatements(out));
+                        + "Actual statements:\n" + formatStatements(out));
             }
         }
     }
@@ -928,6 +892,6 @@ class SpacesExtractorTest {
 
     // Silence unused-static-import warnings for imports we keep in case of future tests.
     @SuppressWarnings("unused")
-    private static final IRI[] UNUSED_REFS = { HAS_DEFINITION, PUBKEY_HASH };
+    private static final IRI[] UNUSED_REFS = {HAS_DEFINITION, PUBKEY_HASH};
 
 }

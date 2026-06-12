@@ -1,20 +1,10 @@
 package com.knowledgepixels.query;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import org.eclipse.rdf4j.model.IRI;
-import org.eclipse.rdf4j.model.Literal;
-import org.eclipse.rdf4j.model.Resource;
-import org.eclipse.rdf4j.model.Statement;
-import org.eclipse.rdf4j.model.ValueFactory;
+import com.knowledgepixels.query.vocabulary.BackcompatRolePredicates;
+import com.knowledgepixels.query.vocabulary.GEN;
+import com.knowledgepixels.query.vocabulary.SpacesVocab;
+import net.trustyuri.TrustyUriUtils;
+import org.eclipse.rdf4j.model.*;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.OWL;
@@ -26,11 +16,7 @@ import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.knowledgepixels.query.vocabulary.BackcompatRolePredicates;
-import com.knowledgepixels.query.vocabulary.GEN;
-import com.knowledgepixels.query.vocabulary.SpacesVocab;
-
-import net.trustyuri.TrustyUriUtils;
+import java.util.*;
 
 /**
  * Pure-logic extractor from a loaded {@link Nanopub} to the add-only summary
@@ -52,7 +38,7 @@ import net.trustyuri.TrustyUriUtils;
  */
 public final class SpacesExtractor {
 
-    private static final Logger log = LoggerFactory.getLogger(SpacesExtractor.class);
+    private static final Logger logger = LoggerFactory.getLogger(SpacesExtractor.class);
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
@@ -72,6 +58,7 @@ public final class SpacesExtractor {
      * as types here.
      */
     public static final Set<IRI> TRIGGER_TYPES;
+
     static {
         Set<IRI> s = new LinkedHashSet<>();
         s.add(GEN.SPACE);
@@ -97,7 +84,9 @@ public final class SpacesExtractor {
      */
     public static boolean isSpaceRelevant(Set<IRI> types) {
         for (IRI t : types) {
-            if (TRIGGER_TYPES.contains(t)) return true;
+            if (TRIGGER_TYPES.contains(t)) {
+                return true;
+            }
         }
         return false;
     }
@@ -125,7 +114,9 @@ public final class SpacesExtractor {
      */
     public static List<Statement> extract(Nanopub np, Context ctx) {
         Set<IRI> types = NanopubUtils.getTypes(np);
-        if (!isSpaceRelevant(types)) return Collections.emptyList();
+        if (!isSpaceRelevant(types)) {
+            return Collections.emptyList();
+        }
 
         List<Statement> out = new ArrayList<>();
 
@@ -133,7 +124,7 @@ public final class SpacesExtractor {
         boolean isHasRole = types.contains(GEN.HAS_ROLE);
         boolean isSpaceMemberRole = types.contains(GEN.SPACE_MEMBER_ROLE);
         boolean isRoleInstantiation = types.contains(GEN.ROLE_INSTANTIATION)
-                || anyMatch(types, BackcompatRolePredicates.ALL);
+                                      || anyMatch(types, BackcompatRolePredicates.ALL);
         boolean isSubSpaceOf = types.contains(GEN.IS_SUB_SPACE_OF);
         // Maintained-resource nanopubs use either the resource-class marker
         // (gen:MaintainedResource — what Nanodash currently writes) or the
@@ -141,14 +132,26 @@ public final class SpacesExtractor {
         // auto-typing or explicit npx:hasNanopubType). Both shapes carry the
         // same <r> gen:isMaintainedBy <s> triple in the assertion.
         boolean isMaintainedResource = types.contains(GEN.MAINTAINED_RESOURCE)
-                || types.contains(GEN.IS_MAINTAINED_BY);
+                                       || types.contains(GEN.IS_MAINTAINED_BY);
 
-        if (isSpace) extractSpace(np, ctx, out);
-        if (isHasRole) extractHasRole(np, ctx, out);
-        if (isSpaceMemberRole) extractSpaceMemberRole(np, ctx, out);
-        if (isRoleInstantiation) extractRoleInstantiation(np, ctx, out);
-        if (isSubSpaceOf) extractSubSpaceOf(np, ctx, out);
-        if (isMaintainedResource) extractIsMaintainedBy(np, ctx, out);
+        if (isSpace) {
+            extractSpace(np, ctx, out);
+        }
+        if (isHasRole) {
+            extractHasRole(np, ctx, out);
+        }
+        if (isSpaceMemberRole) {
+            extractSpaceMemberRole(np, ctx, out);
+        }
+        if (isRoleInstantiation) {
+            extractRoleInstantiation(np, ctx, out);
+        }
+        if (isSubSpaceOf) {
+            extractSubSpaceOf(np, ctx, out);
+        }
+        if (isMaintainedResource) {
+            extractIsMaintainedBy(np, ctx, out);
+        }
 
         return out;
     }
@@ -165,16 +168,24 @@ public final class SpacesExtractor {
 
         // Rooted case: gen:hasRootDefinition explicitly declared.
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.HAS_ROOT_DEFINITION)) continue;
-            if (!(st.getSubject() instanceof IRI spaceIri)) continue;
-            if (!(st.getObject() instanceof IRI rootUri)) continue;
+            if (!st.getPredicate().equals(GEN.HAS_ROOT_DEFINITION)) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI spaceIri)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI rootUri)) {
+                continue;
+            }
             String rootNanopubId = TrustyUriUtils.getArtifactCode(rootUri.stringValue());
             if (rootNanopubId == null || rootNanopubId.isEmpty()) {
-                log.warn("Ignoring space {}: gen:hasRootDefinition target is not a trusty URI: {}",
+                logger.warn("Ignoring space {}: gen:hasRootDefinition target is not a trusty URI: {}",
                         spaceIri, rootUri);
                 continue;
             }
-            if (!handled.add(spaceIri)) continue;
+            if (!handled.add(spaceIri)) {
+                continue;
+            }
             emitSpaceEntry(np, ctx, spaceIri, rootUri, rootNanopubId, adminAgents, out);
         }
 
@@ -185,16 +196,26 @@ public final class SpacesExtractor {
         // blank-node assertion subject. The common template publishes the Space IRI
         // as the subject of at least one triple in the assertion, so we scan for that.
         for (Statement st : np.getAssertion()) {
-            if (!(st.getSubject() instanceof IRI spaceIri)) continue;
-            if (handled.contains(spaceIri)) continue;
+            if (!(st.getSubject() instanceof IRI spaceIri)) {
+                continue;
+            }
+            if (handled.contains(spaceIri)) {
+                continue;
+            }
             // Skip IRIs that clearly aren't Space IRIs (role IRIs embedded in this nanopub).
-            if (spaceIri.stringValue().startsWith(np.getUri().stringValue())) continue;
+            if (spaceIri.stringValue().startsWith(np.getUri().stringValue())) {
+                continue;
+            }
             // Require at least one structural signal that this is a Space IRI:
             // an rdf:type gen:Space, or a gen:hasAdmin triple with this as subject.
-            if (!looksLikeSpaceIri(np, spaceIri)) continue;
+            if (!looksLikeSpaceIri(np, spaceIri)) {
+                continue;
+            }
             handled.add(spaceIri);
             String rootNanopubId = TrustyUriUtils.getArtifactCode(np.getUri().stringValue());
-            if (rootNanopubId == null || rootNanopubId.isEmpty()) continue;
+            if (rootNanopubId == null || rootNanopubId.isEmpty()) {
+                continue;
+            }
             emitSpaceEntry(np, ctx, spaceIri, np.getUri(), rootNanopubId, adminAgents, out);
         }
     }
@@ -289,17 +310,29 @@ public final class SpacesExtractor {
         Map<IRI, Set<IRI>> agentsByPred = new LinkedHashMap<>();
         for (Statement st : np.getAssertion()) {
             IRI predicate = st.getPredicate();
-            if (GEN.HAS_ADMIN.equals(predicate)) continue; // already emitted above
+            if (GEN.HAS_ADMIN.equals(predicate)) {
+                continue; // already emitted above
+            }
             BackcompatRolePredicates.Direction direction = BackcompatRolePredicates.DIRECTIONS.get(predicate);
-            if (direction == null) continue;
-            if (!(st.getSubject() instanceof IRI subjIri)) continue;
-            if (!(st.getObject() instanceof IRI objIri)) continue;
+            if (direction == null) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI subjIri)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI objIri)) {
+                continue;
+            }
             IRI agent;
             if (direction == BackcompatRolePredicates.Direction.INVERSE) {
-                if (!spaceIri.equals(subjIri)) continue;
+                if (!spaceIri.equals(subjIri)) {
+                    continue;
+                }
                 agent = objIri;
             } else {
-                if (!spaceIri.equals(objIri)) continue;
+                if (!spaceIri.equals(objIri)) {
+                    continue;
+                }
                 agent = subjIri;
             }
             directionByPred.put(predicate, direction);
@@ -332,9 +365,15 @@ public final class SpacesExtractor {
      */
     private static boolean looksLikeSpaceIri(Nanopub np, IRI candidate) {
         for (Statement st : np.getAssertion()) {
-            if (!candidate.equals(st.getSubject())) continue;
-            if (st.getPredicate().equals(RDF.TYPE) && GEN.SPACE.equals(st.getObject())) return true;
-            if (st.getPredicate().equals(GEN.HAS_ADMIN)) return true;
+            if (!candidate.equals(st.getSubject())) {
+                continue;
+            }
+            if (st.getPredicate().equals(RDF.TYPE) && GEN.SPACE.equals(st.getObject())) {
+                return true;
+            }
+            if (st.getPredicate().equals(GEN.HAS_ADMIN)) {
+                return true;
+            }
         }
         return false;
     }
@@ -342,8 +381,12 @@ public final class SpacesExtractor {
     private static List<IRI> collectAdminAgents(Nanopub np) {
         Set<IRI> agents = new LinkedHashSet<>();
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.HAS_ADMIN)) continue;
-            if (!(st.getObject() instanceof IRI agent)) continue;
+            if (!st.getPredicate().equals(GEN.HAS_ADMIN)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI agent)) {
+                continue;
+            }
             agents.add(agent);
         }
         return new ArrayList<>(agents);
@@ -354,9 +397,15 @@ public final class SpacesExtractor {
     private static void extractHasRole(Nanopub np, Context ctx, List<Statement> out) {
         // A gen:hasRole nanopub asserts <space> gen:hasRole <role>.
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.HAS_ROLE)) continue;
-            if (!(st.getSubject() instanceof IRI spaceIri)) continue;
-            if (!(st.getObject() instanceof IRI roleIri)) continue;
+            if (!st.getPredicate().equals(GEN.HAS_ROLE)) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI spaceIri)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI roleIri)) {
+                continue;
+            }
             IRI subject = SpacesVocab.forRoleAssignment(ctx.artifactCode());
             out.add(vf.createStatement(subject, RDF.TYPE, GEN.ROLE_ASSIGNMENT, GRAPH));
             out.add(vf.createStatement(subject, SpacesVocab.FOR_SPACE, spaceIri, GRAPH));
@@ -378,14 +427,24 @@ public final class SpacesExtractor {
         // with the nanopub IRI (valid embedded mint).
         IRI roleIri = null;
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(RDF.TYPE)) continue;
-            if (!GEN.SPACE_MEMBER_ROLE.equals(st.getObject())) continue;
-            if (!(st.getSubject() instanceof IRI candidate)) continue;
-            if (!candidate.stringValue().startsWith(np.getUri().stringValue())) continue;
+            if (!st.getPredicate().equals(RDF.TYPE)) {
+                continue;
+            }
+            if (!GEN.SPACE_MEMBER_ROLE.equals(st.getObject())) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI candidate)) {
+                continue;
+            }
+            if (!candidate.stringValue().startsWith(np.getUri().stringValue())) {
+                continue;
+            }
             roleIri = candidate;
             break;
         }
-        if (roleIri == null) return;
+        if (roleIri == null) {
+            return;
+        }
 
         IRI roleType = findRoleTier(np, roleIri);
         List<IRI> regulars = collectRolePredicate(np, roleIri, GEN.HAS_REGULAR_PROPERTY);
@@ -414,11 +473,17 @@ public final class SpacesExtractor {
      */
     private static IRI findRoleTier(Nanopub np, IRI roleIri) {
         for (Statement st : np.getAssertion()) {
-            if (!roleIri.equals(st.getSubject())) continue;
-            if (!st.getPredicate().equals(RDF.TYPE)) continue;
-            if (!(st.getObject() instanceof IRI type)) continue;
+            if (!roleIri.equals(st.getSubject())) {
+                continue;
+            }
+            if (!st.getPredicate().equals(RDF.TYPE)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI type)) {
+                continue;
+            }
             if (GEN.MAINTAINER_ROLE.equals(type) || GEN.MEMBER_ROLE.equals(type)
-                    || GEN.OBSERVER_ROLE.equals(type)) {
+                || GEN.OBSERVER_ROLE.equals(type)) {
                 return type;
             }
         }
@@ -428,9 +493,15 @@ public final class SpacesExtractor {
     private static List<IRI> collectRolePredicate(Nanopub np, IRI roleIri, IRI predicate) {
         List<IRI> out = new ArrayList<>();
         for (Statement st : np.getAssertion()) {
-            if (!roleIri.equals(st.getSubject())) continue;
-            if (!predicate.equals(st.getPredicate())) continue;
-            if (!(st.getObject() instanceof IRI obj)) continue;
+            if (!roleIri.equals(st.getSubject())) {
+                continue;
+            }
+            if (!predicate.equals(st.getPredicate())) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI obj)) {
+                continue;
+            }
             out.add(obj);
         }
         return out;
@@ -454,9 +525,15 @@ public final class SpacesExtractor {
         for (Statement st : np.getAssertion()) {
             IRI predicate = st.getPredicate();
             BackcompatRolePredicates.Direction direction = directionFor(predicate);
-            if (direction == null) continue;
-            if (!(st.getSubject() instanceof IRI subjIri)) continue;
-            if (!(st.getObject() instanceof IRI objIri)) continue;
+            if (direction == null) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI subjIri)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI objIri)) {
+                continue;
+            }
 
             IRI spaceSide;
             IRI agentSide;
@@ -476,7 +553,9 @@ public final class SpacesExtractor {
             // entry on this subject.
             IRI subject = SpacesVocab.forRoleInstantiation(ctx.artifactCode());
             Statement typeSt = vf.createStatement(subject, RDF.TYPE, GEN.ROLE_INSTANTIATION, GRAPH);
-            if (out.contains(typeSt)) return;
+            if (out.contains(typeSt)) {
+                return;
+            }
 
             out.add(typeSt);
             out.add(vf.createStatement(subject, SpacesVocab.FOR_SPACE, spaceSide, GRAPH));
@@ -492,7 +571,9 @@ public final class SpacesExtractor {
     }
 
     private static BackcompatRolePredicates.Direction directionFor(IRI predicate) {
-        if (GEN.HAS_ADMIN.equals(predicate)) return BackcompatRolePredicates.Direction.INVERSE;
+        if (GEN.HAS_ADMIN.equals(predicate)) {
+            return BackcompatRolePredicates.Direction.INVERSE;
+        }
         return BackcompatRolePredicates.DIRECTIONS.get(predicate);
     }
 
@@ -506,9 +587,15 @@ public final class SpacesExtractor {
      */
     private static void extractSubSpaceOf(Nanopub np, Context ctx, List<Statement> out) {
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.IS_SUB_SPACE_OF)) continue;
-            if (!(st.getSubject() instanceof IRI childIri)) continue;
-            if (!(st.getObject() instanceof IRI parentIri)) continue;
+            if (!st.getPredicate().equals(GEN.IS_SUB_SPACE_OF)) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI childIri)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI parentIri)) {
+                continue;
+            }
             emitSubSpaceDeclaration(np, ctx, childIri, parentIri, out);
         }
     }
@@ -522,9 +609,15 @@ public final class SpacesExtractor {
     private static void emitSubSpaceDeclarations(Nanopub np, Context ctx, IRI spaceIri,
                                                  List<Statement> out) {
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.IS_SUB_SPACE_OF)) continue;
-            if (!spaceIri.equals(st.getSubject())) continue;
-            if (!(st.getObject() instanceof IRI parentIri)) continue;
+            if (!st.getPredicate().equals(GEN.IS_SUB_SPACE_OF)) {
+                continue;
+            }
+            if (!spaceIri.equals(st.getSubject())) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI parentIri)) {
+                continue;
+            }
             emitSubSpaceDeclaration(np, ctx, spaceIri, parentIri, out);
         }
     }
@@ -537,7 +630,7 @@ public final class SpacesExtractor {
     private static void emitSubSpaceDeclaration(Nanopub np, Context ctx, IRI childIri,
                                                 IRI parentIri, List<Statement> out) {
         if (childIri.equals(parentIri)) {
-            log.debug("Ignoring self-loop sub-space declaration on {} in {}", childIri, np.getUri());
+            logger.debug("Ignoring self-loop sub-space declaration on {} in {}", childIri, np.getUri());
             return;
         }
         String parentHash = Utils.createHash(parentIri);
@@ -548,7 +641,9 @@ public final class SpacesExtractor {
         // gen:isSubSpaceOf as well. Skip if we've already emitted the type triple for
         // this subject.
         Statement typeSt = vf.createStatement(subject, RDF.TYPE, SpacesVocab.SUB_SPACE_DECLARATION, GRAPH);
-        if (out.contains(typeSt)) return;
+        if (out.contains(typeSt)) {
+            return;
+        }
 
         out.add(typeSt);
         out.add(vf.createStatement(subject, SpacesVocab.CHILD_SPACE, childIri, GRAPH));
@@ -568,9 +663,15 @@ public final class SpacesExtractor {
      */
     private static void extractIsMaintainedBy(Nanopub np, Context ctx, List<Statement> out) {
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.IS_MAINTAINED_BY)) continue;
-            if (!(st.getSubject() instanceof IRI resourceIri)) continue;
-            if (!(st.getObject() instanceof IRI spaceIri)) continue;
+            if (!st.getPredicate().equals(GEN.IS_MAINTAINED_BY)) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI resourceIri)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI spaceIri)) {
+                continue;
+            }
             emitMaintainedResourceDeclaration(np, ctx, resourceIri, spaceIri, out);
         }
     }
@@ -584,9 +685,15 @@ public final class SpacesExtractor {
     private static void emitMaintainedResourceDeclarations(Nanopub np, Context ctx, IRI spaceIri,
                                                            List<Statement> out) {
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(GEN.IS_MAINTAINED_BY)) continue;
-            if (!spaceIri.equals(st.getObject())) continue;
-            if (!(st.getSubject() instanceof IRI resourceIri)) continue;
+            if (!st.getPredicate().equals(GEN.IS_MAINTAINED_BY)) {
+                continue;
+            }
+            if (!spaceIri.equals(st.getObject())) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI resourceIri)) {
+                continue;
+            }
             emitMaintainedResourceDeclaration(np, ctx, resourceIri, spaceIri, out);
         }
     }
@@ -599,7 +706,7 @@ public final class SpacesExtractor {
     private static void emitMaintainedResourceDeclaration(Nanopub np, Context ctx, IRI resourceIri,
                                                           IRI spaceIri, List<Statement> out) {
         if (resourceIri.equals(spaceIri)) {
-            log.debug("Ignoring self-loop maintained-resource declaration on {} in {}",
+            logger.debug("Ignoring self-loop maintained-resource declaration on {} in {}",
                     resourceIri, np.getUri());
             return;
         }
@@ -612,7 +719,9 @@ public final class SpacesExtractor {
         // we've already emitted the type triple for this subject.
         Statement typeSt = vf.createStatement(subject, RDF.TYPE,
                 SpacesVocab.MAINTAINED_RESOURCE_DECLARATION, GRAPH);
-        if (out.contains(typeSt)) return;
+        if (out.contains(typeSt)) {
+            return;
+        }
 
         out.add(typeSt);
         out.add(vf.createStatement(subject, SpacesVocab.RESOURCE_IRI, resourceIri, GRAPH));
@@ -634,9 +743,15 @@ public final class SpacesExtractor {
     private static void emitSpaceAliasDeclarations(Nanopub np, Context ctx, IRI spaceIri,
                                                    List<Statement> out) {
         for (Statement st : np.getAssertion()) {
-            if (!st.getPredicate().equals(OWL.SAMEAS)) continue;
-            if (!spaceIri.equals(st.getSubject())) continue;
-            if (!(st.getObject() instanceof IRI aliasIri)) continue;
+            if (!st.getPredicate().equals(OWL.SAMEAS)) {
+                continue;
+            }
+            if (!spaceIri.equals(st.getSubject())) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI aliasIri)) {
+                continue;
+            }
             emitSpaceAliasDeclaration(np, ctx, spaceIri, aliasIri, out);
         }
     }
@@ -649,7 +764,7 @@ public final class SpacesExtractor {
     private static void emitSpaceAliasDeclaration(Nanopub np, Context ctx, IRI canonicalIri,
                                                   IRI aliasIri, List<Statement> out) {
         if (canonicalIri.equals(aliasIri)) {
-            log.debug("Ignoring self-alias declaration on {} in {}", canonicalIri, np.getUri());
+            logger.debug("Ignoring self-alias declaration on {} in {}", canonicalIri, np.getUri());
             return;
         }
         String aliasHash = Utils.createHash(aliasIri);
@@ -658,7 +773,9 @@ public final class SpacesExtractor {
         // Idempotence: a single (np, canonical, alias) combination should produce one entry
         // even if emitSpaceAliasDeclarations somehow sees the triple twice.
         Statement typeSt = vf.createStatement(subject, RDF.TYPE, SpacesVocab.SPACE_ALIAS_DECLARATION, GRAPH);
-        if (out.contains(typeSt)) return;
+        if (out.contains(typeSt)) {
+            return;
+        }
 
         out.add(typeSt);
         out.add(vf.createStatement(subject, SpacesVocab.CANONICAL_SPACE, canonicalIri, GRAPH));
@@ -695,16 +812,24 @@ public final class SpacesExtractor {
     static List<IRI> enumerateIdPrefixes(IRI spaceIri) {
         String s = spaceIri.stringValue();
         int hash = s.indexOf('#');
-        if (hash >= 0) s = s.substring(0, hash);
+        if (hash >= 0) {
+            s = s.substring(0, hash);
+        }
         int qmark = s.indexOf('?');
-        if (qmark >= 0) s = s.substring(0, qmark);
+        if (qmark >= 0) {
+            s = s.substring(0, qmark);
+        }
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
 
         int schemeEnd = s.indexOf("://");
-        if (schemeEnd < 0) return Collections.emptyList();
+        if (schemeEnd < 0) {
+            return Collections.emptyList();
+        }
         int hostStart = schemeEnd + 3;
         int hostEnd = s.indexOf('/', hostStart);
-        if (hostEnd < 0) return Collections.emptyList();   // host-only, nothing to strip
+        if (hostEnd < 0) {
+            return Collections.emptyList();   // host-only, nothing to strip
+        }
 
         // Drop the last path segment. If that strips us back to the host (single-
         // segment path), return the host-only IRI as the immediate parent.
@@ -731,7 +856,9 @@ public final class SpacesExtractor {
 
     private static boolean anyMatch(Set<IRI> types, Set<IRI> candidates) {
         for (IRI c : candidates) {
-            if (types.contains(c)) return true;
+            if (types.contains(c)) {
+                return true;
+            }
         }
         return false;
     }
@@ -744,8 +871,8 @@ public final class SpacesExtractor {
      * extraction writes. Also bumps {@code npa:thisRepo npa:currentLoadCounter <N>}
      * in the admin graph so the materializer's delta cycles know the horizon.
      *
-     * @param npId        nanopub IRI
-     * @param loadNumber  the load counter value
+     * @param npId       nanopub IRI
+     * @param loadNumber the load counter value
      * @return two statements: load-number stamp + current-load-counter value
      */
     public static List<Statement> loadCounterStatements(IRI npId, long loadNumber) {

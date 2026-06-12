@@ -44,7 +44,7 @@ public class TripleStore {
 
     private static ValueFactory vf = SimpleValueFactory.getInstance();
 
-    private static final Logger log = LoggerFactory.getLogger(TripleStore.class);
+    private static final Logger logger = LoggerFactory.getLogger(TripleStore.class);
 
     private final Map<String, Repository> repositories = new LinkedHashMap<>();
 
@@ -71,7 +71,7 @@ public class TripleStore {
             try {
                 tripleStoreInstance = new TripleStore();
             } catch (IOException ex) {
-                log.info("Could not init TripleStore. ", ex);
+                logger.info("Could not init TripleStore. ", ex);
             }
         }
         return tripleStoreInstance;
@@ -84,7 +84,7 @@ public class TripleStore {
         // the singleton uninitialised. Same fragile mechanism that caused issue #117
         // on the per-nanopub hot path (see Utils.getEnvString); retired here too.
         endpointBase = System.getenv("ENDPOINT_BASE");
-        log.info("Endpoint base: {}", endpointBase);
+        logger.info("Endpoint base: {}", endpointBase);
         endpointType = System.getenv("ENDPOINT_TYPE");
 
         getRepository("empty");  // Make sure empty repo exists
@@ -222,12 +222,12 @@ public class TripleStore {
                 continue;
             }
             iter.remove();
-            log.info("Shutting down repo: {}", e.getKey());
+            logger.info("Shutting down repo: {}", e.getKey());
             e.getValue().shutDown();
-            log.info("Shutdown complete");
+            logger.info("Shutdown complete");
         }
         if (!skipped.isEmpty()) {
-            log.warn("Skipped eviction for {} active repo(s); cache size is now {} (cap 100). Active names: {}",
+            logger.warn("Skipped eviction for {} active repo(s); cache size is now {} (cap 100). Active names: {}",
                     skipped.size(), repositories.size(), skipped);
         }
     }
@@ -271,7 +271,7 @@ public class TripleStore {
         // the configured pool sizes (and, once change 1 of the fix plan lands, the
         // socket/connection-request timeouts).
         try {
-            //log.info("Trying to creating repo " + name);
+            //logger.info("Trying to creating repo " + name);
 
             // TODO new syntax somehow doesn't work for the Lucene case:
 
@@ -378,20 +378,20 @@ public class TripleStore {
             try (CloseableHttpResponse response = httpclient.execute(createRepoRequest)) {
                 int statusCode = response.getStatusLine().getStatusCode();
                 if (statusCode == 409) {
-                    //log.info("Already exists.");
+                    //logger.info("Already exists.");
                     getRepository(repoName).init();
                 } else if (statusCode >= 200 && statusCode < 300) {
-                    //log.info("Successfully created.");
+                    //logger.info("Successfully created.");
                     initNewRepo(repoName);
                 } else {
-                    log.info("Status code: {}", response.getStatusLine().getStatusCode());
-                    log.info(response.getStatusLine().getReasonPhrase());
+                    logger.info("Status code: {}", response.getStatusLine().getStatusCode());
+                    logger.info(response.getStatusLine().getReasonPhrase());
                     String handledResponse = new BasicResponseHandler().handleResponse(response);
-                    log.info("Response: {}", handledResponse);
+                    logger.info("Response: {}", handledResponse);
                 }
             }
         } catch (IOException ex) {
-            log.info("Could not create repo.", ex);
+            logger.info("Could not create repo.", ex);
         }
     }
 
@@ -468,7 +468,7 @@ public class TripleStore {
                     lineCount = lineCount + 1;
                 }
             } catch (IOException ex) {
-                log.info("Could not get repository names.", ex);
+                logger.info("Could not get repository names.", ex);
                 return null;
             }
             cachedRepositoryNames = repositoryNames.keySet();

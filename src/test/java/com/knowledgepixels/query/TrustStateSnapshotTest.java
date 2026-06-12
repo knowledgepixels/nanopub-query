@@ -1,19 +1,18 @@
 package com.knowledgepixels.query;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class TrustStateSnapshotTest {
 
-    /** Mirrors the live registry response shape: trustStateCounter is BSON-wrapped, plain
-     *  ZonedDateTime.toString() format for createdAt (with [Etc/UTC] zone bracket),
-     *  and a couple of representative account entries. */
+    /**
+     * Mirrors the live registry response shape: trustStateCounter is BSON-wrapped, plain
+     * ZonedDateTime.toString() format for createdAt (with [Etc/UTC] zone bracket),
+     * and a couple of representative account entries.
+     */
     private static final String FIXTURE = """
             {
               "trustStateHash": "abc123",
@@ -70,7 +69,7 @@ class TrustStateSnapshotTest {
     @Test
     void parse_extractsAccountEntryFields() {
         TrustStateSnapshot s = TrustStateSnapshot.parse(FIXTURE);
-        TrustStateSnapshot.AccountEntry first = s.accounts().get(0);
+        TrustStateSnapshot.AccountEntry first = s.accounts().getFirst();
         assertEquals("edf7482308e4e59fc3f658fbd1fe2a2a9a538de3adce2ec7ad6c5f804461d310", first.pubkey());
         assertEquals("https://orcid.org/0000-0001-5118-256X", first.agent());
         assertEquals("toLoad", first.status());
@@ -173,7 +172,7 @@ class TrustStateSnapshotTest {
                 }
                 """;
         TrustStateSnapshot s = TrustStateSnapshot.parse(json);
-        TrustStateSnapshot.AccountEntry a = s.accounts().get(0);
+        TrustStateSnapshot.AccountEntry a = s.accounts().getFirst();
         assertEquals("Tobias Kuhn", a.name());
         assertEquals(Instant.parse("2025-11-12T10:30:00Z"), a.nameCreatedAt());
     }
@@ -184,7 +183,7 @@ class TrustStateSnapshotTest {
         // keys at all. Parser must treat them as null, not throw — the schema
         // is additive and consumers must work against either registry version.
         TrustStateSnapshot s = TrustStateSnapshot.parse(FIXTURE);
-        TrustStateSnapshot.AccountEntry a = s.accounts().get(0);
+        TrustStateSnapshot.AccountEntry a = s.accounts().getFirst();
         assertNull(a.name());
         assertNull(a.nameCreatedAt());
     }
@@ -214,7 +213,7 @@ class TrustStateSnapshotTest {
                 }
                 """;
         TrustStateSnapshot s = TrustStateSnapshot.parse(json);
-        assertEquals(Instant.parse("2025-06-15T09:00:00Z"), s.accounts().get(0).nameCreatedAt());
+        assertEquals(Instant.parse("2025-06-15T09:00:00Z"), s.accounts().getFirst().nameCreatedAt());
     }
 
     @Test
@@ -242,7 +241,7 @@ class TrustStateSnapshotTest {
                 }
                 """;
         TrustStateSnapshot s = TrustStateSnapshot.parse(json);
-        TrustStateSnapshot.AccountEntry a = s.accounts().get(0);
+        TrustStateSnapshot.AccountEntry a = s.accounts().getFirst();
         assertEquals("skipped", a.status());
         assertEquals(2, a.depth());
         assertNull(a.pathCount());

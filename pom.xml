@@ -32,11 +32,11 @@
     <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
     <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
     <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
-    <jacoco-maven-plugin.version>0.8.14</jacoco-maven-plugin.version>
+    <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <jib-maven-plugin.version>3.5.1</jib-maven-plugin.version>
 
     <vertx.version>4.5.11</vertx.version>
-    <junit-jupiter.version>5.13.3</junit-jupiter.version>
+    <junit-jupiter.version>6.1.0</junit-jupiter.version>
     <rdf4j.version>5.3.1</rdf4j.version>
 
     <main.verticle>com.knowledgepixels.query.MainVerticle</main.verticle>
@@ -56,11 +56,11 @@
     <dependencies>
       <!-- Align all JUnit artifacts. MUST precede vertx-stack-depchain: that BOM pins
            JUnit to 5.9.3 / platform 1.9.3 (via vertx-junit5), and with imported BOMs the
-           first-declared wins. Our junit-jupiter 5.13.3 needs platform 1.13.3; the
-           surefire launcher otherwise calls
+           first-declared wins. Our junit-jupiter (${junit-jupiter.version}) needs a newer
+           platform; the surefire launcher otherwise calls
            EngineDiscoveryRequest.getOutputDirectoryProvider() (platform 1.11+) against the
            1.9.3 engine -> NoSuchMethodError at test discovery. Declaring this first lets
-           5.13.3 / 1.13.3 win. -->
+           our version win. -->
       <dependency>
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
@@ -120,20 +120,13 @@
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-api</artifactId>
-      <version>${junit-jupiter.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
-      <version>${junit-jupiter.version}</version>
+      <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.nanopub</groupId>
       <artifactId>nanopub</artifactId>
-      <version>1.89.0</version>
+      <version>1.90.0</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>

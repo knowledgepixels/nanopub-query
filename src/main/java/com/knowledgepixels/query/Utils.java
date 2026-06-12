@@ -37,7 +37,7 @@ public class Utils {
 
     private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
-    private static final Logger log = LoggerFactory.getLogger(Utils.class);
+    private static final Logger logger = LoggerFactory.getLogger(Utils.class);
 
     private static Map<String, Value> hashToObjMap;
 
@@ -207,7 +207,7 @@ public class Utils {
                 return Integer.parseInt(s);
             }
         } catch (Exception ex) {
-            log.info("Could not get environment variable", ex);
+            logger.info("Could not get environment variable", ex);
         }
         return defaultValue;
     }
@@ -230,7 +230,7 @@ public class Utils {
                 p.load(in);
             }
         } catch (IOException ex) {
-            log.warn("Could not read version.properties", ex);
+            logger.warn("Could not read version.properties", ex);
         }
         v = p.getProperty("version", "unknown");
         version = v;
