@@ -180,7 +180,7 @@ The read path becomes ref-explicit end to end — Nanodash carries the ref it se
 
 | Query | Change |
 |---|---|
-| `get-spaces` | Already enumerates `npa:SpaceRef`/`npa:forSpaceRef`. **Project the ref** (`?spaceRef`) alongside `space_iri`, so the consumer can carry it. |
+| `get-spaces` | Already enumerates `npa:SpaceRef`/`npa:forSpaceRef`. **Project the ref** (`?spaceRef`) alongside `space_iri`, so the consumer can carry it. **Gate non-root definitions on the ref's validated admin set** (see [Definition selection within a ref](#definition-selection-within-a-ref)). |
 | `get-space-admins` | Accept a **ref** (or `(spaceIri, rootNp)`); match `?ri npa:forSpaceRef ?ref ; npa:inverseProperty gen:hasAdmin`. |
 | `get-space-admin-pubkey-hashes` | Same: admin RI on `npa:forSpaceRef ?ref` + AccountState. |
 | `get-space-roles` | RoleAssignment on `npa:forSpaceRef ?ref`. |
@@ -191,6 +191,37 @@ The read path becomes ref-explicit end to end — Nanodash carries the ref it se
 The grlc queries are published nanopubs (`RA…` IDs); new revisions ship with the Nanodash
 change. See the post-4.28.0 Nanodash `QueryApiAccess` "Spaces-repo queries" block for the
 current IDs.
+
+### Definition selection within a ref
+
+Ref isolation alone does not gate what happens *inside* a ref: any nanopub that re-roots
+to an existing root via `gen:hasRootDefinition` joins that ref as a further
+`npa:SpaceDefinition`, and nothing in the extraction path checks who signed it. A
+latest-definition-wins read (the current `get-spaces` `ORDER BY DESC(?date)`) would
+therefore let a non-admin re-label or re-describe a space without creating a rival ref.
+
+Rule, enforced in the read path (`get-spaces`), not in materialization:
+
+- The **root definition** (the one whose `npa:viaNanopub` equals the ref's
+  `npa:rootNanopub`) is trusted by construction — its NPID *is* the ref identity. Note
+  that its *signer* need not be in its own `npa:hasRootAdmin` set (spaces are sometimes
+  set up on behalf of their admins), so no signer check applies to it.
+- A **non-root definition** supplies display data (label, type, description, dates,
+  alt-IDs, default provenance) only if its `npa:pubkeyHash` resolves to a validated
+  admin of the ref — i.e. it matches the same per-ref admin set that
+  `get-space-admins` / `get-space-admin-pubkey-hashes` read (`npa:forSpaceRef ?ref` +
+  AccountState).
+- Selection: the latest non-invalidated definition passing this gate; the root
+  definition is the floor when no gated update exists.
+- Edge case — the root definition is itself invalidated and no gated update exists,
+  yet the ref is still alive via some ungated (non-admin) definition. The floor is then
+  gone and nothing passes the gate, so the ref renders with no label/type/description.
+  This is the intended outcome (an admin-superseded space with only unauthorized updates
+  left has no authoritative display data), not an accident — `get-spaces` simply returns
+  the ref with empty display fields, and Nanodash shows the bare IRI.
+
+Definitions failing the gate stay in the extraction graph untouched (add-only as
+always); they are simply never selected for display.
 
 ### Nanodash-side
 
@@ -214,6 +245,28 @@ The extraction graph (`npa:spacesGraph` raw rows) is unchanged, so loaded nanopu
 re-extraction. Ship the change, then force a resync (`FORCE_RESYNC`) so the resolver rebuilds the
 state graph under the new keying.
 
+### Stray-ref cleanup (data task, before or with the co-release)
+
+Per-ref display fragments legacy multi-ref spaces into duplicate entries (accepted
+consequence 1). As measured on the live spaces repo on 2026-06-12, this affects 6 of 114
+spaces (14 stray refs), all same-owner rootless-transition duplicates with identical
+root-admin sets across refs (in three cases under *different* signers):
+
+| Space IRI (under `https://w3id.org/spaces/`) | Live refs |
+|---|---|
+| `plantmetwiki` | 4 |
+| `PSE8/Nanopublications-Hackathon` | 3 |
+| `knowledgepixels/incubator/project2` | 3 |
+| `ReproNanopub` | 2 |
+| `nanopub/nanosessions/session31` | 2 |
+| `sciencelive/dggs4eo` | 2 |
+
+Cleanup: republish each space once with an explicit `gen:hasRootDefinition` pointing at
+the ref to keep, and invalidate the stray definitions so their refs go dead
+(`spaceRefAliveFilter` then drops their seeds). Pure publishing activity — no code in
+either repo — but it should land before users see per-ref listings, so duplicates never
+render.
+
 ## Testing
 
 - Two refs sharing a Space IRI with disjoint root admins → admin/role/member sets stay disjoint;
@@ -226,3 +279,6 @@ state graph under the new keying.
   subjects, no dedup collision.
 - `get-space-members` returns only validated members and respects ref isolation; carries the
   role property so client-side role mapping still works.
+- Within-ref definition gating: a later definition re-rooted to the ref by a non-admin does
+  not change the selected label/type; the same definition signed by a validated admin of the
+  ref does. A ref with no gated update falls back to its root definition.
