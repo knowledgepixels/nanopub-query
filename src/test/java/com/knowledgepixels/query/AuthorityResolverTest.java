@@ -241,11 +241,11 @@ class AuthorityResolverTest {
         assertTrue(sparql.contains("npa:childSpace"), "childSpace predicate");
         assertTrue(sparql.contains("npa:parentSpace"), "parentSpace predicate");
         assertTrue(sparql.contains("npa:viaNanopub"), "viaNanopub provenance preserved");
-        // Convenience direct triples on Space IRIs themselves.
-        assertTrue(sparql.contains("?child  npa:isSubSpaceOf ?parent"),
-                "direct child→parent triple emitted");
-        assertTrue(sparql.contains("?parent npa:hasSubSpace  ?child"),
-                "direct parent→child triple emitted");
+        // Convenience direct triples are ref-to-ref (per-space-ref isolation).
+        assertTrue(sparql.contains("?childRef  npa:isSubSpaceOf ?parentRef"),
+                "direct childRef→parentRef triple emitted");
+        assertTrue(sparql.contains("?parentRef npa:hasSubSpace  ?childRef"),
+                "direct parentRef→childRef triple emitted");
     }
 
     @Test
@@ -296,12 +296,12 @@ class AuthorityResolverTest {
                 "invalidation filter for primary nanopub");
         assertTrue(sparql.contains("?_inv_np2 "),
                 "invalidation filter for Mode B co-declaration");
-        // Dedup against the state graph's existing SubSpaceDeclaration rows.
+        // Dedup is on the emitted ref-to-ref edge (per-space-ref isolation).
         java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
                 "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<" + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
-                        + ">\\s*\\{\\s*\\?d\\s+a\\s+npa:SubSpaceDeclaration");
+                        + ">\\s*\\{\\s*\\?childRef\\s+npa:isSubSpaceOf\\s+\\?parentRef");
         assertTrue(dedup.matcher(sparql).find(),
-                "dedup excludes already-validated declarations");
+                "dedup excludes already-emitted ref-to-ref edges");
     }
 
     @Test
@@ -343,17 +343,17 @@ class AuthorityResolverTest {
                 "reified tag class for derived edges");
         assertTrue(sparql.contains("npa:derivationKind npa:byUrlPrefix"),
                 "tag carries the byUrlPrefix derivation marker");
-        // Convenience direct triples on Space IRIs.
-        assertTrue(sparql.contains("?child  npa:isSubSpaceOf ?parent"),
-                "direct child→parent triple emitted");
-        assertTrue(sparql.contains("?parent npa:hasSubSpace  ?child"),
-                "direct parent→child triple emitted");
-        // Per-pair tag IRI minted via MD5 BIND.
+        // Convenience direct triples are ref-to-ref (per-space-ref isolation).
+        assertTrue(sparql.contains("?childRef  npa:isSubSpaceOf ?parentRef"),
+                "direct childRef→parentRef triple emitted");
+        assertTrue(sparql.contains("?parentRef npa:hasSubSpace  ?childRef"),
+                "direct parentRef→childRef triple emitted");
+        // Per-ref-pair tag IRI minted via MD5 BIND.
         java.util.regex.Pattern bind = java.util.regex.Pattern.compile(
                 "BIND\\s*\\(\\s*IRI\\s*\\(\\s*CONCAT\\s*\\([\\s\\S]*?MD5\\s*\\(\\s*CONCAT\\s*\\("
-                        + "\\s*STR\\s*\\(\\s*\\?child\\s*\\)\\s*,\\s*\"\\|\"\\s*,\\s*STR\\s*\\(\\s*\\?parent\\s*\\)");
+                        + "\\s*STR\\s*\\(\\s*\\?childRef\\s*\\)\\s*,\\s*\"\\|\"\\s*,\\s*STR\\s*\\(\\s*\\?parentRef\\s*\\)");
         assertTrue(bind.matcher(sparql).find(),
-                "tag IRI minted as MD5(child|parent) via BIND");
+                "tag IRI minted as MD5(childRef|parentRef) via BIND");
     }
 
     @Test
@@ -408,11 +408,11 @@ class AuthorityResolverTest {
         assertTrue(sparql.contains("npa:resourceIri"), "resourceIri predicate");
         assertTrue(sparql.contains("npa:maintainerSpace"), "maintainerSpace predicate");
         assertTrue(sparql.contains("npa:viaNanopub"), "viaNanopub provenance preserved");
-        // Convenience direct triples on the resource and space IRIs themselves.
-        assertTrue(sparql.contains("?r npa:isMaintainedBy"),
-                "direct resource→space triple emitted");
-        assertTrue(sparql.contains("?s npa:hasMaintainedResource"),
-                "direct space→resource triple emitted");
+        // Convenience direct triples: resource → maintaining ref (per-space-ref isolation).
+        assertTrue(sparql.contains("?r npa:isMaintainedBy        ?sRef"),
+                "direct resource→ref triple emitted");
+        assertTrue(sparql.contains("?sRef npa:hasMaintainedResource ?r"),
+                "direct ref→resource triple emitted");
     }
 
     @Test
@@ -448,13 +448,13 @@ class AuthorityResolverTest {
                 "load-number delta filter on the declaration nanopub");
         assertTrue(sparql.contains("?_inv_np "),
                 "invalidation filter for the declaration nanopub");
-        // Dedup against the state graph's existing MaintainedResourceDeclaration rows.
+        // Dedup is on the emitted resource → ref edge (per-space-ref isolation).
         java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
                 "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<"
                         + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
-                        + ">\\s*\\{\\s*\\?d\\s+a\\s+npa:MaintainedResourceDeclaration");
+                        + ">\\s*\\{\\s*\\?r\\s+npa:isMaintainedBy\\s+\\?sRef");
         assertTrue(dedup.matcher(sparql).find(),
-                "dedup excludes already-validated declarations");
+                "dedup excludes already-emitted resource→ref edges");
     }
 
     @Test
@@ -481,12 +481,14 @@ class AuthorityResolverTest {
         assertTrue(sparql.contains("INSERT"), "INSERT clause");
         assertTrue(sparql.contains("npa:SpaceAliasDeclaration"),
                 "anchors on alias-declaration extraction rows");
-        assertTrue(sparql.contains("?alias npa:sameAsSpace ?canonical"),
-                "emits the directional alias -> canonical edge");
-        // Authority gate: publisher must be a validated admin of the canonical space.
+        assertTrue(sparql.contains("?alias npa:sameAsSpace ?canonRef"),
+                "emits the directional alias -> canonical-ref edge (ref-valued)");
+        // Authority gate: publisher must be a validated admin of a canonical ref.
         assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin")
-                        && sparql.contains("npa:forSpace ?canonical"),
-                "publisher-is-admin-of-canonical gate");
+                        && sparql.contains("npa:forSpaceRef ?canonRef"),
+                "publisher-is-admin-of-canonical-ref gate");
+        assertTrue(sparql.contains("?canonRef npa:spaceIri ?canonical"),
+                "resolves canonical IRI to its refs");
         assertTrue(sparql.contains("npa:AccountState"), "resolves pubkey -> publisher");
         assertTrue(sparql.contains("FILTER (?ln > 5)"),
                 "delta filter on the declaration nanopub");
@@ -501,10 +503,10 @@ class AuthorityResolverTest {
         // publish <evil> owl:sameAs <activeSpace> and govern the active space.
         String sparql = AuthorityResolver.aliasAdmitUpdate(TEST_GRAPH, 5);
         assertTrue(sparql.contains("?aliasAdmin") && sparql.contains("npa:forSpace ?alias"),
-                "anti-hijack inspects admins of the alias space");
-        assertTrue(sparql.contains("?canonAdmin") && sparql.contains("npa:forSpace ?canonical"),
-                "anti-hijack compares against admins of the canonical space");
-        // Nested NOT EXISTS = "no alias admin who is not a canonical admin".
+                "anti-hijack inspects admins of the alias IRI (across its refs)");
+        assertTrue(sparql.contains("?canonAdmin") && sparql.contains("npa:forSpaceRef ?canonRef"),
+                "anti-hijack compares against admins of the specific canonical ref");
+        // Nested NOT EXISTS = "no alias admin who is not a canonical-ref admin".
         assertTrue(sparql.indexOf("FILTER NOT EXISTS") != sparql.lastIndexOf("FILTER NOT EXISTS"),
                 "anti-hijack uses a nested FILTER NOT EXISTS");
     }
@@ -514,10 +516,12 @@ class AuthorityResolverTest {
         String sparql = AuthorityResolver.aliasAdmitUpdate(TEST_GRAPH, 0);
         assertTrue(sparql.contains("?_inv_np"),
                 "invalidation filter on the declaration nanopub");
-        // The declaration type appears in the INSERT, the anchor, and the dedup
-        // FILTER NOT EXISTS — at least three occurrences.
-        assertTrue(countOccurrences(sparql, "a npa:SpaceAliasDeclaration") >= 3,
-                "dedup on the declaration subject already in the state graph");
+        // The declaration type appears in the INSERT and the anchor.
+        assertTrue(countOccurrences(sparql, "a npa:SpaceAliasDeclaration") >= 2,
+                "declaration type in INSERT + anchor");
+        // Dedup is on the emitted ref-valued edge, so re-runs add each (alias, ref) once.
+        assertTrue(countOccurrences(sparql, "?alias npa:sameAsSpace ?canonRef") >= 2,
+                "edge emitted in INSERT and checked in the dedup FILTER NOT EXISTS");
     }
 
     private static int countOccurrences(String haystack, String needle) {
@@ -531,21 +535,26 @@ class AuthorityResolverTest {
     @Test
     void attachmentValidationUpdate_honorsSameAsAlias() {
         String sparql = AuthorityResolver.attachmentValidationUpdate(TEST_GRAPH, 5);
-        assertTrue(sparql.contains("?space npa:sameAsSpace ?canon"),
-                "attachment admin gate also accepts admin of an owl:sameAs canonical");
-        assertTrue(sparql.contains("npa:forSpace ?canon"),
-                "alias branch looks up admins on the canonical space");
+        assertTrue(sparql.contains("?space npa:sameAsSpace ?targetRef"),
+                "attachment admin gate also accepts admin of an owl:sameAs canonical ref");
+        assertTrue(sparql.contains("npa:forSpaceRef ?targetRef"),
+                "alias branch looks up admins on the canonical ref");
         assertTrue(sparql.contains("UNION"), "direct + alias branches joined by UNION");
     }
 
     @Test
-    void nonAdminTierUpdate_adminConstraintHonorsSameAsAlias() {
+    void nonAdminTierUpdate_adminConstraintKeysOnAssignmentRef() {
+        // Alias resolution moved upstream: the attachment tier binds the assignment's
+        // ?spaceRef to the canonical ref for owl:sameAs-aliased IRIs (issue #113), so the
+        // non-admin publisher constraint just checks admin-of-?spaceRef — no alias arm.
         String sparql = AuthorityResolver.nonAdminTierUpdate(
                 TEST_GRAPH, 5,
                 com.knowledgepixels.query.vocabulary.GEN.MEMBER_ROLE,
                 AuthorityResolver.PUBLISHER_IS_ADMIN);
-        assertTrue(sparql.contains("?space npa:sameAsSpace ?canon"),
-                "admin publisher constraint accepts admin of an owl:sameAs canonical");
+        assertTrue(sparql.contains("npa:forSpaceRef ?spaceRef"),
+                "admin publisher constraint keys on the assignment's ref");
+        assertFalse(sparql.contains("npa:sameAsSpace"),
+                "no alias re-resolution in the non-admin constraint");
     }
 
     @Test

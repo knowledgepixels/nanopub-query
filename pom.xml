@@ -37,6 +37,7 @@
 
     <vertx.version>4.5.11</vertx.version>
     <junit-jupiter.version>6.1.0</junit-jupiter.version>
+    <rdf4j.version>5.3.1</rdf4j.version>
 
     <main.verticle>com.knowledgepixels.query.MainVerticle</main.verticle>
     <launcher.class>com.knowledgepixels.query.ApplicationLauncher</launcher.class>
@@ -53,6 +54,20 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- Align all JUnit artifacts. MUST precede vertx-stack-depchain: that BOM pins
+           JUnit to 5.9.3 / platform 1.9.3 (via vertx-junit5), and with imported BOMs the
+           first-declared wins. Our junit-jupiter (${junit-jupiter.version}) needs a newer
+           platform; the surefire launcher otherwise calls
+           EngineDiscoveryRequest.getOutputDirectoryProvider() (platform 1.11+) against the
+           1.9.3 engine -> NoSuchMethodError at test discovery. Declaring this first lets
+           our version win. -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit-jupiter.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>io.vertx</groupId>
         <artifactId>vertx-stack-depchain</artifactId>
@@ -60,10 +75,15 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+      <!-- Pin every transitive RDF4J artifact to one version. The nanopub library
+           pulls 5.3.0 (sail-memory, sail-api, repository-sail) while our explicit
+           repository-http / sail-nativerdf pull 5.3.1 (sail-base, evaluation); the
+           resulting MemoryStore-5.3.0-on-sail-base-5.3.1 split breaks SPARQL UPDATE /
+           pattern-delete in the in-process (test) path. The BOM aligns them. -->
       <dependency>
-        <groupId>org.junit</groupId>
-        <artifactId>junit-bom</artifactId>
-        <version>${junit-jupiter.version}</version>
+        <groupId>org.eclipse.rdf4j</groupId>
+        <artifactId>rdf4j-bom</artifactId>
+        <version>${rdf4j.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -117,12 +137,20 @@
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-repository-http</artifactId>
-      <version>5.3.1</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-sail-nativerdf</artifactId>
-      <version>5.3.1</version>
+    </dependency>
+    <!-- JCL→SLF4J bridge, needed at RUNTIME by Apache HttpClient 4.x (used directly by
+         JellyNanopubLoader). The rdf4j-bom manages commons-logging off the runtime
+         classpath in favour of a slf4j bridge, but only ships jcl-over-slf4j at test
+         scope; without this, HttpClient's LogFactory init throws NoClassDefFoundError. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>jcl-over-slf4j</artifactId>
+      <version>2.0.7</version>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>io.micrometer</groupId>
