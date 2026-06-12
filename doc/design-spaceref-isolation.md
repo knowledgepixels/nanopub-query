@@ -258,11 +258,15 @@ state graph under the new keying.
 ### Stray-ref cleanup (data task, before or with the co-release)
 
 Per-ref display fragments legacy multi-ref spaces into duplicate entries (accepted
-consequence 1). As measured on the live spaces repo on 2026-06-12, this affects 6 of 114
-spaces (14 stray refs), all same-owner rootless-transition duplicates with identical
-root-admin sets across refs (in three cases under *different* signers):
+consequence 1). Verified on `query.knowledgepixels.com` on 2026-06-12 (149 spaces total):
+exactly 6 spaces have more than one *alive* ref (a ref with a non-invalidated definition —
+the count that matters; dead `SpaceRef` aggregates persist but seed nothing), for 16 alive
+refs total, i.e. **10 stray refs** to retire. Critically, **all 6 have identical root-admin
+sets across their refs** — benign same-owner rootless-transition duplicates, so no IRI in
+production is exhibiting the privilege-merge bug, and isolation changes no one's actual
+authority (each fragment keeps the same admins); only display de-duplication is needed.
 
-| Space IRI (under `https://w3id.org/spaces/`) | Live refs |
+| Space IRI (under `https://w3id.org/spaces/`) | Alive refs |
 |---|---|
 | `plantmetwiki` | 4 |
 | `PSE8/Nanopublications-Hackathon` | 3 |
