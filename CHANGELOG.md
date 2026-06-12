@@ -1,3 +1,41 @@
+## [1.15.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.4...nanopub-query-1.15.0) (2026-06-12)
+
+### Features
+
+* **spaces:** Phase 0 — ref-key the admin tier + unblock execution tests ([9371caa](https://github.com/knowledgepixels/nanopub-query/commit/9371caa48f3a953e2d00d9381efc16560d70c721))
+* **spaces:** Phase 1 — ref-key the remaining authority tiers ([fa1cbdc](https://github.com/knowledgepixels/nanopub-query/commit/fa1cbdc82d935d615621325d39116fe5ca16f90b))
+
+### Dependency updates
+
+* **core-deps:** update org.nanopub:nanopub to v1.90.0 ([330cf9e](https://github.com/knowledgepixels/nanopub-query/commit/330cf9e733e8f60d8dbe095d1857f1f7b1239384))
+* **deps:** update dependency maven to v3.9.16 ([9af7461](https://github.com/knowledgepixels/nanopub-query/commit/9af746184fbcf1697d128f568465f79a64cf8cf2))
+* **deps:** update junit-jupiter.version to v6.1.0 ([f31d9f2](https://github.com/knowledgepixels/nanopub-query/commit/f31d9f24badd06168831f91f93d0ca5e5940e837))
+* **deps:** update release dependencies to latest version ([601c573](https://github.com/knowledgepixels/nanopub-query/commit/601c573a6b95c7ea50d7e7bb6e140e3de967ee96))
+
+### Bug Fixes
+
+* **deps:** restore commons-logging at runtime via jcl-over-slf4j bridge ([c88858b](https://github.com/knowledgepixels/nanopub-query/commit/c88858b920b2042e0150769fc21457a398198b5b))
+* **env:** read environment via System.getenv instead of forking a subprocess ([4ded0e3](https://github.com/knowledgepixels/nanopub-query/commit/4ded0e3c27a8c61d86b1c8b0003268d0558581c9)), closes [#117](https://github.com/knowledgepixels/nanopub-query/issues/117) [#117](https://github.com/knowledgepixels/nanopub-query/issues/117)
+
+### Tests
+
+* **deps:** add junit-bom dependency and simplify junit-jupiter dependencies ([892117b](https://github.com/knowledgepixels/nanopub-query/commit/892117b5d5cfc38cd6d9df5f1c8ebf1ec0084621))
+* **env:** mock the getRawEnv seam instead of getProcEnvironment ([7178e33](https://github.com/knowledgepixels/nanopub-query/commit/7178e3327e6dbe667c6b04eb22b389441b227704))
+
+### Build and continuous integration
+
+* **deps:** update actions/checkout action to v6.0.3 ([9cc97c6](https://github.com/knowledgepixels/nanopub-query/commit/9cc97c684f81ebad73b0016eb725dcb696f9c87e))
+* **deps:** update actions/setup-java action to v5.2.0 ([6bbc2d5](https://github.com/knowledgepixels/nanopub-query/commit/6bbc2d5beb0a6426207d7764890f5f1a273a5690))
+* **deps:** update jacoco.version to v0.8.15 ([e100dd0](https://github.com/knowledgepixels/nanopub-query/commit/e100dd0aaeb6da6551ac5c810ec68796ce2a3b87))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([e8a0da3](https://github.com/knowledgepixels/nanopub-query/commit/e8a0da3fcd032c2852d1627545cffc61beed166c))
+
+### Refactoring
+
+* **logging:** replace 'log' with 'logger' for consistency across classes and improve logs in general ([7b2f5ac](https://github.com/knowledgepixels/nanopub-query/commit/7b2f5acea7300506653e2528976a91f163c0459d))
+
 ## [1.14.4](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.3...nanopub-query-1.14.4) (2026-05-27)
 
 ### Bug Fixes
