@@ -94,16 +94,19 @@ New / changed predicates on materialized state-graph rows:
 
 ### Per-ref subject minting and dedup
 
-Because a single nanopub now produces rows for multiple refs, every minted subject and every
-`FILTER NOT EXISTS` dedup must include a ref discriminator, or rows collide. Concretely:
+Because a single nanopub now produces rows for multiple refs, the materialized subject must
+include a ref discriminator or rows collide. Two patterns, by tier kind:
 
-- `SpacesVocab.forRoleInstantiation(artifactCode)` /
-  `forRoleInstantiation(artifactCode, discriminatorHash)` gain a **ref-hash** component
-  (`Utils.createHash(<spaceRef>)`), so the same instantiation nanopub yields distinct subjects
-  per ref it validates into. Same for RoleAssignment / sub-space / maintained-resource / alias
-  declaration subjects where fan-out applies.
-- Every dedup `FILTER NOT EXISTS { ... ?existing npa:forSpace ?space ; npa:forAgent ?agent ... }`
-  re-keys to `npa:forSpaceRef ?spaceRef`.
+- **Row-valued tiers** (admin RI, attachment RA, non-admin RI) — the state subject is minted
+  in the INSERT from the extraction subject and the ref, in SPARQL:
+  `BIND(IRI(CONCAT(STR(?ri), "__", ENCODE_FOR_URI(STR(?spaceRef)))) AS ?ri2)`. No Java
+  minting-helper changes; the extraction graph keeps its IRI-keyed subjects untouched. Dedup
+  re-keys from `npa:forSpace ?space` to `npa:forSpaceRef ?spaceRef`.
+- **Structural-edge tiers** (alias, sub-space, maintained-resource, URL-prefix fallback) — the
+  per-declaration row keeps its extraction subject `?d` (re-asserted idempotently); fan-out
+  lives in the emitted *edge*, so dedup keys on the edge itself
+  (`?alias npa:sameAsSpace ?canonRef`, `?childRef npa:isSubSpaceOf ?parentRef`,
+  `?r npa:isMaintainedBy ?sRef`). No subject minting needed.
 
 ## Materialization changes (`AuthorityResolver`)
 
@@ -140,9 +143,16 @@ plus the `?ref npa:spaceIri ?space` indirection where the input is a bare IRI.
   publisher constraint resolves admin-ness via `?spaceRef`; dedup keys on `(?spaceRef, ?agent)`.
 - **Carry the role property onto the inserted row.** The current INSERT writes only
   `?ri a gen:RoleInstantiation ; npa:forSpace ?space ; npa:forAgent ?agent ; npa:viaNanopub ?np`
-  — no `regularProperty`/`inverseProperty`. Add the matched `?pred` (as `npa:regularProperty` /
-  `npa:inverseProperty`) so the validated member row is self-describing. This is what lets
-  `get-space-members` read validated state instead of raw extraction (see Read contract).
+  — no `regularProperty`/`inverseProperty`. Emit the matched `?pred` under a variable predicate
+  `?dirPred` bound in the WHERE to `npa:regularProperty` / `npa:inverseProperty`, so the validated
+  member row is self-describing. This lets `get-space-members` read validated state instead of raw
+  extraction (see Read contract).
+- **Side effect: it also repairs the downward-grant chain.** `publisherIsTieredRole` (the
+  member/observer "published by a maintainer/member" constraint) matches the publisher's own
+  materialized non-admin RI by `npa:regularProperty`/`npa:inverseProperty`. Without the property on
+  those rows, that constraint matched nothing, so maintainer/member-published grants silently never
+  validated. The enrichment makes those paths work for the first time — a behavior change (more
+  grants validate), but the intended downward-only chain.
 
 ### `aliasAdmitUpdate`
 
@@ -150,7 +160,7 @@ plus the `?ref npa:spaceIri ?space` indirection where the input is a bare IRI.
   probe `?adminRI npa:forSpaceRef ?canonRef`. Anti-hijack `admins(alias) ⊆ admins(canonical)`
   evaluated per ref of each side.
 - Emit `<aliasIRI> npa:sameAsSpace <canonRef>` (ref-valued canonical) for each canonical ref the
-  publisher governs. Subject minted with a ref discriminator.
+  publisher governs. The declaration row keeps subject `?d`; dedup is on the emitted edge.
 
 ### `subSpaceAdmitUpdate`
 

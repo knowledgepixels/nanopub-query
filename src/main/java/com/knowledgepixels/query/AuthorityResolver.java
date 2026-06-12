@@ -567,24 +567,17 @@ public final class AuthorityResolver {
      * targeted (pkh → agent) lookup rather than enumerated.
      */
     private static String publisherIsTieredRole(IRI tierClass) {
+        // Re-keyed on the assignment's ref (alias → canonical already resolved by the
+        // attachment tier). Relies on materialized non-admin RIs carrying their role
+        // property (npa:regularProperty / npa:inverseProperty) — supplied by the
+        // enrichment in nonAdminTierUpdate; without it this constraint matched nothing.
         return """
                 ?acct a npa:AccountState ;
                       npa:pubkey ?pkh ;
                       npa:agent  ?publisher .
-                # Tier-role holder in ?space directly, or in a canonical space that
-                # ?space is an owl:sameAs alias of (issue #113).
-                {
-                  ?tierRI a gen:RoleInstantiation ;
-                          npa:forSpace ?space ;
-                          npa:forAgent ?publisher .
-                }
-                UNION
-                {
-                  ?space npa:sameAsSpace ?canon .
-                  ?tierRI a gen:RoleInstantiation ;
-                          npa:forSpace ?canon ;
-                          npa:forAgent ?publisher .
-                }
+                ?tierRI a gen:RoleInstantiation ;
+                        npa:forSpaceRef ?spaceRef ;
+                        npa:forAgent ?publisher .
                 ?rdT a npa:RoleDeclaration ;
                      npa:hasRoleType <%1$s> .
                 { ?tierRI npa:regularProperty ?predT . ?rdT gen:hasRegularProperty ?predT . }
@@ -879,14 +872,23 @@ public final class AuthorityResolver {
      * {@code gen:RoleAssignment} rows to the space-state graph.
      */
     static String attachmentValidationUpdate(IRI graph, long lastProcessed) {
+        // Ref-keyed (see doc/design-spaceref-isolation.md). The attachment names a bare
+        // Space IRI; it is validated per-ref for every ref of that IRI whose admin set
+        // contains the publisher (direct), or — when the named IRI is an owl:sameAs alias
+        // — for the canonical ref it maps to (issue #113). ?targetRef is the ref the
+        // RoleAssignment attaches to; the inserted subject is minted per (?ra, ?targetRef)
+        // so one attachment validating into N refs yields N distinct rows. forSpace (the
+        // attached IRI, possibly an alias) is kept so the non-admin tier can probe the
+        // IRI-keyed instantiations naming it.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
                 INSERT { GRAPH <%3$s> {
-                  ?ra a gen:RoleAssignment ;
-                      npa:forSpace ?space ;
-                      gen:hasRole  ?role ;
-                      npa:viaNanopub ?np .
+                  ?ra2 a gen:RoleAssignment ;
+                       npa:forSpaceRef ?targetRef ;
+                       npa:forSpace ?space ;
+                       gen:hasRole  ?role ;
+                       npa:viaNanopub ?np .
                 } }
                 WHERE {
                   GRAPH <%4$s> {
@@ -904,27 +906,33 @@ public final class AuthorityResolver {
                     ?acct a npa:AccountState ;
                           npa:agent  ?publisher ;
                           npa:pubkey ?pkh .
-                    # Admin of ?space directly, or admin of a canonical space that
-                    # ?space is an owl:sameAs alias of (issue #113).
-                    {
+                  }
+                  # Per-ref admin gate. ?targetRef = a ref of ?space the publisher admins
+                  # (direct), or the canonical ref ?space is an owl:sameAs alias of.
+                  {
+                    GRAPH <%4$s> { ?targetRef npa:spaceIri ?space . }
+                    GRAPH <%3$s> {
                       ?adminRI a gen:RoleInstantiation ;
-                               npa:forSpace ?space ;
-                               npa:inverseProperty gen:hasAdmin ;
-                               npa:forAgent ?publisher .
-                    }
-                    UNION
-                    {
-                      ?space npa:sameAsSpace ?canon .
-                      ?adminRI a gen:RoleInstantiation ;
-                               npa:forSpace ?canon ;
+                               npa:forSpaceRef ?targetRef ;
                                npa:inverseProperty gen:hasAdmin ;
                                npa:forAgent ?publisher .
                     }
                   }
+                  UNION
+                  {
+                    GRAPH <%3$s> {
+                      ?space npa:sameAsSpace ?targetRef .
+                      ?adminRI a gen:RoleInstantiation ;
+                               npa:forSpaceRef ?targetRef ;
+                               npa:inverseProperty gen:hasAdmin ;
+                               npa:forAgent ?publisher .
+                    }
+                  }
+                  BIND(IRI(CONCAT(STR(?ra), "__", ENCODE_FOR_URI(STR(?targetRef)))) AS ?ra2)
                   %6$s
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleAssignment ;
-                              npa:forSpace ?space ;
+                              npa:forSpaceRef ?targetRef ;
                               gen:hasRole  ?role .
                   } }
                 }
@@ -951,22 +959,13 @@ public final class AuthorityResolver {
             ?acct a npa:AccountState ;
                   npa:pubkey ?pkh ;
                   npa:agent  ?publisher .
-            # Admin of ?space directly, or admin of a canonical space that ?space is
-            # an owl:sameAs alias of (issue #113).
-            {
-              ?adminRI a gen:RoleInstantiation ;
-                       npa:forSpace ?space ;
-                       npa:inverseProperty gen:hasAdmin ;
-                       npa:forAgent ?publisher .
-            }
-            UNION
-            {
-              ?space npa:sameAsSpace ?canon .
-              ?adminRI a gen:RoleInstantiation ;
-                       npa:forSpace ?canon ;
-                       npa:inverseProperty gen:hasAdmin ;
-                       npa:forAgent ?publisher .
-            }
+            # Admin of the assignment's ref. The ref already resolves alias →
+            # canonical (the attachment tier bound ?spaceRef through the owl:sameAs
+            # alias edge for aliased IRIs, issue #113), so no alias arm is needed here.
+            ?adminRI a gen:RoleInstantiation ;
+                     npa:forSpaceRef ?spaceRef ;
+                     npa:inverseProperty gen:hasAdmin ;
+                     npa:forAgent ?publisher .
             """;
 
     /** Observer self-evidence: the assignee's own pubkey signed the instantiation. */
@@ -1002,17 +1001,20 @@ public final class AuthorityResolver {
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
                 INSERT { GRAPH <%3$s> {
-                  ?ri a gen:RoleInstantiation ;
-                      npa:forSpace ?space ;
-                      npa:forAgent ?agent ;
-                      npa:viaNanopub ?np .
+                  ?ri2 a gen:RoleInstantiation ;
+                       npa:forSpaceRef ?spaceRef ;
+                       npa:forSpace ?space ;
+                       npa:forAgent ?agent ;
+                       ?dirPred ?pred ;
+                       npa:viaNanopub ?np .
                 } }
                 WHERE {
-                  # 1. Anchor: validated attachments in this space-state graph.
+                  # 1. Anchor: validated attachments in this space-state graph (ref-keyed).
                   GRAPH <%3$s> {
                     ?ra a gen:RoleAssignment ;
-                        gen:hasRole  ?role ;
-                        npa:forSpace ?space .
+                        gen:hasRole     ?role ;
+                        npa:forSpaceRef ?spaceRef ;
+                        npa:forSpace    ?space .
                   }
                   # 2. Tier-pinned RoleDeclaration (?role bound from the attachment).
                   GRAPH <%4$s> {
@@ -1020,15 +1022,19 @@ public final class AuthorityResolver {
                         npa:hasRoleType <%7$s> ;
                         npa:role        ?role ;
                         npa:viaNanopub  ?rdNp .
-                    # 3. Pair direction so only matching combos are explored.
+                    # 3. Pair direction so only matching combos are explored. ?dirPred
+                    #    carries the matched direction so the materialized row records the
+                    #    role property (read by get-space-members and publisherIsTieredRole).
                     {
                       ?rd gen:hasRegularProperty ?pred .
                       ?ri npa:regularProperty    ?pred .
+                      BIND(npa:regularProperty AS ?dirPred)
                     }
                     UNION
                     {
                       ?rd gen:hasInverseProperty ?pred .
                       ?ri npa:inverseProperty    ?pred .
+                      BIND(npa:inverseProperty AS ?dirPred)
                     }
                     # 4. Targeted instantiation lookup — (?space, ?pred) bound.
                     ?ri a gen:RoleInstantiation ;
@@ -1041,6 +1047,8 @@ public final class AuthorityResolver {
                   GRAPH <%3$s> {
                     %9$s
                   }
+                  # 5a. Mint the per-ref state subject: (?ri, ?spaceRef) → ?ri2.
+                  BIND(IRI(CONCAT(STR(?ri), "__", ENCODE_FOR_URI(STR(?spaceRef)))) AS ?ri2)
                   # 6. Load-number filter on bound ?np.
                   GRAPH <%10$s> {
                     ?np npa:hasLoadNumber ?ln .
@@ -1050,10 +1058,10 @@ public final class AuthorityResolver {
                   #    planner defers them until ?rdNp/?np are bound.
                   %8$s
                   %6$s
-                  # 8. Dedup last.
+                  # 8. Dedup last — keyed on (ref, agent, nanopub).
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
-                              npa:forSpace ?space ;
+                              npa:forSpaceRef ?spaceRef ;
                               npa:forAgent ?agent ;
                               npa:viaNanopub ?np .
                   } }
@@ -1102,8 +1110,8 @@ public final class AuthorityResolver {
                      npa:childSpace  ?child ;
                      npa:parentSpace ?parent ;
                      npa:viaNanopub  ?np .
-                  ?child  npa:isSubSpaceOf ?parent .
-                  ?parent npa:hasSubSpace  ?child  .
+                  ?childRef  npa:isSubSpaceOf ?parentRef .
+                  ?parentRef npa:hasSubSpace  ?childRef  .
                 } }
                 WHERE {
                   # 1. Anchor: candidate declarations from the extraction graph.
@@ -1120,21 +1128,24 @@ public final class AuthorityResolver {
                           npa:pubkey ?pkh ;
                           npa:agent  ?publisher .
                   }
-                  # 3. Authority gate.
+                  # 3. Authority gate, ref-keyed. The edge is emitted ref-to-ref between
+                  #    the child ref and parent ref the authorizing admin governs; the
+                  #    admin rows' dual-emitted npa:forSpace binds the refs to the child /
+                  #    parent IRIs (cross-product when an IRI has several governed refs).
                   {
-                    # Mode A — publisher is admin of BOTH child and parent.
-                    FILTER EXISTS { GRAPH <%3$s> {
+                    # Mode A — publisher is admin of BOTH a child ref and a parent ref.
+                    GRAPH <%3$s> {
                       ?riC a gen:RoleInstantiation ;
                            npa:inverseProperty gen:hasAdmin ;
                            npa:forSpace ?child ;
+                           npa:forSpaceRef ?childRef ;
                            npa:forAgent ?publisher .
-                    } }
-                    FILTER EXISTS { GRAPH <%3$s> {
                       ?riP a gen:RoleInstantiation ;
                            npa:inverseProperty gen:hasAdmin ;
                            npa:forSpace ?parent ;
+                           npa:forSpaceRef ?parentRef ;
                            npa:forAgent ?publisher .
-                    } }
+                    }
                   }
                   UNION
                   {
@@ -1154,19 +1165,17 @@ public final class AuthorityResolver {
                       ?acct2 a npa:AccountState ;
                              npa:pubkey ?pkh2 ;
                              npa:agent  ?publisher2 .
-                    }
-                    FILTER EXISTS { GRAPH <%3$s> {
                       ?riA a gen:RoleInstantiation ;
                            npa:inverseProperty gen:hasAdmin ;
-                           npa:forSpace ?child .
+                           npa:forSpace ?child ;
+                           npa:forSpaceRef ?childRef .
                       { ?riA npa:forAgent ?publisher } UNION { ?riA npa:forAgent ?publisher2 }
-                    } }
-                    FILTER EXISTS { GRAPH <%3$s> {
                       ?riB a gen:RoleInstantiation ;
                            npa:inverseProperty gen:hasAdmin ;
-                           npa:forSpace ?parent .
+                           npa:forSpace ?parent ;
+                           npa:forSpaceRef ?parentRef .
                       { ?riB npa:forAgent ?publisher } UNION { ?riB npa:forAgent ?publisher2 }
-                    } }
+                    }
                   }
                   # 4. Invalidation filter on the primary declaration's nanopub.
                   %6$s
@@ -1175,9 +1184,9 @@ public final class AuthorityResolver {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 6. Dedup last.
+                  # 6. Dedup last — on the emitted ref-to-ref edge.
                   FILTER NOT EXISTS { GRAPH <%3$s> {
-                    ?d a npa:SubSpaceDeclaration .
+                    ?childRef npa:isSubSpaceOf ?parentRef .
                   } }
                 }
                 """.formatted(
@@ -1218,8 +1227,8 @@ public final class AuthorityResolver {
                      npa:resourceIri     ?r ;
                      npa:maintainerSpace ?s ;
                      npa:viaNanopub      ?np .
-                  ?r npa:isMaintainedBy        ?s .
-                  ?s npa:hasMaintainedResource ?r .
+                  ?r npa:isMaintainedBy        ?sRef .
+                  ?sRef npa:hasMaintainedResource ?r .
                 } }
                 WHERE {
                   # 1. Anchor: candidate declarations from the extraction graph.
@@ -1235,11 +1244,12 @@ public final class AuthorityResolver {
                     ?acct a npa:AccountState ;
                           npa:pubkey ?pkh ;
                           npa:agent  ?publisher .
-                    # 3. Authority gate (Mode A only): publisher is admin of the
-                    #    maintaining space.
+                    # 3. Authority gate (Mode A only): publisher is admin of a ref of the
+                    #    maintaining space. ?sRef = that ref (resource → ref edge).
                     ?riA a gen:RoleInstantiation ;
                          npa:inverseProperty gen:hasAdmin ;
                          npa:forSpace ?s ;
+                         npa:forSpaceRef ?sRef ;
                          npa:forAgent ?publisher .
                   }
                   # 4. Invalidation filter on the declaration's nanopub.
@@ -1249,9 +1259,9 @@ public final class AuthorityResolver {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 6. Dedup last.
+                  # 6. Dedup last — on the emitted resource → ref edge.
                   FILTER NOT EXISTS { GRAPH <%3$s> {
-                    ?d a npa:MaintainedResourceDeclaration .
+                    ?r npa:isMaintainedBy ?sRef .
                   } }
                 }
                 """.formatted(
@@ -1295,6 +1305,13 @@ public final class AuthorityResolver {
      * re-runs this pass without the load filter and catches it.
      */
     static String aliasAdmitUpdate(IRI graph, long lastProcessed) {
+        // Ref-keyed (see doc/design-spaceref-isolation.md). The declaration names bare
+        // canonical/alias IRIs. It is admitted per canonical *ref* whose admin set
+        // contains the publisher; the emitted edge is ref-valued on the canonical side
+        // (<alias> npa:sameAsSpace <canonicalRef>), which is what the alias-aware admin
+        // lookups in the attachment tier consume. Anti-hijack compares the alias IRI's
+        // admins against that specific canonical ref's admins — strictly tighter than the
+        // old bare-IRI form.
         return """
                 PREFIX npa: <%1$s>
                 PREFIX gen: <%2$s>
@@ -1303,7 +1320,7 @@ public final class AuthorityResolver {
                      npa:canonicalSpace ?canonical ;
                      npa:aliasSpace     ?alias ;
                      npa:viaNanopub     ?np .
-                  ?alias npa:sameAsSpace ?canonical .
+                  ?alias npa:sameAsSpace ?canonRef .
                 } }
                 WHERE {
                   # 1. Anchor: candidate alias declarations from the extraction graph.
@@ -1314,19 +1331,20 @@ public final class AuthorityResolver {
                        npa:pubkeyHash     ?pkh ;
                        npa:viaNanopub     ?np .
                   }
-                  # 2. Mirror + authority gate: publisher is a validated admin of the
-                  #    canonical space.
+                  # 2. Authority gate per canonical ref: ?canonRef is a ref of ?canonical
+                  #    whose admin set contains the declaration's publisher.
+                  GRAPH <%4$s> { ?canonRef npa:spaceIri ?canonical . }
                   GRAPH <%3$s> {
                     ?acct a npa:AccountState ;
                           npa:pubkey ?pkh ;
                           npa:agent  ?publisher .
                     ?adminRI a gen:RoleInstantiation ;
                              npa:inverseProperty gen:hasAdmin ;
-                             npa:forSpace ?canonical ;
+                             npa:forSpaceRef ?canonRef ;
                              npa:forAgent ?publisher .
                   }
-                  # 3. Anti-hijack: the alias must have no admin who is not also an
-                  #    admin of the canonical space (admins(alias) ⊆ admins(canonical)).
+                  # 3. Anti-hijack: the alias IRI must have no admin who is not also an
+                  #    admin of this canonical ref (admins(alias) ⊆ admins(canonRef)).
                   FILTER NOT EXISTS {
                     GRAPH <%3$s> {
                       ?aliasAdmin a gen:RoleInstantiation ;
@@ -1338,7 +1356,7 @@ public final class AuthorityResolver {
                       GRAPH <%3$s> {
                         ?canonAdmin a gen:RoleInstantiation ;
                                     npa:inverseProperty gen:hasAdmin ;
-                                    npa:forSpace ?canonical ;
+                                    npa:forSpaceRef ?canonRef ;
                                     npa:forAgent ?otherAgent .
                       }
                     }
@@ -1350,9 +1368,9 @@ public final class AuthorityResolver {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 6. Dedup last.
+                  # 6. Dedup last — on the emitted (alias, canonical ref) edge.
                   FILTER NOT EXISTS { GRAPH <%3$s> {
-                    ?d a npa:SpaceAliasDeclaration .
+                    ?alias npa:sameAsSpace ?canonRef .
                   } }
                 }
                 """.formatted(
@@ -1398,8 +1416,8 @@ public final class AuthorityResolver {
         return """
                 PREFIX npa: <%1$s>
                 INSERT { GRAPH <%2$s> {
-                  ?child  npa:isSubSpaceOf ?parent .
-                  ?parent npa:hasSubSpace  ?child  .
+                  ?childRef  npa:isSubSpaceOf ?parentRef .
+                  ?parentRef npa:hasSubSpace  ?childRef  .
                   ?tagIri a npa:DerivedSubSpaceLink ;
                           npa:childSpace     ?child ;
                           npa:parentSpace    ?parent ;
@@ -1415,16 +1433,17 @@ public final class AuthorityResolver {
                     ?parentRef npa:spaceIri    ?parent .
                   }
                   # 3. Suppress fallback for any child that has a validated declaration
-                  #    in this state graph. Per-child, all-or-nothing.
+                  #    in this state graph. Per-child IRI, all-or-nothing.
                   FILTER NOT EXISTS {
                     GRAPH <%2$s> {
                       ?d a npa:SubSpaceDeclaration ;
                          npa:childSpace ?child .
                     }
                   }
-                  # 4. Mint a deterministic tag IRI per (child, parent).
+                  # 4. Mint a deterministic tag IRI per (child ref, parent ref) — the edge
+                  #    is emitted ref-to-ref, so the tag and dedup are per ref-pair.
                   BIND(IRI(CONCAT("http://purl.org/nanopub/admin/derivedlink/",
-                                  MD5(CONCAT(STR(?child), "|", STR(?parent))))) AS ?tagIri)
+                                  MD5(CONCAT(STR(?childRef), "|", STR(?parentRef))))) AS ?tagIri)
                   # 5. Dedup: don't re-insert if this tag is already present.
                   FILTER NOT EXISTS {
                     GRAPH <%2$s> {
