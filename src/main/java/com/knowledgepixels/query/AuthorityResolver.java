@@ -750,18 +750,29 @@ public final class AuthorityResolver {
         //      lookup, not a full RoleInstantiation scan.
         //   4. Load-number filter on bound ?np.
         //   5. Dedup at the end.
+        // Authority is keyed on the space *ref* (npa:forSpaceRef), not the bare Space
+        // IRI: two refs that share an IRI but have different roots are independent
+        // domains (see doc/design-spaceref-isolation.md). The instantiation evidence in
+        // the extraction graph is IRI-keyed (a gen:hasAdmin nanopub names the bare IRI),
+        // so we project it per-ref by joining each instantiation naming ?space to the
+        // admin rows of every ref of ?space whose admin set contains the publisher. The
+        // inserted subject is minted per (?ri, ?spaceRef) so one instantiation validating
+        // into N refs yields N distinct rows. Transitional: forSpace is still emitted
+        // alongside forSpaceRef so the not-yet-migrated downstream tiers / read queries
+        // keep functioning; it is dropped once everything keys on forSpaceRef.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
                 INSERT { GRAPH <%3$s> {
-                  ?ri a gen:RoleInstantiation ;
-                      npa:forSpace ?space ;
-                      npa:inverseProperty gen:hasAdmin ;
-                      npa:forAgent ?agent ;
-                      npa:viaNanopub ?np .
+                  ?sri a gen:RoleInstantiation ;
+                       npa:forSpaceRef ?spaceRef ;
+                       npa:forSpace ?space ;
+                       npa:inverseProperty gen:hasAdmin ;
+                       npa:forAgent ?agent ;
+                       npa:viaNanopub ?np .
                 } }
                 WHERE {
-                  # 1. Anchor: who is already an admin of which space?
+                  # 1. Anchor: who is already an admin of which space ref?
                   {
                     # Seed branch: root-admin of a space ref that is still alive
                     # (has at least one non-invalidated definition). NOT filtered on
@@ -778,12 +789,16 @@ public final class AuthorityResolver {
                   }
                   UNION
                   {
-                    # Closed-over branch: an existing admin in this space-state graph.
+                    # Closed-over branch: an existing admin of this ref. Recurse on the
+                    # ref, then resolve its bare IRI to probe the IRI-keyed instantiation.
                     GRAPH <%3$s> {
                       ?prev a gen:RoleInstantiation ;
-                            npa:forSpace        ?space ;
+                            npa:forSpaceRef     ?spaceRef ;
                             npa:inverseProperty gen:hasAdmin ;
                             npa:forAgent        ?publisher .
+                    }
+                    GRAPH <%4$s> {
+                      ?spaceRef npa:spaceIri ?space .
                     }
                   }
                   # 2. Mirror: resolve ?publisher → ?pkh via the trust-approved row.
@@ -792,7 +807,7 @@ public final class AuthorityResolver {
                           npa:agent  ?publisher ;
                           npa:pubkey ?pkh .
                   }
-                  # 3. Targeted instantiation lookup by space + pubkey.
+                  # 3. Targeted instantiation lookup by space + pubkey (IRI-keyed).
                   GRAPH <%4$s> {
                     ?ri a gen:RoleInstantiation ;
                         npa:forSpace        ?space ;
@@ -801,16 +816,18 @@ public final class AuthorityResolver {
                         npa:pubkeyHash      ?pkh ;
                         npa:viaNanopub      ?np .
                   }
+                  # 3a. Mint the per-ref state subject: (?ri, ?spaceRef) → ?sri.
+                  BIND(IRI(CONCAT(STR(?ri), "__", ENCODE_FOR_URI(STR(?spaceRef)))) AS ?sri)
                   %6$s
                   # 4. Load-number filter on bound ?np.
                   GRAPH <%8$s> {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 5. Dedup last.
+                  # 5. Dedup last — keyed on (ref, agent).
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
-                              npa:forSpace ?space ;
+                              npa:forSpaceRef ?spaceRef ;
                               npa:forAgent ?agent ;
                               npa:inverseProperty gen:hasAdmin .
                   } }
