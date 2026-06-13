@@ -1,3 +1,13 @@
+## [1.15.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.15.0...nanopub-query-1.15.1) (2026-06-13)
+
+### Bug Fixes
+
+* **spaces:** Phase 1.5 — IRI-valued dual-emit on structural-edge tiers ([193098b](https://github.com/knowledgepixels/nanopub-query/commit/193098b997e4f0c174d2db558b8959a2a4b25ba9)), closes [#119](https://github.com/knowledgepixels/nanopub-query/issues/119)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([0702817](https://github.com/knowledgepixels/nanopub-query/commit/070281773141fdb998f6a7e5acf2b21bc21e5009))
+
 ## [1.15.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.14.4...nanopub-query-1.15.0) (2026-06-12)
 
 ### Features
