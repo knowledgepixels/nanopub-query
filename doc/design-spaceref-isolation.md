@@ -244,9 +244,39 @@ always); they are simply never selected for display.
 
 ## Backwards compatibility
 
-- **Nanodash 4.28.0 (released):** does not read the spaces repo. **Zero impact.**
+- **Nanodash 4.28.0 (released):** does not read the spaces repo directly. **Zero impact.**
 - **Post-4.28.0 Nanodash (unreleased):** co-released with the query revisions above.
-- No deprecation window, no dual-keying for legacy reads.
+
+### Phase 1.5 — transitional IRI-valued dual-emit (correction)
+
+The original plan above ("no dual-keying for legacy reads") was **wrong for the structural
+edges**, and 1.15.0 was reverted because of it (see
+`doc/report-2026-06-12-mixed-fleet-spaceref-breakage.md`). The overlooked consumers are not
+a Nanodash version but the **published grlc query nanopubs** themselves: they embed
+`service` hops into the spaces repo and gate on the bare Space IRI
+(`?r npa:isMaintainedBy ?space . ?ri npa:forSpace ?space`). nanopub-java's `QueryCall`
+races the whole fleet and accepts the first 2xx, so a single instance whose structural
+edges are ref-valued-only returns valid-looking empty results fleet-wide.
+
+The row tiers already mitigated this — they kept a transitional `npa:forSpace` dual-emit
+alongside `npa:forSpaceRef`. Phase 1.5 extends the same treatment to the structural-edge
+tiers: each admit pass emits the 1.14.4 **IRI-valued edge alongside** the ref-valued one.
+
+| Tier | Authoritative (ref-valued) | Transitional dual-emit (IRI-valued) |
+|---|---|---|
+| sub-space (explicit + URL-prefix fallback) | `?childRef npa:isSubSpaceOf ?parentRef` (+inv) | `?child npa:isSubSpaceOf ?parent` (+inv) |
+| maintained-resource | `?r npa:isMaintainedBy ?sRef` (+inv) | `?r npa:isMaintainedBy ?s` (+inv) |
+| alias | `?alias npa:sameAsSpace ?canonRef` | `?alias npa:sameAsSpace ?canonical` |
+
+Validation still joins on `npa:forSpaceRef` internally, so isolation is untouched; the
+IRI-valued edges are read-only sugar for pre-ref consumers and are **inert** for the
+internal tiers (which key on refs — an IRI object never binds a `forSpaceRef` variable).
+All seven transitional emits (3 row-tier + 4 structural) carry a `TRANSITIONAL-DUAL-EMIT`
+marker comment so Phase 4 removal is a single grep. No invalidation change: the structural
+convenience edges are already left sticky and reaped by the periodic full rebuild.
+
+This makes a 1.15.x instance safe to deploy onto the mixed-version fleet **ahead of** the
+Nanodash/query co-release, decoupling the rollout from Phases 2–3.
 
 ## Migration
 
