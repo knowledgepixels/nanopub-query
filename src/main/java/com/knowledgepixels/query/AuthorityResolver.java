@@ -750,9 +750,10 @@ public final class AuthorityResolver {
         // so we project it per-ref by joining each instantiation naming ?space to the
         // admin rows of every ref of ?space whose admin set contains the publisher. The
         // inserted subject is minted per (?ri, ?spaceRef) so one instantiation validating
-        // into N refs yields N distinct rows. Transitional: forSpace is still emitted
-        // alongside forSpaceRef so the not-yet-migrated downstream tiers / read queries
-        // keep functioning; it is dropped once everything keys on forSpaceRef.
+        // into N refs yields N distinct rows. TRANSITIONAL-DUAL-EMIT (Phase 4: remove):
+        // forSpace is still emitted alongside forSpaceRef so the not-yet-migrated
+        // downstream tiers / pre-ref read queries keep functioning on a mixed-version
+        // fleet; it is dropped once everything keys on forSpaceRef.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
@@ -877,9 +878,10 @@ public final class AuthorityResolver {
         // contains the publisher (direct), or — when the named IRI is an owl:sameAs alias
         // — for the canonical ref it maps to (issue #113). ?targetRef is the ref the
         // RoleAssignment attaches to; the inserted subject is minted per (?ra, ?targetRef)
-        // so one attachment validating into N refs yields N distinct rows. forSpace (the
-        // attached IRI, possibly an alias) is kept so the non-admin tier can probe the
-        // IRI-keyed instantiations naming it.
+        // so one attachment validating into N refs yields N distinct rows.
+        // TRANSITIONAL-DUAL-EMIT (Phase 4: remove): forSpace (the attached IRI, possibly an
+        // alias) is kept so the non-admin tier can probe the IRI-keyed instantiations
+        // naming it, and so pre-ref read queries keep functioning on a mixed-version fleet.
         return """
                 PREFIX npa:  <%1$s>
                 PREFIX gen:  <%2$s>
@@ -1003,6 +1005,9 @@ public final class AuthorityResolver {
                 INSERT { GRAPH <%3$s> {
                   ?ri2 a gen:RoleInstantiation ;
                        npa:forSpaceRef ?spaceRef ;
+                       # TRANSITIONAL-DUAL-EMIT (Phase 4: remove): forSpace alongside
+                       # forSpaceRef so pre-ref read queries (e.g. get-space-members) keep
+                       # functioning on a mixed-version fleet; downstream tiers key on the ref.
                        npa:forSpace ?space ;
                        npa:forAgent ?agent ;
                        ?dirPred ?pred ;
@@ -1112,6 +1117,12 @@ public final class AuthorityResolver {
                      npa:viaNanopub  ?np .
                   ?childRef  npa:isSubSpaceOf ?parentRef .
                   ?parentRef npa:hasSubSpace  ?childRef  .
+                  # TRANSITIONAL-DUAL-EMIT (Phase 1.5; remove in Phase 4): IRI-valued
+                  # sub-space edge alongside the ref-to-ref one, so pre-ref published
+                  # queries that key on the bare Space IRI keep binding on a mixed-version
+                  # fleet. See doc/report-2026-06-12-mixed-fleet-spaceref-breakage.md.
+                  ?child  npa:isSubSpaceOf ?parent .
+                  ?parent npa:hasSubSpace  ?child  .
                 } }
                 WHERE {
                   # 1. Anchor: candidate declarations from the extraction graph.
@@ -1229,6 +1240,13 @@ public final class AuthorityResolver {
                      npa:viaNanopub      ?np .
                   ?r npa:isMaintainedBy        ?sRef .
                   ?sRef npa:hasMaintainedResource ?r .
+                  # TRANSITIONAL-DUAL-EMIT (Phase 1.5; remove in Phase 4): IRI-valued
+                  # maintained-resource edge alongside the resource→ref one, so pre-ref
+                  # published queries (e.g. get-view-displays' maintained hop) keep binding
+                  # on a mixed-version fleet. This is the edge whose absence broke 1.15.0 —
+                  # see doc/report-2026-06-12-mixed-fleet-spaceref-breakage.md.
+                  ?r npa:isMaintainedBy        ?s .
+                  ?s npa:hasMaintainedResource ?r .
                 } }
                 WHERE {
                   # 1. Anchor: candidate declarations from the extraction graph.
@@ -1321,6 +1339,14 @@ public final class AuthorityResolver {
                      npa:aliasSpace     ?alias ;
                      npa:viaNanopub     ?np .
                   ?alias npa:sameAsSpace ?canonRef .
+                  # TRANSITIONAL-DUAL-EMIT (Phase 1.5; remove in Phase 4): IRI-valued
+                  # alias edge alongside the ref-valued one, so pre-ref published queries
+                  # that resolve owl:sameAs by bare canonical IRI keep binding on a
+                  # mixed-version fleet. Internal alias-aware lookups (attachment tier)
+                  # join through npa:forSpaceRef, which is ref-valued, so this IRI-valued
+                  # object never satisfies them — it is inert internally, read-only for
+                  # legacy consumers. See doc/report-2026-06-12-mixed-fleet-spaceref-breakage.md.
+                  ?alias npa:sameAsSpace ?canonical .
                 } }
                 WHERE {
                   # 1. Anchor: candidate alias declarations from the extraction graph.
@@ -1418,6 +1444,12 @@ public final class AuthorityResolver {
                 INSERT { GRAPH <%2$s> {
                   ?childRef  npa:isSubSpaceOf ?parentRef .
                   ?parentRef npa:hasSubSpace  ?childRef  .
+                  # TRANSITIONAL-DUAL-EMIT (Phase 1.5; remove in Phase 4): IRI-valued
+                  # derived sub-space edge alongside the ref-to-ref one, mirroring the
+                  # explicit sub-space pass, so pre-ref published queries keep binding on a
+                  # mixed-version fleet. See doc/report-2026-06-12-mixed-fleet-spaceref-breakage.md.
+                  ?child  npa:isSubSpaceOf ?parent .
+                  ?parent npa:hasSubSpace  ?child  .
                   ?tagIri a npa:DerivedSubSpaceLink ;
                           npa:childSpace     ?child ;
                           npa:parentSpace    ?parent ;
