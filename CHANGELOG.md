@@ -1,3 +1,17 @@
+## [1.16.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.15.1...nanopub-query-1.16.0) (2026-06-15)
+
+### Features
+
+* **spaces:** materialize preset-bundled roles as validated attachments ([72cdd42](https://github.com/knowledgepixels/nanopub-query/commit/72cdd420f3739bdc25ec04d653c332d8ca39e1ff)), closes [#302](https://github.com/knowledgepixels/nanopub-query/issues/302) [#113-class](https://github.com/knowledgepixels/nanopub-query/issues/113-class)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([3099449](https://github.com/knowledgepixels/nanopub-query/commit/30994496829ff4c3deae3a9c96adcf597e13005a))
+
+### Refactoring
+
+* **NanopubLoader:** enhance logging messages for clarity and consistency ([8f8962b](https://github.com/knowledgepixels/nanopub-query/commit/8f8962bf264d9933d28621707ad0cbd4f51a8bf3))
+
 ## [1.15.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.15.0...nanopub-query-1.15.1) (2026-06-13)
 
 ### Bug Fixes
