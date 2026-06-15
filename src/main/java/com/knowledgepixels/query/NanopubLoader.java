@@ -32,14 +32,9 @@ import org.nanopub.vocabulary.PAV;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 import java.security.GeneralSecurityException;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 /**
@@ -110,6 +105,7 @@ public class NanopubLoader {
         long jitter = ThreadLocalRandom.current().nextLong(base + 1) - base / 2;
         return Math.max(0L, base + jitter);
     }
+
     private Nanopub np;
     private NanopubSignatureElement el = null;
     private List<Statement> metaStatements = new ArrayList<>();
@@ -128,9 +124,9 @@ public class NanopubLoader {
     NanopubLoader(Nanopub np, long counter) {
         this.np = np;
         if (counter >= 0) {
-            logger.info("Loading {}: {}", counter, np.getUri());
+            logger.info("Loading nanopub #{}: <{}>", counter, np.getUri());
         } else {
-            logger.info("Loading: {}", np.getUri());
+            logger.info("Loading nanopub: <{}>", np.getUri());
         }
 
         // TODO Ensure proper synchronization and DB rollbacks
@@ -187,7 +183,9 @@ public class NanopubLoader {
                 subIris.add(st.getPredicate());
             } else {
                 IRI b = getBaseTrustyUri(st.getPredicate());
-                if (b != null) otherNps.add(b);
+                if (b != null) {
+                    otherNps.add(b);
+                }
             }
             if (st.getPredicate().equals(NPX.RETRACTS) && st.getObject() instanceof IRI) {
                 retracted.add((IRI) st.getObject());
@@ -216,14 +214,18 @@ public class NanopubLoader {
                 subIris.add((IRI) st.getSubject());
             } else {
                 IRI b = getBaseTrustyUri(st.getSubject());
-                if (b != null) otherNps.add(b);
+                if (b != null) {
+                    otherNps.add(b);
+                }
             }
             if (st.getObject() instanceof IRI) {
                 if (st.getObject().toString().contains(ac)) {
                     subIris.add((IRI) st.getObject());
                 } else {
                     IRI b = getBaseTrustyUri(st.getObject());
-                    if (b != null) otherNps.add(b);
+                    if (b != null) {
+                        otherNps.add(b);
+                    }
                 }
             } else {
                 combinedLiterals += st.getObject().stringValue().replaceAll("\\s+", " ") + "\n";
@@ -370,7 +372,7 @@ public class NanopubLoader {
      */
     public static void load(String nanopubUri) {
         if (isNanopubLoaded(nanopubUri)) {
-            logger.info("Already loaded: {}", nanopubUri);
+            logger.info("Skipping already-loaded nanopub: <{}>", nanopubUri);
         } else {
             Nanopub np = GetNanopub.get(nanopubUri, getHttpClient());
             load(np, -1);
@@ -420,8 +422,12 @@ public class NanopubLoader {
             //		loadNanopubToRepo(np.getUri(), textStatements, "text-pubkey_" + Utils.createHash(el.getPublicKeyString()));
             for (IRI typeIri : NanopubUtils.getTypes(np)) {
                 // Exclude locally minted IRIs:
-                if (typeIri.stringValue().startsWith(np.getUri().stringValue())) continue;
-                if (!typeIri.stringValue().matches("https?://.*")) continue;
+                if (typeIri.stringValue().startsWith(np.getUri().stringValue())) {
+                    continue;
+                }
+                if (!typeIri.stringValue().matches("https?://.*")) {
+                    continue;
+                }
                 runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri)));
                 //			loadNanopubToRepo(np.getUri(), textStatements, "text-type_" + Utils.createHash(typeIri));
             }
@@ -489,7 +495,9 @@ public class NanopubLoader {
                     task.get();
                 } catch (ExecutionException | InterruptedException ex) {
                     for (var t : runningTasks) {
-                        if (!t.isDone()) t.cancel(true);
+                        if (!t.isDone()) {
+                            t.cancel(true);
+                        }
                     }
                     throw new RuntimeException("Error in nanopub loading thread", ex.getCause());
                 }
@@ -521,7 +529,7 @@ public class NanopubLoader {
                 conn.begin(IsolationLevels.READ_COMMITTED);
                 conn.add(statements);
                 if (lastUpdateOfLatestRepo == null || new Date().getTime() - lastUpdateOfLatestRepo > ONE_HOUR) {
-                    logger.trace("Remove old nanopubs...");
+                    logger.debug("Pruning nanopubs older than 30 days from last30d repo...");
                     Literal thirtyDaysAgo = vf.createLiteral(new Date(new Date().getTime() - THIRTY_DAYS));
                     TupleQuery q = conn.prepareTupleQuery(QueryLanguage.SPARQL, "SELECT * { graph <" + NPA.GRAPH + "> { " + "?np <" + DCTERMS.CREATED + "> ?date . " + "filter ( ?date < ?thirtydaysago ) " + "} }");
                     q.setBinding("thirtydaysago", thirtyDaysAgo);
@@ -529,7 +537,7 @@ public class NanopubLoader {
                         while (r.hasNext()) {
                             BindingSet b = r.next();
                             IRI oldNpId = (IRI) b.getBinding("np").getValue();
-                            logger.trace("Remove old nanopub: {}", oldNpId);
+                            logger.debug("Pruning expired nanopub from last30d repo: <{}>", oldNpId);
                             for (Value v : Utils.getObjectsForPattern(conn, NPA.GRAPH, oldNpId, NPA.HAS_GRAPH)) {
                                 // Remove all four nanopub graphs:
                                 conn.remove((Resource) null, (IRI) null, (Value) null, (IRI) v);
@@ -544,8 +552,10 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not load nanopub {} to last30d repo.", npId, ex);
-                if (conn.isActive()) conn.rollback();
+                logger.warn("Failed to load nanopub <{}> to last30d repo: {}", npId, ex.getMessage(), ex);
+                if (conn.isActive()) {
+                    conn.rollback();
+                }
             }
             if (!success) {
                 retries++;
@@ -553,7 +563,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load nanopub " + npId + " to last30d repo after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for nanopub {} in last30d (attempt {}/{})...", delay, npId, retries, MAX_RETRIES);
+                logger.info("Retrying load of <{}> to last30d repo in {} ms (attempt {}/{})...", npId, delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -577,7 +587,7 @@ public class NanopubLoader {
                 conn.begin(IsolationLevels.SERIALIZABLE);
                 var repoStatus = fetchRepoStatus(conn, npId);
                 if (repoStatus.isLoaded) {
-                    logger.info("Already loaded: {}", npId);
+                    logger.debug("Skipping already-loaded nanopub <{}> in repo '{}'", npId, repoName);
                 } else {
                     String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
                     conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, null, NPA.GRAPH);
@@ -607,8 +617,10 @@ public class NanopubLoader {
                 }
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not load nanopub {} to repo {}.", npId, repoName, ex);
-                if (conn.isActive()) conn.rollback();
+                logger.warn("Failed to load nanopub <{}> to repo '{}': {}", npId, repoName, ex.getMessage(), ex);
+                if (conn.isActive()) {
+                    conn.rollback();
+                }
             }
             if (!success) {
                 retries++;
@@ -616,7 +628,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load nanopub " + npId + " to repo " + repoName + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for nanopub {} in repo {} (attempt {}/{})...", delay, npId, repoName, retries, MAX_RETRIES);
+                logger.info("Retrying load of <{}> to repo '{}' in {} ms (attempt {}/{})...", npId, repoName, delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -651,6 +663,7 @@ public class NanopubLoader {
                 conn.begin(IsolationLevels.SERIALIZABLE);
                 // Idempotency: skip if this nanopub is already stamped in this repo.
                 if (Utils.getObjectForPattern(conn, NPA.GRAPH, npId, NPA.HAS_LOAD_NUMBER) != null) {
+                    logger.debug("Skipping already-loaded nanopub <{}> in spaces repo", npId);
                     conn.commit();
                     success = true;
                     continue;
@@ -668,8 +681,10 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not load nanopub {} to spaces repo.", npId, ex);
-                if (conn.isActive()) conn.rollback();
+                logger.warn("Failed to load nanopub <{}> to spaces repo: {}", npId, ex.getMessage(), ex);
+                if (conn.isActive()) {
+                    conn.rollback();
+                }
             }
             if (!success) {
                 retries++;
@@ -677,7 +692,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load nanopub " + npId + " to spaces repo after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for nanopub {} in spaces repo (attempt {}/{})...", delay, npId, retries, MAX_RETRIES);
+                logger.info("Retrying load of <{}> to spaces repo in {} ms (attempt {}/{})...", npId, delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -696,7 +711,9 @@ public class NanopubLoader {
      */
     public static Long getLoadedNanopubCount() {
         Long v = loadedNanopubCount;
-        if (v != null) return v;
+        if (v != null) {
+            return v;
+        }
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection("meta")) {
             Value val = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT);
             if (val != null) {
@@ -705,7 +722,7 @@ public class NanopubLoader {
                 return v;
             }
         } catch (NumberFormatException ex) {
-            logger.warn("Invalid npa:hasNanopubCount literal in meta repo", ex);
+            logger.warn("Malformed npa:hasNanopubCount literal in meta repo (value not parseable as long): {}", ex.getMessage(), ex);
         } catch (Exception ex) {
             logger.warn("Could not read npa:hasNanopubCount from meta repo", ex);
         }
@@ -722,7 +739,9 @@ public class NanopubLoader {
      */
     public static String getLoadedNanopubChecksum() {
         String v = loadedNanopubChecksum;
-        if (v != null) return v;
+        if (v != null) {
+            return v;
+        }
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection("meta")) {
             Value val = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM);
             if (val != null) {
@@ -739,11 +758,13 @@ public class NanopubLoader {
     private static long fetchSpacesLoadCounter(RepositoryConnection conn) {
         Value v = Utils.getObjectForPattern(conn, NPA.GRAPH, NPA.THIS_REPO,
                 com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER);
-        if (v == null) return 0;
+        if (v == null) {
+            return 0;
+        }
         try {
             return Long.parseLong(v.stringValue());
         } catch (NumberFormatException ex) {
-            logger.warn("Invalid npa:currentLoadCounter literal in spaces repo: {}", v);
+            logger.warn("Malformed npa:currentLoadCounter literal in spaces repo (value not parseable as long): \"{}\"", v.stringValue());
             return 0;
         }
     }
@@ -832,10 +853,14 @@ public class NanopubLoader {
                 for (RepositoryConnection c : connections) c.commit();
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not load invalidate statements for {}.", thisNp.getUri(), ex);
-                if (metaConn.isActive()) metaConn.rollback();
+                logger.warn("Failed to load invalidation statements from <{}> to target repos: {}", thisNp.getUri(), ex.getMessage(), ex);
+                if (metaConn.isActive()) {
+                    metaConn.rollback();
+                }
                 for (RepositoryConnection c : connections) {
-                    if (c.isActive()) c.rollback();
+                    if (c.isActive()) {
+                        c.rollback();
+                    }
                 }
             } finally {
                 metaConn.close();
@@ -847,7 +872,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load invalidate statements for " + thisNp.getUri() + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for invalidate statements of {} (attempt {}/{})...", delay, thisNp.getUri(), retries, MAX_RETRIES);
+                logger.info("Retrying invalidation-statement load for <{}> in {} ms (attempt {}/{})...", thisNp.getUri(), delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -888,7 +913,7 @@ public class NanopubLoader {
         Map<IRI, String> result = new LinkedHashMap<>();
         for (Statement st : invalidatingStatements) {
             if (st.getPredicate().equals(NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY)
-                    && st.getSubject() instanceof IRI invIri) {
+                && st.getSubject() instanceof IRI invIri) {
                 result.put(invIri, st.getObject().stringValue());
             }
         }
@@ -916,11 +941,19 @@ public class NanopubLoader {
         List<IRI> typesToLoadInto = new ArrayList<>();
         for (IRI typeIri : thisNpTypes) {
             // Match the regular per-type load loop's exclusion of locally-minted IRIs.
-            if (typeIri.stringValue().startsWith(thisNpId.stringValue())) continue;
-            if (!typeIri.stringValue().matches("https?://.*")) continue;
-            if (!invTypes.contains(typeIri)) typesToLoadInto.add(typeIri);
+            if (typeIri.stringValue().startsWith(thisNpId.stringValue())) {
+                continue;
+            }
+            if (!typeIri.stringValue().matches("https?://.*")) {
+                continue;
+            }
+            if (!invTypes.contains(typeIri)) {
+                typesToLoadInto.add(typeIri);
+            }
         }
-        if (typesToLoadInto.isEmpty()) return;
+        if (typesToLoadInto.isEmpty()) {
+            return;
+        }
 
         List<Statement> invContent = fetchNanopubAllStatementsFromPubkeyRepo(invIri, invPubkey);
         for (IRI typeIri : typesToLoadInto) {
@@ -961,13 +994,17 @@ public class NanopubLoader {
             try (metaConn) {
                 metaConn.begin(IsolationLevels.READ_COMMITTED);
                 for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invIri, NPX.HAS_NANOPUB_TYPE)) {
-                    if (v instanceof IRI ti) invTypes.add(ti);
+                    if (v instanceof IRI ti) {
+                        invTypes.add(ti);
+                    }
                 }
                 metaConn.commit();
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not read invalidator types for {} (target nanopub {}).", invIri, thisNpId, ex);
-                if (metaConn.isActive()) metaConn.rollback();
+                logger.warn("Failed to read types for invalidator <{}> (needed for target <{}>): {}", invIri, thisNpId, ex.getMessage(), ex);
+                if (metaConn.isActive()) {
+                    metaConn.rollback();
+                }
             }
             if (!success) {
                 retries++;
@@ -975,7 +1012,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to read invalidator types for " + invIri + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for invalidator types of {} (attempt {}/{})...", delay, invIri, retries, MAX_RETRIES);
+                logger.info("Retrying type-read for invalidator <{}> in {} ms (attempt {}/{})...", invIri, delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -1027,7 +1064,9 @@ public class NanopubLoader {
                 try (RepositoryResult<Statement> r = conn.getStatements(npId, NPA.HAS_GRAPH, null, NPA.GRAPH)) {
                     while (r.hasNext()) {
                         Value o = r.next().getObject();
-                        if (o instanceof IRI iri) npGraphs.add(iri);
+                        if (o instanceof IRI iri) {
+                            npGraphs.add(iri);
+                        }
                     }
                 }
 
@@ -1042,8 +1081,8 @@ public class NanopubLoader {
                         Statement st = r.next();
                         IRI p = st.getPredicate();
                         if (p.equals(NPA.HAS_LOAD_NUMBER)
-                                || p.equals(NPA.HAS_LOAD_CHECKSUM)
-                                || p.equals(NPA.HAS_LOAD_TIMESTAMP)) {
+                            || p.equals(NPA.HAS_LOAD_CHECKSUM)
+                            || p.equals(NPA.HAS_LOAD_TIMESTAMP)) {
                             continue;
                         }
                         result.add(st);
@@ -1055,7 +1094,9 @@ public class NanopubLoader {
                     while (r.hasNext()) {
                         Statement st = r.next();
                         result.add(st);
-                        if (st.getSubject() instanceof IRI invIri) invalidators.add(invIri);
+                        if (st.getSubject() instanceof IRI invIri) {
+                            invalidators.add(invIri);
+                        }
                     }
                 }
                 for (IRI invIri : invalidators) {
@@ -1074,8 +1115,10 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not fetch nanopub content from {} for {}.", repoName, npId, ex);
-                if (conn.isActive()) conn.rollback();
+                logger.warn("Failed to fetch content of nanopub <{}> from repo '{}': {}", npId, repoName, ex.getMessage(), ex);
+                if (conn.isActive()) {
+                    conn.rollback();
+                }
             }
             if (!success) {
                 retries++;
@@ -1083,7 +1126,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to fetch nanopub content from " + repoName + " for " + npId + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for fetching nanopub content of {} from {} (attempt {}/{})...", delay, npId, repoName, retries, MAX_RETRIES);
+                logger.info("Retrying content-fetch of <{}> from repo '{}' in {} ms (attempt {}/{})...", npId, repoName, delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -1127,8 +1170,10 @@ public class NanopubLoader {
                 conn.commit();
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not load invalidating statements for {}.", npId, ex);
-                if (conn.isActive()) conn.rollback();
+                logger.warn("Failed to query existing invalidators of <{}> from meta repo: {}", npId, ex.getMessage(), ex);
+                if (conn.isActive()) {
+                    conn.rollback();
+                }
             }
             if (!success) {
                 retries++;
@@ -1136,7 +1181,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to get invalidating statements for " + npId + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for invalidating statements of {} (attempt {}/{})...", delay, npId, retries, MAX_RETRIES);
+                logger.info("Retrying invalidator-query for <{}> in {} ms (attempt {}/{})...", npId, delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -1159,7 +1204,7 @@ public class NanopubLoader {
                 conn.add(statements);
                 success = true;
             } catch (Exception ex) {
-                logger.warn("Could not load note to repo for {}.", subj, ex);
+                logger.warn("Failed to write note \"{}\" to admin repo for <{}>: {}", note, subj, ex.getMessage(), ex);
             }
             if (!success) {
                 retries++;
@@ -1167,7 +1212,7 @@ public class NanopubLoader {
                     throw new RuntimeException("Failed to load note to repo for " + subj + " after " + MAX_RETRIES + " retries");
                 }
                 long delay = computeBackoffMillis(retries);
-                logger.info("Retrying in {} ms for note on {} (attempt {}/{})...", delay, subj, retries, MAX_RETRIES);
+                logger.info("Retrying note-write for <{}> in {} ms (attempt {}/{})...", subj, delay, retries, MAX_RETRIES);
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException x) {
@@ -1179,23 +1224,25 @@ public class NanopubLoader {
 
     static boolean hasValidSignature(NanopubSignatureElement el) {
         if (el == null) {
-            logger.warn("Signature validation: signature element is null");
+            logger.warn("Signature validation skipped: signature element is null (nanopub has no signature)");
             return false;
         }
         try {
             if (SignatureUtils.hasValidSignature(el) && el.getPublicKeyString() != null) {
                 return true;
             }
-            logger.warn("Signature validation returned false for {} (pubkey present: {})",
-                    el.getUri(), el.getPublicKeyString() != null);
+            logger.warn("Signature invalid for <{}> (pubkey: {})",
+                    el.getUri(), el.getPublicKeyString() != null ? el.getPublicKeyString() : "none");
         } catch (GeneralSecurityException ex) {
-            logger.warn("Signature validation failed for signature element {}", el.getUri(), ex);
+            logger.warn("Signature verification threw a security exception for <{}>: {}", el.getUri(), ex.getMessage(), ex);
         }
         return false;
     }
 
     private static IRI getBaseTrustyUri(Value v) {
-        if (!(v instanceof IRI)) return null;
+        if (!(v instanceof IRI)) {
+            return null;
+        }
         String s = v.stringValue();
         if (!s.matches(".*[^A-Za-z0-9\\-_]RA[A-Za-z0-9\\-_]{43}([^A-Za-z0-9\\\\-_].{0,43})?")) {
             return null;
@@ -1206,7 +1253,9 @@ public class NanopubLoader {
     // TODO: Move this to nanopub library:
     private static boolean isIntroNanopub(Nanopub np) {
         for (Statement st : np.getAssertion()) {
-            if (st.getPredicate().equals(NPX.DECLARED_BY)) return true;
+            if (st.getPredicate().equals(NPX.DECLARED_BY)) {
+                return true;
+            }
         }
         return false;
     }
@@ -1226,12 +1275,12 @@ public class NanopubLoader {
                 loaded = true;
             }
         } catch (Exception ex) {
-            logger.warn("Could not check whether nanopub is loaded.", ex);
+            logger.warn("Could not check load status of <{}>: {}", npId, ex.getMessage(), ex);
         }
         return loaded;
     }
 
-    private static ValueFactory vf = SimpleValueFactory.getInstance();
+    private static final ValueFactory vf = SimpleValueFactory.getInstance();
 
     // TODO remove the constants and use the ones from the nanopub library instead
 
