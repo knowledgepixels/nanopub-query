@@ -101,6 +101,47 @@ public class GEN {
      */
     public static final IRI MAINTAINED_RESOURCE = VocabUtils.createIRI(NAMESPACE, "MaintainedResource");
 
+    // ---------------- Presets (Nanodash issue #302) ----------------
+
+    /**
+     * Class IRI for a preset definition: a reusable bundle of default views and
+     * {@link #HAS_ROLE roles}, assigned to a resource through a
+     * {@link #PRESET_ASSIGNMENT}. Only the role half is materialized server-side
+     * (views stay read-time in Nanodash); see
+     * {@code doc/design-preset-role-materialization.md}.
+     */
+    public static final IRI PRESET = VocabUtils.createIRI(NAMESPACE, "Preset");
+
+    /**
+     * Class IRI for a preset assignment: states that a resource should use a given
+     * preset. Activation state is an identity on the {@code (preset, resource)} pair
+     * (latest-wins by {@code dct:created}), not an {@code npx:invalidates} link.
+     */
+    public static final IRI PRESET_ASSIGNMENT = VocabUtils.createIRI(NAMESPACE, "PresetAssignment");
+
+    /** Marks a {@link #PRESET_ASSIGNMENT} as active. Active is the default (see {@link #DEACTIVATED_PRESET_ASSIGNMENT}). */
+    public static final IRI ACTIVATED_PRESET_ASSIGNMENT = VocabUtils.createIRI(NAMESPACE, "ActivatedPresetAssignment");
+
+    /**
+     * Marks a {@link #PRESET_ASSIGNMENT} as deactivated. An assignment is active
+     * <em>unless</em> explicitly typed with this class — matching Nanodash's
+     * {@code PresetAssignment.isActive()}.
+     */
+    public static final IRI DEACTIVATED_PRESET_ASSIGNMENT = VocabUtils.createIRI(NAMESPACE, "DeactivatedPresetAssignment");
+
+    /** Predicate linking a {@link #PRESET_ASSIGNMENT} to the preset it assigns. */
+    public static final IRI IS_ASSIGNMENT_OF_PRESET = VocabUtils.createIRI(NAMESPACE, "isAssignmentOfPreset");
+
+    /** Predicate linking a {@link #PRESET_ASSIGNMENT} to the resource it targets. */
+    public static final IRI IS_ASSIGNMENT_FOR = VocabUtils.createIRI(NAMESPACE, "isAssignmentFor");
+
+    /**
+     * Predicate declaring which resource type(s) a {@link #PRESET} applies to
+     * (e.g. {@link #SPACE}). Role materialization only acts on {@code gen:Space}
+     * targets; other values are extracted but not acted on.
+     */
+    public static final IRI APPLIES_TO_INSTANCES_OF = VocabUtils.createIRI(NAMESPACE, "appliesToInstancesOf");
+
     private GEN() {
     }
 

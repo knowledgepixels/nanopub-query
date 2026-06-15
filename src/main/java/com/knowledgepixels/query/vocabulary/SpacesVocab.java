@@ -46,6 +46,10 @@ public final class SpacesVocab {
     public static final String NPAMRD_NAMESPACE = "http://purl.org/nanopub/admin/maintainedresource/";
     /** Namespace for space-alias-declaration entries ({@code npaalias:<artifactCode>_<aliasHash>}). */
     public static final String NPAALIAS_NAMESPACE = "http://purl.org/nanopub/admin/spacealias/";
+    /** Namespace for preset-assignment entries ({@code npapa:<artifactCode>}). */
+    public static final String NPAPA_NAMESPACE = "http://purl.org/nanopub/admin/presetassign/";
+    /** Namespace for preset-declaration entries ({@code npapd:<artifactCode>}). */
+    public static final String NPAPD_NAMESPACE = "http://purl.org/nanopub/admin/presetdecl/";
     /** Namespace for space-state graph IRIs ({@code npass:<trustStateHash>_<loadCounter>}). */
     public static final String NPASS_NAMESPACE = "http://purl.org/nanopub/admin/spacestate/";
 
@@ -68,6 +72,12 @@ public final class SpacesVocab {
 
     /** RDF type for a space-alias-declaration extraction entry (from {@code owl:sameAs} in a {@code gen:Space} nanopub). */
     public static final IRI SPACE_ALIAS_DECLARATION = vf.createIRI(NPA.NAMESPACE, "SpaceAliasDeclaration");
+
+    /** RDF type for a preset-assignment extraction entry (from a {@code gen:PresetAssignment} nanopub). */
+    public static final IRI PRESET_ASSIGNMENT = vf.createIRI(NPA.NAMESPACE, "PresetAssignment");
+
+    /** RDF type for a preset-declaration extraction entry (from a {@code gen:Preset} nanopub). */
+    public static final IRI PRESET_DECLARATION = vf.createIRI(NPA.NAMESPACE, "PresetDeclaration");
 
     // -------- Properties on extraction entries --------
 
@@ -127,6 +137,45 @@ public final class SpacesVocab {
 
     /** Links a {@link #SPACE_ALIAS_DECLARATION} to the alias Space IRI (the {@code owl:sameAs} object). */
     public static final IRI ALIAS_SPACE = vf.createIRI(NPA.NAMESPACE, "aliasSpace");
+
+    // -------- Preset extraction-entry properties (Nanodash issue #302) --------
+
+    /**
+     * Join key linking a {@link #PRESET_ASSIGNMENT} (its assigned preset) and a
+     * {@link #PRESET_DECLARATION} (its own identity). A declaration emits this for
+     * <em>both</em> the {@code gen:Preset}-typed node IRI and its
+     * {@code dct:isVersionOf} kind, so an assignment referencing either joins.
+     */
+    public static final IRI OF_PRESET = vf.createIRI(NPA.NAMESPACE, "ofPreset");
+
+    /** Links a {@link #PRESET_ASSIGNMENT} to the resource it targets ({@code gen:isAssignmentFor}). */
+    public static final IRI FOR_RESOURCE = vf.createIRI(NPA.NAMESPACE, "forResource");
+
+    /** Boolean literal on a {@link #PRESET_ASSIGNMENT}: active (true) unless explicitly deactivated. */
+    public static final IRI IS_ACTIVATED = vf.createIRI(NPA.NAMESPACE, "isActivated");
+
+    /**
+     * Canonical version-independent identity of a {@link #PRESET_DECLARATION}: its
+     * {@code dct:isVersionOf} kind, or the {@code gen:Preset} node IRI when the preset
+     * declares no kind (same fallback as Nanodash {@code ViewDisplay.getViewKindIri()}).
+     * Roles are resolved from the <em>latest</em> declaration per kind, mirroring the
+     * per-view-kind latest-wins in Nanodash's {@code get-view-displays} expansion.
+     */
+    public static final IRI PRESET_KIND = vf.createIRI(NPA.NAMESPACE, "presetKind");
+
+    /** Links a {@link #PRESET_DECLARATION} to each role IRI the preset bundles ({@code gen:hasRole}). */
+    public static final IRI PRESET_ROLE = vf.createIRI(NPA.NAMESPACE, "presetRole");
+
+    /** Resource type(s) a {@link #PRESET_DECLARATION} applies to ({@code gen:appliesToInstancesOf}). */
+    public static final IRI APPLIES_TO_INSTANCES_OF = vf.createIRI(NPA.NAMESPACE, "appliesToInstancesOf");
+
+    /**
+     * Marker on a materialized {@code gen:RoleAssignment} that was derived from a preset
+     * assignment (its value is the assignment nanopub). Scopes the preset-deactivation
+     * delete and the read-side from-preset marking; keeps both clear of
+     * directly-published attachments.
+     */
+    public static final IRI DERIVED_FROM_PRESET = vf.createIRI(NPA.NAMESPACE, "derivedFromPreset");
 
     /**
      * Validated alias edge written into the space-state graph: {@code <alias> npa:sameAsSpace <canonical>}.
@@ -236,6 +285,16 @@ public final class SpacesVocab {
      */
     public static IRI forSpaceAliasDeclaration(String artifactCode, String aliasHash) {
         return vf.createIRI(NPAALIAS_NAMESPACE, artifactCode + "_" + aliasHash);
+    }
+
+    /** Mints {@code npapa:<artifactCode>} for a preset-assignment entry. */
+    public static IRI forPresetAssignment(String artifactCode) {
+        return vf.createIRI(NPAPA_NAMESPACE, artifactCode);
+    }
+
+    /** Mints {@code npapd:<artifactCode>} for a preset-declaration entry. */
+    public static IRI forPresetDeclaration(String artifactCode) {
+        return vf.createIRI(NPAPD_NAMESPACE, artifactCode);
     }
 
     /**
