@@ -68,6 +68,8 @@ public final class SpacesExtractor {
         s.add(GEN.IS_SUB_SPACE_OF);
         s.add(GEN.MAINTAINED_RESOURCE);
         s.add(GEN.IS_MAINTAINED_BY);
+        s.add(GEN.PRESET);
+        s.add(GEN.PRESET_ASSIGNMENT);
         s.addAll(BackcompatRolePredicates.ALL);
         TRIGGER_TYPES = Collections.unmodifiableSet(s);
     }
@@ -133,6 +135,12 @@ public final class SpacesExtractor {
         // same <r> gen:isMaintainedBy <s> triple in the assertion.
         boolean isMaintainedResource = types.contains(GEN.MAINTAINED_RESOURCE)
                                        || types.contains(GEN.IS_MAINTAINED_BY);
+        // Presets (Nanodash issue #302). A preset-defining nanopub is typed gen:Preset;
+        // an assignment is typed gen:PresetAssignment (plus gen:Activated/Deactivated).
+        // Both shapes are single-subject assertions, so NanopubUtils.getTypes promotes
+        // the assertion type even without a pubinfo npx:hasNanopubType marker.
+        boolean isPreset = types.contains(GEN.PRESET);
+        boolean isPresetAssignment = types.contains(GEN.PRESET_ASSIGNMENT);
 
         if (isSpace) {
             extractSpace(np, ctx, out);
@@ -151,6 +159,12 @@ public final class SpacesExtractor {
         }
         if (isMaintainedResource) {
             extractIsMaintainedBy(np, ctx, out);
+        }
+        if (isPreset) {
+            extractPreset(np, ctx, out);
+        }
+        if (isPresetAssignment) {
+            extractPresetAssignment(np, ctx, out);
         }
 
         return out;
@@ -728,6 +742,163 @@ public final class SpacesExtractor {
         out.add(vf.createStatement(subject, SpacesVocab.MAINTAINER_SPACE, spaceIri, GRAPH));
         out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
         addProvenance(subject, ctx, out);
+    }
+
+    // ---------------- gen:Preset (preset declaration) ----------------
+
+    /**
+     * A {@code gen:Preset} nanopub bundles default views and roles. We extract only the
+     * role half (views stay read-time in Nanodash; see
+     * {@code doc/design-preset-role-materialization.md}): one
+     * {@code npa:PresetDeclaration} carrying every {@code gen:hasRole} as
+     * {@code npa:presetRole}, the {@code gen:appliesToInstancesOf} target(s), and the
+     * preset's identity as {@code npa:ofPreset}.
+     *
+     * <p>Join robustness: the assignment's {@code gen:isAssignmentOfPreset} may name the
+     * versioned preset node or the version-independent {@code dct:isVersionOf} kind
+     * (Nanodash treats the kind as the canonical reference). We emit {@code npa:ofPreset}
+     * for <em>both</em> so an assignment naming either joins to this declaration.
+     */
+    private static void extractPreset(Nanopub np, Context ctx, List<Statement> out) {
+        // The preset IRI is embedded in this nanopub: <preset> rdf:type gen:Preset where
+        // <preset> starts with the nanopub IRI (valid embedded mint), mirroring the
+        // gen:SpaceMemberRole role-declaration rule.
+        IRI presetIri = null;
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(RDF.TYPE)) {
+                continue;
+            }
+            if (!GEN.PRESET.equals(st.getObject())) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI candidate)) {
+                continue;
+            }
+            if (!candidate.stringValue().startsWith(np.getUri().stringValue())) {
+                continue;
+            }
+            presetIri = candidate;
+            break;
+        }
+        if (presetIri == null) {
+            return;
+        }
+
+        List<IRI> roles = collectObjects(np, presetIri, GEN.HAS_ROLE);
+        List<IRI> appliesTo = collectObjects(np, presetIri, GEN.APPLIES_TO_INSTANCES_OF);
+        List<IRI> kinds = collectObjects(np, presetIri, DCTERMS.IS_VERSION_OF);
+        // Canonical kind: the dct:isVersionOf target, or the node IRI as fallback when the
+        // preset declares no kind — same rule as Nanodash ViewDisplay.getViewKindIri().
+        IRI presetKind = kinds.isEmpty() ? presetIri : kinds.get(0);
+
+        IRI subject = SpacesVocab.forPresetDeclaration(ctx.artifactCode());
+        out.add(vf.createStatement(subject, RDF.TYPE, SpacesVocab.PRESET_DECLARATION, GRAPH));
+        // Canonical version-independent grouping key (latest-declaration-per-kind resolution).
+        out.add(vf.createStatement(subject, SpacesVocab.PRESET_KIND, presetKind, GRAPH));
+        // Lookup keys: the preset's own node IRI plus its version-independent kind, so an
+        // assignment naming either is mapped to this declaration's canonical kind.
+        out.add(vf.createStatement(subject, SpacesVocab.OF_PRESET, presetIri, GRAPH));
+        for (IRI kind : kinds) {
+            out.add(vf.createStatement(subject, SpacesVocab.OF_PRESET, kind, GRAPH));
+        }
+        for (IRI role : roles) {
+            out.add(vf.createStatement(subject, SpacesVocab.PRESET_ROLE, role, GRAPH));
+        }
+        for (IRI type : appliesTo) {
+            out.add(vf.createStatement(subject, SpacesVocab.APPLIES_TO_INSTANCES_OF, type, GRAPH));
+        }
+        out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+        addProvenance(subject, ctx, out);
+    }
+
+    // ---------------- gen:PresetAssignment ----------------
+
+    /**
+     * A {@code gen:PresetAssignment} nanopub assigns a preset to a resource. Emits one
+     * {@code npa:PresetAssignment} row recording the {@code (preset, resource)} pair and
+     * its activation state. Activation is <em>active-by-default</em>: active unless the
+     * assignment node is explicitly typed {@code gen:DeactivatedPresetAssignment} —
+     * matching Nanodash's {@code PresetAssignment.isActive()}.
+     *
+     * <p>The {@code dct:created} timestamp emitted by {@link #addProvenance} is the
+     * latest-wins key the validator uses to resolve same-pair assignments; it must be
+     * present for the materialization to converge.
+     */
+    private static void extractPresetAssignment(Nanopub np, Context ctx, List<Statement> out) {
+        // The assignment node is the subject of the gen:isAssignmentOfPreset triple.
+        IRI assignmentNode = null;
+        IRI presetIri = null;
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(GEN.IS_ASSIGNMENT_OF_PRESET)) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI subj)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI preset)) {
+                continue;
+            }
+            assignmentNode = subj;
+            presetIri = preset;
+            break;
+        }
+        if (assignmentNode == null) {
+            return;
+        }
+
+        IRI resource = null;
+        for (Statement st : np.getAssertion()) {
+            if (!assignmentNode.equals(st.getSubject())) {
+                continue;
+            }
+            if (!st.getPredicate().equals(GEN.IS_ASSIGNMENT_FOR)) {
+                continue;
+            }
+            if (st.getObject() instanceof IRI res) {
+                resource = res;
+                break;
+            }
+        }
+        if (resource == null) {
+            logger.warn("Ignoring preset assignment in {}: no gen:isAssignmentFor resource", np.getUri());
+            return;
+        }
+
+        // Active-by-default: deactivated only if explicitly typed.
+        boolean deactivated = false;
+        for (Statement st : np.getAssertion()) {
+            if (assignmentNode.equals(st.getSubject())
+                && st.getPredicate().equals(RDF.TYPE)
+                && GEN.DEACTIVATED_PRESET_ASSIGNMENT.equals(st.getObject())) {
+                deactivated = true;
+                break;
+            }
+        }
+
+        IRI subject = SpacesVocab.forPresetAssignment(ctx.artifactCode());
+        out.add(vf.createStatement(subject, RDF.TYPE, SpacesVocab.PRESET_ASSIGNMENT, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.OF_PRESET, presetIri, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.FOR_RESOURCE, resource, GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.IS_ACTIVATED, vf.createLiteral(!deactivated), GRAPH));
+        out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+        addProvenance(subject, ctx, out);
+    }
+
+    /** Collects all IRI objects of {@code subject predicate ?o} triples in the assertion. */
+    private static List<IRI> collectObjects(Nanopub np, IRI subject, IRI predicate) {
+        List<IRI> out = new ArrayList<>();
+        for (Statement st : np.getAssertion()) {
+            if (!subject.equals(st.getSubject())) {
+                continue;
+            }
+            if (!predicate.equals(st.getPredicate())) {
+                continue;
+            }
+            if (st.getObject() instanceof IRI obj) {
+                out.add(obj);
+            }
+        }
+        return out;
     }
 
     // ---------------- owl:sameAs (space aliases) ----------------

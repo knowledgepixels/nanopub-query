@@ -6,6 +6,7 @@ import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.DCTERMS;
 import org.eclipse.rdf4j.model.vocabulary.OWL;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.junit.jupiter.api.AfterEach;
@@ -667,6 +668,154 @@ class SpacesExtractorTest {
         assertDoesNotContain(out, rejectedSubject, RDF.TYPE, MAINTAINED_RESOURCE_DECLARATION);
     }
 
+    // ---------------- gen:Preset / gen:PresetAssignment (issue #302) ----------------
+
+    @Test
+    void extract_preset_emitsPresetDeclaration() throws Exception {
+        // Embedded preset node (starts with the nanopub URI), version-of a stable kind.
+        IRI presetIri = vf.createIRI(NP_BASE + "/preset");
+        IRI presetKind = vf.createIRI("https://example.org/presets/nano-session");
+        IRI role = vf.createIRI("https://w3id.org/np/RA-defAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/maintainer");
+
+        Nanopub np = creator()
+                .type(GEN.PRESET)
+                .assertion(presetIri, RDF.TYPE, GEN.PRESET)
+                .assertion(presetIri, DCTERMS.IS_VERSION_OF, presetKind)
+                .assertion(presetIri, GEN.APPLIES_TO_INSTANCES_OF, GEN.SPACE)
+                .assertion(presetIri, GEN.HAS_ROLE, role)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forPresetDeclaration(ARTIFACT_CODE);
+
+        assertAllInSpacesGraph(out);
+        assertContains(out, subject, RDF.TYPE, PRESET_DECLARATION);
+        // Canonical kind = the dct:isVersionOf target.
+        assertContains(out, subject, PRESET_KIND, presetKind);
+        // Lookup key emitted for BOTH the node IRI and the version-independent kind, so an
+        // assignment naming either maps to the canonical kind.
+        assertContains(out, subject, OF_PRESET, presetIri);
+        assertContains(out, subject, OF_PRESET, presetKind);
+        assertContains(out, subject, PRESET_ROLE, role);
+        assertContains(out, subject, APPLIES_TO_INSTANCES_OF, GEN.SPACE);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+        assertContains(out, subject, NPX.SIGNED_BY, SIGNER_AGENT);
+    }
+
+    @Test
+    void extract_preset_noVersionOf_kindFallsBackToNodeIri() throws Exception {
+        // No dct:isVersionOf: the canonical kind falls back to the preset node IRI,
+        // matching Nanodash ViewDisplay.getViewKindIri()'s fallback.
+        IRI presetIri = vf.createIRI(NP_BASE + "/preset");
+        IRI role = vf.createIRI("https://w3id.org/np/RA-defAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/maintainer");
+
+        Nanopub np = creator()
+                .type(GEN.PRESET)
+                .assertion(presetIri, RDF.TYPE, GEN.PRESET)
+                .assertion(presetIri, GEN.APPLIES_TO_INSTANCES_OF, GEN.SPACE)
+                .assertion(presetIri, GEN.HAS_ROLE, role)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forPresetDeclaration(ARTIFACT_CODE);
+        assertContains(out, subject, PRESET_KIND, presetIri);
+        assertContains(out, subject, OF_PRESET, presetIri);
+    }
+
+    @Test
+    void extract_preset_nonEmbeddedPreset_emitsNothing() throws Exception {
+        // Preset IRI outside the nanopub's namespace — ignored (mirrors role-declaration).
+        IRI externalPreset = vf.createIRI("https://some.other.site/preset");
+        Nanopub np = creator()
+                .type(GEN.PRESET)
+                .assertion(externalPreset, RDF.TYPE, GEN.PRESET)
+                .assertion(externalPreset, GEN.HAS_ROLE,
+                        vf.createIRI("https://some.other.site/role"))
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        assertTrue(out.isEmpty(),
+                "Extractor should ignore preset IRIs outside the nanopub's namespace, got: " + out);
+    }
+
+    @Test
+    void extract_presetAssignment_active_emitsActivatedRow() throws Exception {
+        IRI assignment = vf.createIRI(NP_BASE + "/assignment");
+        IRI preset = vf.createIRI("https://example.org/presets/nano-session");
+
+        Nanopub np = creator()
+                .type(GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, RDF.TYPE, GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, RDF.TYPE, GEN.ACTIVATED_PRESET_ASSIGNMENT)
+                .assertion(assignment, GEN.IS_ASSIGNMENT_OF_PRESET, preset)
+                .assertion(assignment, GEN.IS_ASSIGNMENT_FOR, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forPresetAssignment(ARTIFACT_CODE);
+
+        assertAllInSpacesGraph(out);
+        assertContains(out, subject, RDF.TYPE, PRESET_ASSIGNMENT);
+        assertContains(out, subject, OF_PRESET, preset);
+        assertContains(out, subject, FOR_RESOURCE, SPACE_IRI_1);
+        assertContains(out, subject, IS_ACTIVATED, vf.createLiteral(true));
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+        // dct:created is the latest-wins key — must be present.
+        assertContains(out, subject, DCTERMS.CREATED, vf.createLiteral(new Date(1_700_000_000_000L)));
+    }
+
+    @Test
+    void extract_presetAssignment_deactivated_isActivatedFalse() throws Exception {
+        IRI assignment = vf.createIRI(NP_BASE + "/assignment");
+        IRI preset = vf.createIRI("https://example.org/presets/nano-session");
+
+        Nanopub np = creator()
+                .type(GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, RDF.TYPE, GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, RDF.TYPE, GEN.DEACTIVATED_PRESET_ASSIGNMENT)
+                .assertion(assignment, GEN.IS_ASSIGNMENT_OF_PRESET, preset)
+                .assertion(assignment, GEN.IS_ASSIGNMENT_FOR, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forPresetAssignment(ARTIFACT_CODE);
+        assertContains(out, subject, IS_ACTIVATED, vf.createLiteral(false));
+    }
+
+    @Test
+    void extract_presetAssignment_noActivationType_defaultsActive() throws Exception {
+        // Active-by-default: an assignment typed only gen:PresetAssignment (no explicit
+        // Activated/Deactivated) is active, matching Nanodash's PresetAssignment.isActive().
+        IRI assignment = vf.createIRI(NP_BASE + "/assignment");
+        IRI preset = vf.createIRI("https://example.org/presets/nano-session");
+
+        Nanopub np = creator()
+                .type(GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, RDF.TYPE, GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, GEN.IS_ASSIGNMENT_OF_PRESET, preset)
+                .assertion(assignment, GEN.IS_ASSIGNMENT_FOR, SPACE_IRI_1)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forPresetAssignment(ARTIFACT_CODE);
+        assertContains(out, subject, IS_ACTIVATED, vf.createLiteral(true));
+    }
+
+    @Test
+    void extract_presetAssignment_missingResource_emitsNothing() throws Exception {
+        IRI assignment = vf.createIRI(NP_BASE + "/assignment");
+        IRI preset = vf.createIRI("https://example.org/presets/nano-session");
+
+        Nanopub np = creator()
+                .type(GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, RDF.TYPE, GEN.PRESET_ASSIGNMENT)
+                .assertion(assignment, GEN.IS_ASSIGNMENT_OF_PRESET, preset)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        assertDoesNotContain(out, forPresetAssignment(ARTIFACT_CODE), RDF.TYPE, PRESET_ASSIGNMENT);
+    }
+
     // ---------------- HAS_ID_PREFIX (regression coverage) ----------------
 
     @Test
@@ -754,6 +903,8 @@ class SpacesExtractorTest {
         assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.IS_SUB_SPACE_OF));
         assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.MAINTAINED_RESOURCE));
         assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.IS_MAINTAINED_BY));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.PRESET));
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.PRESET_ASSIGNMENT));
         for (IRI p : com.knowledgepixels.query.vocabulary.BackcompatRolePredicates.ALL) {
             assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(p),
                     "backcompat role predicate missing from TRIGGER_TYPES: " + p);

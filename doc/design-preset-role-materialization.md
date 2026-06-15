@@ -1,7 +1,29 @@
 # Design: materialize preset-bundled roles as validated role attachments
 
-Status: **design, not yet implemented** (handed off from the Nanodash side, presets issue #302 "point 1").
+Status: **implemented** (presets issue #302 "point 1"; handed off from the Nanodash side).
 Scope: this document covers the **nanopub-query** work. The Nanodash side needs no role-loading change (see §6).
+
+> **Implementation notes — two deviations from this design, verified against Nanodash source:**
+> 1. **Activation is active-by-default, not require-explicit.** §4.2 said "log+skip if neither
+>    `gen:ActivatedPresetAssignment` nor `gen:DeactivatedPresetAssignment`." Nanodash's
+>    `PresetAssignment.isActive()` is `!types.contains(DeactivatedPresetAssignment)` — an assignment
+>    typed only `gen:PresetAssignment` is **active**. Skipping it would silently drop valid
+>    assignments, so extraction emits `npa:isActivated = false` iff explicitly deactivated, else `true`.
+> 2. **The join keys on the canonical preset *kind*, with latest-declaration-per-kind resolution
+>    — consistent with how Nanodash views work.** Nanodash keys views on their `dct:isVersionOf`
+>    kind (`ViewDisplay.getViewKindIri()`, node-IRI fallback) and resolves each to its latest current
+>    head server-side in the `get-view-displays` query; the per-view-kind latest-wins lives in
+>    `AbstractResourceWithProfile.getViewDisplays()`. The preset-role materialization mirrors this:
+>    - `extractPreset` emits `npa:presetKind` = the `dct:isVersionOf` kind (or the `gen:Preset` node IRI
+>      as fallback), plus `npa:ofPreset` for **both** the node IRI and the kind as lookup keys (the wire
+>      IRI in `gen:isAssignmentOfPreset` may be either).
+>    - `presetAttachmentValidationUpdate` maps the assignment's referenced IRI → canonical kind (via any
+>      declaration's `npa:ofPreset`/`npa:presetKind`), then draws roles only from the **latest live**
+>      declaration of that kind (`MAX(dct:created)` among non-invalidated declarations, subject-IRI
+>      tiebreak). A superseded preset version's roles never leak — closing what was previously flagged as
+>      a version-supersession limitation. Equivalent to the view "most-recent current head" rule in the
+>      common case; invalidation filtering drops superseded versions, and the timestamp tiebreak handles
+>      transient multi-head.
 
 ## 1. Context & goal
 

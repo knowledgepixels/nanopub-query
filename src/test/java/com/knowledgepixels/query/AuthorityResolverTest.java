@@ -573,4 +573,93 @@ class AuthorityResolverTest {
                 "the alias edge is not part of the DELETE — sticky until rebuild");
     }
 
+    // ---------------- Preset-role materialization (issue #302) ----------------
+
+    @Test
+    void presetAttachmentValidationUpdate_materializesRoleAssignmentFromActivePreset() {
+        String sparql = AuthorityResolver.presetAttachmentValidationUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        assertTrue(sparql.contains("gen:RoleAssignment"),
+                "materializes a gen:RoleAssignment, just like a direct attachment");
+        assertTrue(sparql.contains("npa:derivedFromPreset"),
+                "carries the from-preset marker for scoped deletes / read-side marking");
+        assertTrue(sparql.contains("npa:PresetAssignment") && sparql.contains("npa:isActivated true"),
+                "anchors on active preset assignments");
+        assertTrue(sparql.contains("npa:presetRole"),
+                "joins the preset declaration's bundled roles");
+        assertTrue(sparql.contains("npa:presetKind"),
+                "keys on the canonical preset kind (consistent with view-kind)");
+        assertTrue(sparql.contains("npa:appliesToInstancesOf gen:Space"),
+                "restricted to Space-targeted presets");
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
+                "publisher must be a validated admin of the target ref");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the assignment nanopub");
+    }
+
+    @Test
+    void presetAttachmentValidationUpdate_latestWinsCandidateIsAdminScoped() {
+        // Anti-hijack (design doc §3): the latest-wins FILTER NOT EXISTS candidate must
+        // itself be admin-authored, so an unauthorized key's newer assignment cannot
+        // shadow an admin's activation. Activation is keyed on dct:created, NOT
+        // npx:invalidates.
+        String sparql = AuthorityResolver.presetAttachmentValidationUpdate(TEST_GRAPH, 0);
+        assertTrue(sparql.contains("http://purl.org/dc/terms/created"),
+                "latest-wins keyed on dct:created");
+        assertTrue(sparql.contains("?createdNewer > ?created"),
+                "latest-wins compares the candidate's timestamp");
+        // The shadowing candidate repeats the publisher-admin probe on the SAME target ref.
+        assertTrue(sparql.contains("?paNewer"),
+                "latest-wins inspects a newer same-pair assignment");
+        java.util.regex.Pattern adminScoped = java.util.regex.Pattern.compile(
+                "\\?paNewer[\\s\\S]*?\\?adminRINewer[\\s\\S]*?npa:forSpaceRef\\s+\\?targetRef"
+                        + "[\\s\\S]*?npa:inverseProperty\\s+gen:hasAdmin"
+                        + "[\\s\\S]*?npa:forAgent\\s+\\?publisherNewer");
+        assertTrue(adminScoped.matcher(sparql).find(),
+                "the newer-assignment candidate is filtered to admins of the target ref");
+    }
+
+    @Test
+    void presetAttachmentValidationUpdate_resolvesLatestDeclarationPerKind() {
+        // Consistency with views (AbstractResourceWithProfile.getViewDisplays per-view-kind
+        // latest-wins): roles come from the latest LIVE declaration of the preset's kind, so
+        // a superseded version's roles don't leak. Assignment's referenced IRI (node or kind)
+        // is mapped to the canonical kind first.
+        String sparql = AuthorityResolver.presetAttachmentValidationUpdate(TEST_GRAPH, 0);
+        // node-or-kind -> kind mapping via a declaration carrying npa:ofPreset + npa:presetKind.
+        java.util.regex.Pattern map = java.util.regex.Pattern.compile(
+                "\\?pdMap[\\s\\S]*?npa:ofPreset\\s+\\?preset[\\s\\S]*?npa:presetKind\\s+\\?kind");
+        assertTrue(map.matcher(sparql).find(),
+                "maps the assignment's referenced preset IRI to its canonical kind");
+        // latest-per-kind: a newer same-kind declaration (by dct:created) blocks the older one.
+        assertTrue(sparql.contains("?pdNewer") && sparql.contains("npa:presetKind ?kind"),
+                "inspects newer declarations of the same kind");
+        assertTrue(sparql.contains("?pdCreatedNewer > ?pdCreated"),
+                "latest-declaration-per-kind keyed on dct:created");
+        // both the chosen and the newer declarations are gated to LIVE (non-invalidated) rows.
+        assertTrue(sparql.contains("?_inv_pdNp") && sparql.contains("?_inv_pdNpNewer"),
+                "chosen and newer declarations both filtered to live (non-superseded) rows");
+    }
+
+    @Test
+    void presetDeactivationDelete_scopedToDerivedFromPresetAndLatestWins() {
+        String sparql = AuthorityResolver.presetDeactivationDelete(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("npa:derivedFromPreset"),
+                "scoped to preset-derived RAs — never touches directly-published attachments");
+        assertTrue(sparql.contains("?createdNewer > ?created"),
+                "removal driven by latest-wins on dct:created, not npx:invalidates");
+        assertFalse(sparql.contains("invalidates"),
+                "preset deactivation is NOT an npx:invalidates check");
+        assertTrue(sparql.contains("FILTER (?ln") || sparql.contains("?lnNewer > 5"),
+                "delta filter on the superseding assignment's load number");
+        // Admin-scoped: the superseding assignment's publisher must be admin of the ref.
+        java.util.regex.Pattern adminScoped = java.util.regex.Pattern.compile(
+                "\\?adminRINewer[\\s\\S]*?npa:forSpaceRef\\s+\\?targetRef"
+                        + "[\\s\\S]*?npa:inverseProperty\\s+gen:hasAdmin"
+                        + "[\\s\\S]*?npa:forAgent\\s+\\?publisherNewer");
+        assertTrue(adminScoped.matcher(sparql).find(),
+                "deletion gated on an admin-authored superseding assignment");
+    }
+
 }
