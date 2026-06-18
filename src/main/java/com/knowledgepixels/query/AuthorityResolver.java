@@ -789,7 +789,41 @@ public final class AuthorityResolver {
     private static String invalidationFilter(String bareVarName) {
         return "FILTER NOT EXISTS { GRAPH <" + NPA.GRAPH + "> {"
                 + " ?_inv_" + bareVarName
-                + " <" + NPX.INVALIDATES + "> ?" + bareVarName + " . } }";
+                + " <" + NPX.INVALIDATES + "> ?" + bareVarName + " . "
+                + samePublisherClause("_inv_" + bareVarName, bareVarName)
+                + " } }";
+    }
+
+    /**
+     * SPARQL triple pair (placed inside a {@code GRAPH npa:graph { ... }} block)
+     * requiring the invalidating nanopub and its target to share a signing public
+     * key — the self-retraction authority gate for issue #112. Without it, the
+     * materializer honors {@code npx:invalidates}/{@code retracts}/{@code supersedes}
+     * from <em>any</em> validly-signed nanopub, so any agent can erase another
+     * space's materialized state (griefing/DoS of the view — fail-closed, no
+     * privilege escalation, but real). Additions are already admin-gated; this is
+     * the symmetric gate on removals.
+     *
+     * <p>Both {@code npa:hasValidSignatureForPublicKeyHash} triples live in
+     * {@code npa:graph} of the spaces repo: the target via its own space-load, the
+     * invalidator via the symmetric retractor propagation in
+     * {@link com.knowledgepixels.query.NanopubLoader} (forward {@code
+     * loadInvalidateStatements} + reverse {@code loadInvalidatorIntoSpacesRepo}),
+     * so the join is populated regardless of load order.
+     *
+     * <p>"Same pubkey" is intentionally stricter than "same agent": a retraction
+     * signed by a different key the author owns (key rotation) is not honored, and
+     * cross-admin supersession is out of scope here (would need an admin-authority
+     * arm). The pubkey-bridge variable is suffixed with {@code targetVar} so two
+     * filters in one query (e.g. on {@code ?np} and {@code ?rdNp}) don't collide.
+     *
+     * @param invVar    invalidator nanopub variable name (no leading {@code ?})
+     * @param targetVar invalidated-target nanopub variable name (no leading {@code ?})
+     */
+    private static String samePublisherClause(String invVar, String targetVar) {
+        String pk = "?_invpk_" + targetVar;
+        return "?" + invVar + " <" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH + "> " + pk + " . "
+                + "?" + targetVar + " <" + NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH + "> " + pk + " .";
     }
 
     /**
@@ -1880,8 +1914,10 @@ public final class AuthorityResolver {
                     ?invNp <%3$s> ?np ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
+                    %5$s
                   }
-                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /** DELETE template for admin-tier RoleInstantiations whose source nanopub was invalidated. */
@@ -1911,8 +1947,10 @@ public final class AuthorityResolver {
                     ?invNp <%3$s> ?np ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
+                    %5$s
                   }
-                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /** DELETE template for RoleAssignments whose source nanopub was invalidated. */
@@ -1949,8 +1987,10 @@ public final class AuthorityResolver {
                     ?invNp <%3$s> ?np ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
+                    %5$s
                   }
-                """, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                """, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /**
@@ -1977,10 +2017,12 @@ public final class AuthorityResolver {
                     ?invNp <%5$s> ?np ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %6$d)
+                    %7$s
                   }
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
-                NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /**
@@ -2000,8 +2042,10 @@ public final class AuthorityResolver {
                     ?invNp <%3$s> ?np ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
+                    %5$s
                   }
-                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /**
@@ -2053,10 +2097,12 @@ public final class AuthorityResolver {
                     ?invNp <%5$s> ?np ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %6$d)
+                    %7$s
                   }
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
-                NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /**
@@ -2076,8 +2122,10 @@ public final class AuthorityResolver {
                     ?invNp <%3$s> ?np ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %4$d)
+                    %5$s
                   }
-                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /**
@@ -2211,10 +2259,12 @@ public final class AuthorityResolver {
                     ?invNp <%5$s> ?assignNp ;
                            npa:hasLoadNumber ?ln .
                     FILTER (?ln > %6$d)
+                    %7$s
                   }
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
-                NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+                NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "assignNp"));
     }
 
     /** Wraps an ASK by joining the shared prefixes. */

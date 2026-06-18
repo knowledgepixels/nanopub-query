@@ -229,6 +229,84 @@ class AuthorityResolverTest {
                 "must skip admin-pinned RIs (those are handled by adminInvalidationDelete)");
     }
 
+    // ---------------- Invalidation authority gate (issue #112) ----------------
+
+    private static final String PK_HASH_IRI =
+            "http://purl.org/nanopub/admin/hasValidSignatureForPublicKeyHash";
+
+    /**
+     * Asserts that the invalidator (?invVar) and its target (?targetVar) are joined
+     * on a shared signing pubkey-hash — the self-retraction gate. Both triples must
+     * reference the same bridge variable {@code ?_invpk_<targetVar>}.
+     */
+    private static void assertSamePublisherGate(String sparql, String invVar, String targetVar) {
+        String pk = "?_invpk_" + targetVar;
+        assertTrue(sparql.contains("?" + invVar + " <" + PK_HASH_IRI + "> " + pk),
+                "invalidator ?" + invVar + " bound to pubkey-hash bridge " + pk);
+        assertTrue(sparql.contains("?" + targetVar + " <" + PK_HASH_IRI + "> " + pk),
+                "target ?" + targetVar + " bound to the SAME pubkey-hash bridge " + pk);
+    }
+
+    @Test
+    void invalidationFilter_gatesOnSamePublisher_viaAdminTier() {
+        // adminTierUpdate gates its seed/closure through invalidationFilter("np").
+        // After issue #112 that filter must additionally require the invalidator to
+        // share a signing pubkey with the invalidated nanopub, so a foreign retraction
+        // no longer drops an admin grant.
+        String sparql = AuthorityResolver.adminTierUpdate(TEST_GRAPH, 17);
+        assertSamePublisherGate(sparql, "_inv_np", "np");
+    }
+
+    @Test
+    void invalidationFilter_seedAliveCheckAlsoGatesOnSamePublisher_issue110plus112() {
+        // The space-ref-alive seed gate (issue #110) uses invalidationFilter("liveNp");
+        // it too must only treat a definition as dead when retracted by its own author.
+        String sparql = AuthorityResolver.adminTierUpdate(TEST_GRAPH, 17);
+        assertSamePublisherGate(sparql, "_inv_liveNp", "liveNp");
+    }
+
+    @Test
+    void adminInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.adminInvalidationDelete(TEST_GRAPH, 17), "invNp", "np");
+    }
+
+    @Test
+    void roleAssignmentInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.roleAssignmentInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void roleDeclarationInvalidationCheck_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.roleDeclarationInvalidationCheckWhere(0), "invNp", "np");
+    }
+
+    @Test
+    void leafTierInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.leafTierInvalidationDelete(TEST_GRAPH, 0), "invNp", "np");
+    }
+
+    @Test
+    void subSpaceInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.subSpaceInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void maintainedResourceInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.maintainedResourceInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void aliasInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.aliasInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void presetAssignmentRefInvalidationDelete_gatesOnSamePublisher() {
+        // This one keys the invalidation on ?assignNp, not ?np.
+        assertSamePublisherGate(
+                AuthorityResolver.presetAssignmentRefInvalidationDelete(TEST_GRAPH, 5), "invNp", "assignNp");
+    }
+
     // ---------------- Sub-space admit + invalidation (PR 2) ----------------
 
     @Test
