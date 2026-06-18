@@ -367,14 +367,10 @@ public final class AuthorityResolver {
             executeUpdate(roleAssignmentInvalidationDelete(graph, lastProcessed));
             structural = true;
         }
-        // RoleDeclaration ASK only — RDs aren't materialized into the space-state
-        // graph, so there's nothing to DELETE here. The flag still flips because
-        // sticky downstream RIs derived from the now-invalidated RD need a
-        // from-scratch recompute.
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
-                            roleDeclarationInvalidationCheckWhere(lastProcessed))) {
-            structural = true;
-        }
+        // Role-declaration invalidation is deliberately NOT acted on (see
+        // nonAdminTierUpdate): a role assignment is governed by the admin-validated
+        // attachment, not by the declaration author's later supersession/retraction, so
+        // an invalidated RD neither deletes rows nor triggers a rebuild.
         // Sub-space declarations are structural — invalidating one (Mode A) or one
         // of two co-declarations (Mode B) changes the validated parent/child
         // topology. The DELETE removes the per-declaration row; the convenience
@@ -1420,12 +1416,13 @@ public final class AuthorityResolver {
                   {
                     GRAPH <%3$s> { ?instSpace npa:sameAsSpace ?spaceRef . }
                   }
-                  # 2. Tier-pinned RoleDeclaration (?role bound from the attachment).
+                  # 2. Tier-pinned RoleDeclaration (?role bound from the attachment). Its
+                  #    nanopub's invalidation is intentionally NOT consulted (see step 7), so
+                  #    no ?rdNp binding is needed.
                   GRAPH <%4$s> {
                     ?rd a npa:RoleDeclaration ;
                         npa:hasRoleType <%7$s> ;
-                        npa:role        ?role ;
-                        npa:viaNanopub  ?rdNp .
+                        npa:role        ?role .
                     # 3. Pair direction so only matching combos are explored. ?dirPred
                     #    carries the matched direction so the materialized row records the
                     #    role property (read by get-space-members and publisherIsTieredRole).
@@ -1455,18 +1452,24 @@ public final class AuthorityResolver {
                   }
                   # 5. Publisher constraint (incl. AccountState resolution).
                   GRAPH <%3$s> {
-                    %9$s
+                    %8$s
                   }
                   # 5a. Mint the per-ref state subject: (?ri, ?spaceRef) → ?ri2.
                   BIND(IRI(CONCAT(STR(?ri), "__", ENCODE_FOR_URI(STR(?spaceRef)))) AS ?ri2)
                   # 6. Load-number filter on bound ?np.
-                  GRAPH <%10$s> {
+                  GRAPH <%9$s> {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 7. Invalidation filters — outside the GRAPH block so the
-                  #    planner defers them until ?rdNp/?np are bound.
-                  %8$s
+                  # 7. Instantiation invalidation filter — outside the GRAPH block so the
+                  #    planner defers it until ?np is bound. Role-DECLARATION invalidation is
+                  #    deliberately NOT consulted: the tier already anchors on the admin-
+                  #    validated attachment (?ra), which is removed when an admin retracts it,
+                  #    so admin control is fully enforced there. Letting the declaration's
+                  #    author (usually not the space admin) supersede/retract their declaration
+                  #    strip a space's members is the same cross-author-strip anti-pattern as
+                  #    issue #112. Role IRIs are version-pinned, so the attached definition is
+                  #    immutable regardless of the declaration nanopub's later lifecycle.
                   %6$s
                   # 8. Dedup last — keyed on (ref, agent, nanopub).
                   FILTER NOT EXISTS { GRAPH <%3$s> {
@@ -1484,7 +1487,6 @@ public final class AuthorityResolver {
                 lastProcessed,
                 invalidationFilter("np"),
                 tierClass,
-                invalidationFilter("rdNp"),
                 publisherConstraint,
                 NPA.GRAPH);
     }
@@ -1967,30 +1969,6 @@ public final class AuthorityResolver {
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 roleAssignmentInvalidationCheckWhere(graph, lastProcessed));
-    }
-
-    /**
-     * WHERE clause for RoleDeclaration invalidation. ASK-only (no DELETE):
-     * RoleDeclarations live in {@code npa:spacesGraph} and aren't materialized
-     * into the space-state graph, so there's nothing to remove from the
-     * space-state. The ASK still flips {@code npa:needsFullRebuild} because
-     * sticky downstream RIs that were derived under the now-invalidated RD
-     * need a from-scratch recompute.
-     */
-    static String roleDeclarationInvalidationCheckWhere(long lastProcessed) {
-        return String.format("""
-                  GRAPH <%1$s> {
-                    ?rd a npa:RoleDeclaration ;
-                        npa:viaNanopub ?np .
-                  }
-                  GRAPH <%2$s> {
-                    ?invNp <%3$s> ?np ;
-                           npa:hasLoadNumber ?ln .
-                    FILTER (?ln > %4$d)
-                    %5$s
-                  }
-                """, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
-                samePublisherClause("invNp", "np"));
     }
 
     /**

@@ -206,17 +206,19 @@ class AuthorityResolverTest {
     }
 
     @Test
-    void roleDeclarationInvalidationCheck_isAskOnly() {
-        // RoleDeclaration invalidation is ASK-only — RDs aren't materialized into
-        // the space-state graph, so there's nothing to DELETE here. The WHERE clause
-        // exists only to drive an ASK that flips needsFullRebuild.
-        String where = AuthorityResolver.roleDeclarationInvalidationCheckWhere(0);
-        assertTrue(where.contains("npa:RoleDeclaration"),
-                "scoped to RoleDeclaration rows in spacesGraph");
-        assertTrue(where.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
-                "joins the raw npx:invalidates triple in npa:graph");
-        assertTrue(where.contains("FILTER (?ln > 0)"),
-                "delta filter on the invalidator's load number");
+    void nonAdminTierUpdate_doesNotConsultRoleDeclarationInvalidation() {
+        // A role assignment is governed by the admin-validated attachment, not by the
+        // declaration author's later supersession/retraction (the attachment anchor
+        // already enforces admin control). So the non-admin tier must NOT carry a
+        // role-declaration invalidation filter — only the instantiation's own.
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 5,
+                com.knowledgepixels.query.vocabulary.GEN.OBSERVER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_SELF);
+        assertFalse(sparql.contains("_inv_rdNp"),
+                "no role-declaration invalidation filter (its ?_inv_rdNp var must not appear)");
+        // The instantiation's own invalidation filter is still present.
+        assertSamePublisherGate(sparql, "_inv_np", "np");
     }
 
     @Test
@@ -273,11 +275,6 @@ class AuthorityResolverTest {
     @Test
     void roleAssignmentInvalidationDelete_gatesOnSamePublisher() {
         assertSamePublisherGate(AuthorityResolver.roleAssignmentInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
-    }
-
-    @Test
-    void roleDeclarationInvalidationCheck_gatesOnSamePublisher() {
-        assertSamePublisherGate(AuthorityResolver.roleDeclarationInvalidationCheckWhere(0), "invNp", "np");
     }
 
     @Test
