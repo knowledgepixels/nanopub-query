@@ -275,3 +275,41 @@ preset-derived RAs. This is **not** `npx:invalidates`, so `roleAssignmentInvalid
 - **Latest-wins is authorization-scoped**: the `MAX(dct:created)` candidate set (activation gate and
   deactivation delete) is restricted to admin-authored assignments, matching Nanodash's "authorized agents
   only, then latest-wins" and the #113 anti-hijack rule. (§3)
+
+## 12. Ref-scoping the preset-assignment *listing* (issue #122)
+
+Sibling to the role materialization above, sharing its `?targetRef`/admin-gate machinery. The extraction row
+(`SpacesExtractor.extractPresetAssignment`) is keyed only by `npa:forResource`, so the "Assigned presets"
+About-tab table — the *only* listing that still merged across refs of an IRI — showed assignments from rival
+refs. The fix stamps a **ref-scoped mirror** of each assignment into the state graph.
+
+**`presetAssignmentRefStampUpdate` — a faithful per-assignment mirror, deliberately *not* the §4.3 role path:**
+
+- **No role join.** Reuses §4.3 steps 1–4 (anchor `npa:PresetAssignment`, load filter, `pkh→agent`,
+  `?targetRef npa:spaceIri ?resource` + per-ref admin gate) but drops steps 5–5c (role/declaration join) and 7
+  (latest-wins). A preset bundling only *views* (no roles) would be invisible if the stamp were gated on the
+  role join — so it is not. Emits `npa:PresetAssignment ; npa:ofPreset ; npa:forResource ; npa:forSpaceRef
+  ?targetRef ; npa:isActivated ?activated ; npa:viaNanopub ; dct:created`, minted per `(assignment, ref)`.
+- **Carries activation state; emits active *and* deactivated rows.** Binds `?activated` rather than anchoring
+  on `npa:isActivated true`, so the listing can show deactivated assignments (which the IRI-keyed extraction
+  row does today) instead of silently dropping them.
+- **Latest-wins deferred to the consumer.** A deactivation is just a newer admin-authored stamp with
+  `npa:isActivated false`; the consumer resolves latest-`dct:created`-per-`(preset,resource)` over these rows
+  exactly as it does over the IRI-keyed rows today. Because only admin-authored assignments are ever stamped
+  (a non-admin of the ref can never get a row in), that resolution is **authorization-scoped for free** — no
+  §4.3-step-7 shadowing probe and no §4.4 `dct:created` deactivation-delete are needed for the listing.
+- **Display-only leaf.** Nothing downstream derives from a listing stamp (contrast the preset-derived
+  `gen:RoleAssignment`), so its tier count is **not** fed into `structuralAdds` — it never triggers a full
+  rebuild. Wired into `runAllTierLoops` (after preset-attachment) and the `runDownstreamWithoutLoadFilter`
+  late sweep (catches assignments whose authorizing admin grant validated this same cycle).
+- **Maintenance is one leaf delete.** `presetAssignmentRefInvalidationDelete` (modeled on
+  `maintainedResourceInvalidationDelete`) removes a stamp when its assignment nanopub is hard-retracted
+  (`npx:invalidates`, delta-filtered) — no flag. Scoped to state-graph `npa:PresetAssignment` rows carrying
+  `npa:forSpaceRef` (the extraction rows never do), so it can never touch them. Admin-grant revocation is
+  bounded by the periodic full rebuild (same sticky policy as the alias / sub-space convenience edges).
+
+**Consumer (Nanodash, no change here).** Minimal: the published "Assigned presets" query keeps its existing
+`isActivated` + latest-`dct:created` logic and only swaps `?pa npa:forResource <IRI>` →
+`?pa npa:forSpaceRef ?refRoot` against the state graph. Flip the `❌ Preset assignment listing ref-scoped`
+row in nanodash `docs/space-ref-identity.md` once it lands. **Deploy:** additive — needs the same **full
+re-ingest** backfill as §5 (pre-existing assignments are only in the spaces repo after re-evaluation).

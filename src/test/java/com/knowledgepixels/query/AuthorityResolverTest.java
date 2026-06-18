@@ -662,4 +662,68 @@ class AuthorityResolverTest {
                 "deletion gated on an admin-authored superseding assignment");
     }
 
+    // ---------------- Ref-scoped preset-assignment listing stamp (issue #122) ----------------
+
+    @Test
+    void presetAssignmentRefStampUpdate_emitsForSpaceRefAndIsActivated() {
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        assertTrue(sparql.contains("npa:PresetAssignment"),
+                "stamps a ref-scoped npa:PresetAssignment row");
+        assertTrue(sparql.contains("npa:forSpaceRef ?targetRef"),
+                "the stamp is ref-scoped — the whole point of #122");
+        // Carries activation state and emits both active AND deactivated rows, so the
+        // listing can show state (?activated bound, NOT the literal `true`).
+        assertTrue(sparql.contains("npa:isActivated ?activated"),
+                "binds the activation state instead of filtering to active-only");
+        assertFalse(sparql.contains("npa:isActivated true"),
+                "must NOT anchor on active-only, or deactivated assignments vanish");
+        // Admin-validated, ref-resolved — same gate as the role materializer.
+        assertTrue(sparql.contains("?targetRef npa:spaceIri ?resource"),
+                "resolves the resource to a Space ref (cross-nanopub join)");
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
+                "publisher must be a validated admin of the target ref");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the assignment nanopub");
+    }
+
+    @Test
+    void presetAssignmentRefStampUpdate_hasNoRoleJoinSoViewOnlyPresetsAreListed() {
+        // Caveat 1: a preset bundling only views (no roles) must still appear in the
+        // listing. The stamp therefore must NOT join the role declaration the way the
+        // role materializer does.
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 0);
+        assertFalse(sparql.contains("npa:presetRole"),
+                "no role join — view-only presets must still be listed");
+        assertFalse(sparql.contains("npa:appliesToInstancesOf"),
+                "not gated on a Space-targeted role declaration");
+        assertFalse(sparql.contains("gen:RoleAssignment"),
+                "this is a listing stamp, not a role attachment");
+    }
+
+    @Test
+    void presetAssignmentRefStampUpdate_hasNoLatestWinsFilter() {
+        // A deactivation is just a newer admin-authored row; latest-wins is resolved by
+        // the consumer over these admin-authored rows (so it is authorization-scoped for
+        // free). The stamp itself does no dct:created shadowing comparison.
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 0);
+        assertFalse(sparql.contains("?createdNewer"),
+                "no server-side latest-wins — deferred to the consumer query");
+        assertFalse(sparql.contains("?paNewer"),
+                "no shadowing-candidate probe in the stamp");
+    }
+
+    @Test
+    void presetAssignmentRefInvalidationDelete_scopedToForSpaceRefRows() {
+        String sparql = AuthorityResolver.presetAssignmentRefInvalidationDelete(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("npa:PresetAssignment") && sparql.contains("npa:forSpaceRef ?targetRef"),
+                "deletes only state-graph stamps (which carry npa:forSpaceRef), never the "
+                        + "IRI-keyed extraction rows");
+        assertTrue(sparql.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?assignNp"),
+                "removal is driven by hard retraction of the assignment nanopub");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the invalidator's load number");
+    }
+
 }

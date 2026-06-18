@@ -242,17 +242,18 @@ public final class AuthorityResolver {
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.presetAttachment
+                + counts.presetAssignmentRef
                 + counts.attachment + counts.maintainer + counts.member + counts.observer
                 + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         logger.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} alias={} preset-attachment={} attachment={} maintainer={} member={} observer={} "
+                        + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={}) durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.alias, counts.presetAttachment, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
                 counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
                 durationMs);
     }
@@ -315,6 +316,7 @@ public final class AuthorityResolver {
             TierInsertedTriples lateCounts = runDownstreamWithoutLoadFilter(graph);
             counts.alias              += lateCounts.alias;
             counts.presetAttachment   += lateCounts.presetAttachment;
+            counts.presetAssignmentRef += lateCounts.presetAssignmentRef;
             counts.attachment         += lateCounts.attachment;
             counts.maintainer         += lateCounts.maintainer;
             counts.member             += lateCounts.member;
@@ -330,17 +332,18 @@ public final class AuthorityResolver {
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
         lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.presetAttachment
+                + counts.presetAssignmentRef
                 + counts.attachment + counts.maintainer + counts.member + counts.observer
                 + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
         lastIncrementalCycleDurationMs = durationMs;
         logger.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
-                        + "(inserted-triples: admin={} alias={} preset-attachment={} attachment={} maintainer={} member={} observer={} "
+                        + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
-                counts.admin, counts.alias, counts.presetAttachment, counts.attachment, counts.maintainer, counts.member, counts.observer,
+                counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
                 counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
                 structuralInvalidation, structuralAdds, durationMs);
     }
@@ -406,6 +409,9 @@ public final class AuthorityResolver {
         }
         // Leaf-tier RI deletes — no flag.
         executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
+        // Ref-scoped preset-assignment listing stamps whose assignment nanopub was
+        // hard-retracted (issue #122) — no flag (display leaf, nothing downstream).
+        executeUpdate(presetAssignmentRefInvalidationDelete(graph, lastProcessed));
         // Maintained-resource declaration deletes — no flag (leaf relation, no
         // downstream caches to bound).
         executeUpdate(maintainedResourceInvalidationDelete(graph, lastProcessed));
@@ -444,6 +450,11 @@ public final class AuthorityResolver {
         // so the non-admin late tiers below see this cycle's fresh preset-derived RAs.
         c.presetAttachment = runTierLabeled("preset-attachment(late)", graph,
                 presetAttachmentValidationUpdate(graph, -1));
+        // Ref-scoped preset-assignment late stamp: catches assignments whose authorizing
+        // admin grant only became valid this cycle (the load filter would skip the older
+        // assignment nanopub). Mirrors the preset-attachment late sweep above.
+        c.presetAssignmentRef = runTierLabeled("preset-assignment-ref(late)", graph,
+                presetAssignmentRefStampUpdate(graph, -1));
         c.attachment = runTierLabeled("attachment(late)", graph,
                 attachmentValidationUpdate(graph, -1));
         c.maintainer = runTierLabeled("maintainer(late)", graph,
@@ -532,6 +543,7 @@ public final class AuthorityResolver {
         int admin;
         int alias;
         int presetAttachment;
+        int presetAssignmentRef;
         int attachment;
         int maintainer;
         int member;
@@ -585,6 +597,10 @@ public final class AuthorityResolver {
         // doc/design-preset-role-materialization.md.
         c.presetAttachment = runTierLabeled("preset-attachment", graph,
                 presetAttachmentValidationUpdate(graph, lastProcessed));
+        // Ref-scoped preset-assignment listing stamp (issue #122). Display-only leaf —
+        // independent of the role tiers and of structuralAdds; order doesn't matter.
+        c.presetAssignmentRef = runTierLabeled("preset-assignment-ref", graph,
+                presetAssignmentRefStampUpdate(graph, lastProcessed));
         c.attachment = runTierLabeled("attachment", graph,
                 attachmentValidationUpdate(graph, lastProcessed));
         c.maintainer = runTierLabeled("maintainer", graph, nonAdminTierUpdate(graph, lastProcessed,
@@ -1150,6 +1166,103 @@ public final class AuthorityResolver {
                 NPA.GRAPH,
                 invalidationFilter("pdNpNewer"),
                 invalidationFilter("pdNp"));
+    }
+
+    /**
+     * Stamps a ref-scoped, admin-validated mirror of each {@code npa:PresetAssignment}
+     * into the state graph (issue #122). The publisher-agnostic extraction row
+     * ({@link SpacesExtractor#extractPresetAssignment}) is keyed only by
+     * {@code npa:forResource}, so a consumer listing a space's preset assignments by IRI
+     * sees the union across <em>all</em> refs claiming that IRI. This stamp adds
+     * {@code npa:forSpaceRef ?targetRef} so the "Assigned presets" listing is no longer
+     * merged across refs of the same IRI — the one remaining About-tab listing that still
+     * merged across refs (every other ref-scoped listing already has a {@code forSpaceRef}
+     * companion).
+     *
+     * <p>Faithful per-assignment mirror — deliberately <em>not</em> role-gated and
+     * <em>not</em> latest-wins-resolved, unlike {@link #presetAttachmentValidationUpdate}:
+     * <ul>
+     *   <li>No {@code npa:PresetDeclaration}/role join, so a preset that bundles only
+     *       <em>views</em> (no roles) is still listed.</li>
+     *   <li>Emits active <em>and</em> deactivated rows (carries {@code npa:isActivated})
+     *       so the listing can show state; a deactivation is just a newer admin-authored
+     *       row, so no {@code dct:created}-driven removal is needed here (contrast §4.4).</li>
+     *   <li>Latest-wins is deferred to the consumer query, which ranges only over these
+     *       admin-authored rows — so it is authorization-scoped for free (design §3): a
+     *       non-admin of the ref can never get a row stamped, so it cannot enter the
+     *       latest-wins race.</li>
+     * </ul>
+     *
+     * <p>Display-only leaf: nothing downstream derives from these rows (contrast the
+     * preset-derived {@code gen:RoleAssignment}), so the caller must <em>not</em> feed this
+     * tier's count into {@code structuralAdds}. The {@code npa:forSpaceRef} predicate also
+     * distinguishes a stamped row from the IRI-keyed extraction row (which never carries it),
+     * so {@link #presetAssignmentRefInvalidationDelete} can target exactly these rows.
+     * Reuses steps 1–4 of {@link #presetAttachmentValidationUpdate}; see
+     * doc/design-preset-role-materialization.md §3 and issue #122.
+     */
+    static String presetAssignmentRefStampUpdate(IRI graph, long lastProcessed) {
+        return """
+                PREFIX npa:  <%1$s>
+                PREFIX gen:  <%2$s>
+                INSERT { GRAPH <%3$s> {
+                  ?paRef a npa:PresetAssignment ;
+                         npa:ofPreset    ?preset ;
+                         npa:forResource ?resource ;
+                         npa:forSpaceRef ?targetRef ;
+                         npa:isActivated ?activated ;
+                         npa:viaNanopub  ?assignNp ;
+                         <http://purl.org/dc/terms/created> ?created .
+                } }
+                WHERE {
+                  # 1. Anchor: every assignment row (active or not) in the extraction graph.
+                  GRAPH <%4$s> {
+                    ?pa a npa:PresetAssignment ;
+                        npa:ofPreset    ?preset ;
+                        npa:forResource ?resource ;
+                        npa:isActivated ?activated ;
+                        npa:pubkeyHash  ?pkh ;
+                        npa:viaNanopub  ?assignNp ;
+                        <http://purl.org/dc/terms/created> ?created .
+                  }
+                  # 2. Load-number filter on the assignment nanopub (delta window).
+                  GRAPH <%6$s> {
+                    ?assignNp npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                  # 3. Resolve publisher pkh -> agent via the mirrored trust-approved row.
+                  GRAPH <%3$s> {
+                    ?acct a npa:AccountState ;
+                          npa:agent  ?publisher ;
+                          npa:pubkey ?pkh .
+                  }
+                  # 4. Target must be a Space ref the publisher admins. ?targetRef = that ref;
+                  #    fan-out to N refs the publisher admins (per-ref isolation, consistent
+                  #    with the role materializer and design-spaceref-isolation.md).
+                  GRAPH <%4$s> { ?targetRef npa:spaceIri ?resource . }
+                  GRAPH <%3$s> {
+                    ?adminRI a gen:RoleInstantiation ;
+                             npa:forSpaceRef ?targetRef ;
+                             npa:inverseProperty gen:hasAdmin ;
+                             npa:forAgent ?publisher .
+                  }
+                  # 5. Defensive: drop if the assignment nanopub itself was hard-retracted.
+                  %7$s
+                  # 6. Mint per (assignment, ref); dedup on the bound subject. No latest-wins
+                  #    here — a deactivation is just a newer admin-authored row, and the
+                  #    consumer resolves latest dct:created per (preset,resource) over these
+                  #    admin-authored rows (so the resolution is authorization-scoped).
+                  BIND(IRI(CONCAT(STR(?pa), "__", ENCODE_FOR_URI(STR(?targetRef)))) AS ?paRef)
+                  FILTER NOT EXISTS { GRAPH <%3$s> { ?paRef a npa:PresetAssignment . } }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                GEN.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH,
+                lastProcessed,
+                NPA.GRAPH,
+                invalidationFilter("assignNp"));
     }
 
     /**
@@ -2009,6 +2122,45 @@ public final class AuthorityResolver {
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 presetDeactivationCheckWhere(graph, lastProcessed));
+    }
+
+    /**
+     * DELETE template for ref-scoped preset-assignment stamps ({@link
+     * #presetAssignmentRefStampUpdate}) whose underlying assignment nanopub was
+     * hard-retracted (issue #122). Removes the whole row by subject; scoped to
+     * state-graph {@code npa:PresetAssignment} rows that carry {@code npa:forSpaceRef}
+     * (the IRI-keyed extraction rows never do), so it can never touch them.
+     *
+     * <p>Leaf delete — no structural flag: nothing downstream derives from a listing
+     * stamp, so a stale row only mis-displays a retracted assignment until this cycle's
+     * delete runs. Admin-grant revocation is bounded by the periodic full rebuild (same
+     * sticky-convenience policy as the alias / sub-space declaration edges). A
+     * <em>deactivation</em> needs no delete here: it is represented as a newer
+     * admin-authored stamp with {@code npa:isActivated false}, resolved by the consumer's
+     * latest-wins.
+     */
+    static String presetAssignmentRefInvalidationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?paRef ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> {
+                    ?paRef a npa:PresetAssignment ;
+                           npa:forSpaceRef ?targetRef ;
+                           npa:viaNanopub  ?assignNp .
+                    ?paRef ?p ?o .
+                  }
+                  GRAPH <%4$s> {
+                    ?invNp <%5$s> ?assignNp ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %6$d)
+                  }
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
     }
 
     /** Wraps an ASK by joining the shared prefixes. */
