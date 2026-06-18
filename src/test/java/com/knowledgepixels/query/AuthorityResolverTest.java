@@ -544,17 +544,37 @@ class AuthorityResolverTest {
 
     @Test
     void nonAdminTierUpdate_adminConstraintKeysOnAssignmentRef() {
-        // Alias resolution moved upstream: the attachment tier binds the assignment's
-        // ?spaceRef to the canonical ref for owl:sameAs-aliased IRIs (issue #113), so the
-        // non-admin publisher constraint just checks admin-of-?spaceRef — no alias arm.
+        // The publisher constraint keys on the assignment's already-resolved ref — it does
+        // not itself re-resolve aliases (that arm lives in the instantiation lookup below).
         String sparql = AuthorityResolver.nonAdminTierUpdate(
                 TEST_GRAPH, 5,
                 com.knowledgepixels.query.vocabulary.GEN.MEMBER_ROLE,
                 AuthorityResolver.PUBLISHER_IS_ADMIN);
         assertTrue(sparql.contains("npa:forSpaceRef ?spaceRef"),
                 "admin publisher constraint keys on the assignment's ref");
-        assertFalse(sparql.contains("npa:sameAsSpace"),
-                "no alias re-resolution in the non-admin constraint");
+    }
+
+    @Test
+    void nonAdminTierUpdate_instantiationLookupResolvesSameAsAlias() {
+        // Issue #113 parity: an instantiation that names an owl:sameAs alias of the space
+        // must materialize against the same ref as a canonical-named one. The lookup binds
+        // the ref's IRIs (canonical via npa:spaceIri, OR alias via npa:sameAsSpace) and
+        // probes the instantiation by that ?instSpace — anchored, not a full RI scan.
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 5,
+                com.knowledgepixels.query.vocabulary.GEN.MEMBER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_ADMIN);
+        assertTrue(sparql.contains("?spaceRef npa:spaceIri ?instSpace"),
+                "direct arm: ?instSpace is the ref's canonical IRI");
+        assertTrue(sparql.contains("?instSpace npa:sameAsSpace ?spaceRef"),
+                "alias arm: ?instSpace is an owl:sameAs alias resolving to the ref");
+        assertTrue(sparql.contains("npa:forSpace   ?instSpace"),
+                "instantiation is probed by the resolved IRI, not the attachment's IRI");
+        // The IRI resolution must precede the instantiation BGP so the lookup stays anchored.
+        java.util.regex.Pattern order = java.util.regex.Pattern.compile(
+                "npa:sameAsSpace \\?spaceRef[\\s\\S]*?a gen:RoleInstantiation");
+        assertTrue(order.matcher(sparql).find(),
+                "IRI-set resolution is bound before the instantiation lookup");
     }
 
     @Test
@@ -595,6 +615,18 @@ class AuthorityResolverTest {
                 "publisher must be a validated admin of the target ref");
         assertTrue(sparql.contains("FILTER (?ln > 5)"),
                 "delta filter on the assignment nanopub");
+    }
+
+    @Test
+    void presetAttachmentValidationUpdate_honorsSameAsAlias() {
+        // Issue #113 parity with attachmentValidationUpdate: a preset assignment whose
+        // forResource is an owl:sameAs alias must validate against the canonical ref's
+        // admin set, so the bundled roles still materialize. Direct + alias arms.
+        String sparql = AuthorityResolver.presetAttachmentValidationUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("?resource npa:sameAsSpace ?targetRef"),
+                "alias arm resolves forResource to the canonical ref it aliases");
+        assertTrue(sparql.contains("?targetRef npa:spaceIri ?resource"),
+                "direct arm still present");
     }
 
     @Test
@@ -685,6 +717,17 @@ class AuthorityResolverTest {
                 "publisher must be a validated admin of the target ref");
         assertTrue(sparql.contains("FILTER (?ln > 5)"),
                 "delta filter on the assignment nanopub");
+    }
+
+    @Test
+    void presetAssignmentRefStampUpdate_honorsSameAsAlias() {
+        // Issue #113 parity: an assignment naming an owl:sameAs alias must be listed under
+        // the canonical ref, so the gate carries the direct + alias arms like the others.
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("?resource npa:sameAsSpace ?targetRef"),
+                "alias arm resolves forResource to the canonical ref it aliases");
+        assertTrue(sparql.contains("?targetRef npa:spaceIri ?resource"),
+                "direct arm still present");
     }
 
     @Test

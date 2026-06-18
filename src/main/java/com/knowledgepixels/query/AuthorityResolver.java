@@ -1075,13 +1075,28 @@ public final class AuthorityResolver {
                           npa:agent  ?publisher ;
                           npa:pubkey ?pkh .
                   }
-                  # 4. Target must be a Space ref the publisher admins. ?targetRef = that ref.
-                  GRAPH <%4$s> { ?targetRef npa:spaceIri ?resource . }
-                  GRAPH <%3$s> {
-                    ?adminRI a gen:RoleInstantiation ;
-                             npa:forSpaceRef ?targetRef ;
-                             npa:inverseProperty gen:hasAdmin ;
-                             npa:forAgent ?publisher .
+                  # 4. Target must be a Space ref the publisher admins — direct, or the
+                  #    canonical ref ?resource is an owl:sameAs alias of (issue #113 parity
+                  #    with attachmentValidationUpdate, so a preset assigned against an alias
+                  #    IRI still materializes against the canonical ref).
+                  {
+                    GRAPH <%4$s> { ?targetRef npa:spaceIri ?resource . }
+                    GRAPH <%3$s> {
+                      ?adminRI a gen:RoleInstantiation ;
+                               npa:forSpaceRef ?targetRef ;
+                               npa:inverseProperty gen:hasAdmin ;
+                               npa:forAgent ?publisher .
+                    }
+                  }
+                  UNION
+                  {
+                    GRAPH <%3$s> {
+                      ?resource npa:sameAsSpace ?targetRef .
+                      ?adminRI a gen:RoleInstantiation ;
+                               npa:forSpaceRef ?targetRef ;
+                               npa:inverseProperty gen:hasAdmin ;
+                               npa:forAgent ?publisher .
+                    }
                   }
                   # 5. Resolve the assignment's referenced preset IRI (node or kind) to its
                   #    canonical kind, mirroring how Nanodash views key on dct:isVersionOf
@@ -1238,13 +1253,27 @@ public final class AuthorityResolver {
                   }
                   # 4. Target must be a Space ref the publisher admins. ?targetRef = that ref;
                   #    fan-out to N refs the publisher admins (per-ref isolation, consistent
-                  #    with the role materializer and design-spaceref-isolation.md).
-                  GRAPH <%4$s> { ?targetRef npa:spaceIri ?resource . }
-                  GRAPH <%3$s> {
-                    ?adminRI a gen:RoleInstantiation ;
-                             npa:forSpaceRef ?targetRef ;
-                             npa:inverseProperty gen:hasAdmin ;
-                             npa:forAgent ?publisher .
+                  #    with the role materializer and design-spaceref-isolation.md). Direct,
+                  #    or the canonical ref ?resource is an owl:sameAs alias of (issue #113),
+                  #    so an assignment naming an alias is still listed under the canonical ref.
+                  {
+                    GRAPH <%4$s> { ?targetRef npa:spaceIri ?resource . }
+                    GRAPH <%3$s> {
+                      ?adminRI a gen:RoleInstantiation ;
+                               npa:forSpaceRef ?targetRef ;
+                               npa:inverseProperty gen:hasAdmin ;
+                               npa:forAgent ?publisher .
+                    }
+                  }
+                  UNION
+                  {
+                    GRAPH <%3$s> {
+                      ?resource npa:sameAsSpace ?targetRef .
+                      ?adminRI a gen:RoleInstantiation ;
+                               npa:forSpaceRef ?targetRef ;
+                               npa:inverseProperty gen:hasAdmin ;
+                               npa:forAgent ?publisher .
+                    }
                   }
                   # 5. Defensive: drop if the assignment nanopub itself was hard-retracted.
                   %7$s
@@ -1309,10 +1338,14 @@ public final class AuthorityResolver {
         // (~hundreds, often zero) and walks outward by bound (?role, ?space).
         //
         //   1. Anchor on RoleAssignments in this space-state graph (small).
+        //   1a. Resolve the IRIs that denote the assignment's ref — its canonical
+        //      IRI plus any validated owl:sameAs aliases — so an instantiation that
+        //      names an alias of the space still matches (issue #113). Bound here so
+        //      the instantiation lookup below stays anchored by ?instSpace.
         //   2. Match the tier-pinned RoleDeclaration by ?role.
         //   3. Pair role-decl direction to instantiation direction in one UNION
         //      so only (reg, reg)/(inv, inv) combos are explored.
-        //   4. Targeted instantiation lookup — (?space, ?pred) are bound.
+        //   4. Targeted instantiation lookup — (?instSpace, ?pred) are bound.
         //   5. Publisher constraint (incl. AccountState resolution).
         //   6. Load-number filter on bound ?np.
         //   7. Dedup at the end.
@@ -1338,6 +1371,21 @@ public final class AuthorityResolver {
                         npa:forSpaceRef ?spaceRef ;
                         npa:forSpace    ?space .
                   }
+                  # 1a. The IRIs that denote this ref: its canonical IRI, plus any validated
+                  #     owl:sameAs aliases of it (issue #113) — so an instantiation naming an
+                  #     alias of the space still materializes here. Bound BEFORE the
+                  #     instantiation BGP so that lookup stays anchored by ?instSpace (planner
+                  #     note above); ?spaceRef is already bound, so each arm is a targeted
+                  #     lookup yielding a tiny IRI set. The alias arm only follows admin-
+                  #     validated npa:sameAsSpace edges, so it grants no authority the admin
+                  #     tier would not (anti-hijack is enforced upstream, not relaxed here).
+                  {
+                    GRAPH <%4$s> { ?spaceRef npa:spaceIri ?instSpace . }
+                  }
+                  UNION
+                  {
+                    GRAPH <%3$s> { ?instSpace npa:sameAsSpace ?spaceRef . }
+                  }
                   # 2. Tier-pinned RoleDeclaration (?role bound from the attachment).
                   GRAPH <%4$s> {
                     ?rd a npa:RoleDeclaration ;
@@ -1358,9 +1406,15 @@ public final class AuthorityResolver {
                       ?ri npa:inverseProperty    ?pred .
                       BIND(npa:inverseProperty AS ?dirPred)
                     }
-                    # 4. Targeted instantiation lookup — (?space, ?pred) bound.
+                    # 4. Targeted instantiation lookup — (?instSpace, ?pred) bound. The
+                    #    instantiation names its space by IRI; ?instSpace was resolved to this
+                    #    ref above (canonical or owl:sameAs alias), so an alias-named
+                    #    instantiation joins the same ?spaceRef as a canonical one. The
+                    #    materialized row still carries npa:forSpace ?space (the attachment's
+                    #    IRI) for the transitional dual-emit, so pre-ref reads see the member
+                    #    under the space's primary IRI.
                     ?ri a gen:RoleInstantiation ;
-                        npa:forSpace   ?space ;
+                        npa:forSpace   ?instSpace ;
                         npa:forAgent   ?agent ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
