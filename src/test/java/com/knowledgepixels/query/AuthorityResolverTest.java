@@ -206,17 +206,19 @@ class AuthorityResolverTest {
     }
 
     @Test
-    void roleDeclarationInvalidationCheck_isAskOnly() {
-        // RoleDeclaration invalidation is ASK-only — RDs aren't materialized into
-        // the space-state graph, so there's nothing to DELETE here. The WHERE clause
-        // exists only to drive an ASK that flips needsFullRebuild.
-        String where = AuthorityResolver.roleDeclarationInvalidationCheckWhere(0);
-        assertTrue(where.contains("npa:RoleDeclaration"),
-                "scoped to RoleDeclaration rows in spacesGraph");
-        assertTrue(where.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?np"),
-                "joins the raw npx:invalidates triple in npa:graph");
-        assertTrue(where.contains("FILTER (?ln > 0)"),
-                "delta filter on the invalidator's load number");
+    void nonAdminTierUpdate_doesNotConsultRoleDeclarationInvalidation() {
+        // A role assignment is governed by the admin-validated attachment, not by the
+        // declaration author's later supersession/retraction (the attachment anchor
+        // already enforces admin control). So the non-admin tier must NOT carry a
+        // role-declaration invalidation filter — only the instantiation's own.
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 5,
+                com.knowledgepixels.query.vocabulary.GEN.OBSERVER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_SELF);
+        assertFalse(sparql.contains("_inv_rdNp"),
+                "no role-declaration invalidation filter (its ?_inv_rdNp var must not appear)");
+        // The instantiation's own invalidation filter is still present.
+        assertSamePublisherGate(sparql, "_inv_np", "np");
     }
 
     @Test
@@ -227,6 +229,79 @@ class AuthorityResolverTest {
                 "scoped to RoleInstantiation rows");
         assertTrue(sparql.contains("FILTER NOT EXISTS { ?ri npa:inverseProperty gen:hasAdmin }"),
                 "must skip admin-pinned RIs (those are handled by adminInvalidationDelete)");
+    }
+
+    // ---------------- Invalidation authority gate (issue #112) ----------------
+
+    private static final String PK_HASH_IRI =
+            "http://purl.org/nanopub/admin/hasValidSignatureForPublicKeyHash";
+
+    /**
+     * Asserts that the invalidator (?invVar) and its target (?targetVar) are joined
+     * on a shared signing pubkey-hash — the self-retraction gate. Both triples must
+     * reference the same bridge variable {@code ?_invpk_<targetVar>}.
+     */
+    private static void assertSamePublisherGate(String sparql, String invVar, String targetVar) {
+        String pk = "?_invpk_" + targetVar;
+        assertTrue(sparql.contains("?" + invVar + " <" + PK_HASH_IRI + "> " + pk),
+                "invalidator ?" + invVar + " bound to pubkey-hash bridge " + pk);
+        assertTrue(sparql.contains("?" + targetVar + " <" + PK_HASH_IRI + "> " + pk),
+                "target ?" + targetVar + " bound to the SAME pubkey-hash bridge " + pk);
+    }
+
+    @Test
+    void invalidationFilter_gatesOnSamePublisher_viaAdminTier() {
+        // adminTierUpdate gates its seed/closure through invalidationFilter("np").
+        // After issue #112 that filter must additionally require the invalidator to
+        // share a signing pubkey with the invalidated nanopub, so a foreign retraction
+        // no longer drops an admin grant.
+        String sparql = AuthorityResolver.adminTierUpdate(TEST_GRAPH, 17);
+        assertSamePublisherGate(sparql, "_inv_np", "np");
+    }
+
+    @Test
+    void invalidationFilter_seedAliveCheckAlsoGatesOnSamePublisher_issue110plus112() {
+        // The space-ref-alive seed gate (issue #110) uses invalidationFilter("liveNp");
+        // it too must only treat a definition as dead when retracted by its own author.
+        String sparql = AuthorityResolver.adminTierUpdate(TEST_GRAPH, 17);
+        assertSamePublisherGate(sparql, "_inv_liveNp", "liveNp");
+    }
+
+    @Test
+    void adminInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.adminInvalidationDelete(TEST_GRAPH, 17), "invNp", "np");
+    }
+
+    @Test
+    void roleAssignmentInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.roleAssignmentInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void leafTierInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.leafTierInvalidationDelete(TEST_GRAPH, 0), "invNp", "np");
+    }
+
+    @Test
+    void subSpaceInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.subSpaceInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void maintainedResourceInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.maintainedResourceInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void aliasInvalidationDelete_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.aliasInvalidationDelete(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void presetAssignmentRefInvalidationDelete_gatesOnSamePublisher() {
+        // This one keys the invalidation on ?assignNp, not ?np.
+        assertSamePublisherGate(
+                AuthorityResolver.presetAssignmentRefInvalidationDelete(TEST_GRAPH, 5), "invNp", "assignNp");
     }
 
     // ---------------- Sub-space admit + invalidation (PR 2) ----------------
@@ -544,17 +619,37 @@ class AuthorityResolverTest {
 
     @Test
     void nonAdminTierUpdate_adminConstraintKeysOnAssignmentRef() {
-        // Alias resolution moved upstream: the attachment tier binds the assignment's
-        // ?spaceRef to the canonical ref for owl:sameAs-aliased IRIs (issue #113), so the
-        // non-admin publisher constraint just checks admin-of-?spaceRef — no alias arm.
+        // The publisher constraint keys on the assignment's already-resolved ref — it does
+        // not itself re-resolve aliases (that arm lives in the instantiation lookup below).
         String sparql = AuthorityResolver.nonAdminTierUpdate(
                 TEST_GRAPH, 5,
                 com.knowledgepixels.query.vocabulary.GEN.MEMBER_ROLE,
                 AuthorityResolver.PUBLISHER_IS_ADMIN);
         assertTrue(sparql.contains("npa:forSpaceRef ?spaceRef"),
                 "admin publisher constraint keys on the assignment's ref");
-        assertFalse(sparql.contains("npa:sameAsSpace"),
-                "no alias re-resolution in the non-admin constraint");
+    }
+
+    @Test
+    void nonAdminTierUpdate_instantiationLookupResolvesSameAsAlias() {
+        // Issue #113 parity: an instantiation that names an owl:sameAs alias of the space
+        // must materialize against the same ref as a canonical-named one. The lookup binds
+        // the ref's IRIs (canonical via npa:spaceIri, OR alias via npa:sameAsSpace) and
+        // probes the instantiation by that ?instSpace — anchored, not a full RI scan.
+        String sparql = AuthorityResolver.nonAdminTierUpdate(
+                TEST_GRAPH, 5,
+                com.knowledgepixels.query.vocabulary.GEN.MEMBER_ROLE,
+                AuthorityResolver.PUBLISHER_IS_ADMIN);
+        assertTrue(sparql.contains("?spaceRef npa:spaceIri ?instSpace"),
+                "direct arm: ?instSpace is the ref's canonical IRI");
+        assertTrue(sparql.contains("?instSpace npa:sameAsSpace ?spaceRef"),
+                "alias arm: ?instSpace is an owl:sameAs alias resolving to the ref");
+        assertTrue(sparql.contains("npa:forSpace   ?instSpace"),
+                "instantiation is probed by the resolved IRI, not the attachment's IRI");
+        // The IRI resolution must precede the instantiation BGP so the lookup stays anchored.
+        java.util.regex.Pattern order = java.util.regex.Pattern.compile(
+                "npa:sameAsSpace \\?spaceRef[\\s\\S]*?a gen:RoleInstantiation");
+        assertTrue(order.matcher(sparql).find(),
+                "IRI-set resolution is bound before the instantiation lookup");
     }
 
     @Test
@@ -595,6 +690,18 @@ class AuthorityResolverTest {
                 "publisher must be a validated admin of the target ref");
         assertTrue(sparql.contains("FILTER (?ln > 5)"),
                 "delta filter on the assignment nanopub");
+    }
+
+    @Test
+    void presetAttachmentValidationUpdate_honorsSameAsAlias() {
+        // Issue #113 parity with attachmentValidationUpdate: a preset assignment whose
+        // forResource is an owl:sameAs alias must validate against the canonical ref's
+        // admin set, so the bundled roles still materialize. Direct + alias arms.
+        String sparql = AuthorityResolver.presetAttachmentValidationUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("?resource npa:sameAsSpace ?targetRef"),
+                "alias arm resolves forResource to the canonical ref it aliases");
+        assertTrue(sparql.contains("?targetRef npa:spaceIri ?resource"),
+                "direct arm still present");
     }
 
     @Test
@@ -660,6 +767,81 @@ class AuthorityResolverTest {
                         + "[\\s\\S]*?npa:forAgent\\s+\\?publisherNewer");
         assertTrue(adminScoped.matcher(sparql).find(),
                 "deletion gated on an admin-authored superseding assignment");
+    }
+
+    // ---------------- Ref-scoped preset-assignment listing stamp (issue #122) ----------------
+
+    @Test
+    void presetAssignmentRefStampUpdate_emitsForSpaceRefAndIsActivated() {
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("INSERT"), "INSERT clause");
+        assertTrue(sparql.contains("npa:PresetAssignment"),
+                "stamps a ref-scoped npa:PresetAssignment row");
+        assertTrue(sparql.contains("npa:forSpaceRef ?targetRef"),
+                "the stamp is ref-scoped — the whole point of #122");
+        // Carries activation state and emits both active AND deactivated rows, so the
+        // listing can show state (?activated bound, NOT the literal `true`).
+        assertTrue(sparql.contains("npa:isActivated ?activated"),
+                "binds the activation state instead of filtering to active-only");
+        assertFalse(sparql.contains("npa:isActivated true"),
+                "must NOT anchor on active-only, or deactivated assignments vanish");
+        // Admin-validated, ref-resolved — same gate as the role materializer.
+        assertTrue(sparql.contains("?targetRef npa:spaceIri ?resource"),
+                "resolves the resource to a Space ref (cross-nanopub join)");
+        assertTrue(sparql.contains("npa:inverseProperty gen:hasAdmin"),
+                "publisher must be a validated admin of the target ref");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the assignment nanopub");
+    }
+
+    @Test
+    void presetAssignmentRefStampUpdate_honorsSameAsAlias() {
+        // Issue #113 parity: an assignment naming an owl:sameAs alias must be listed under
+        // the canonical ref, so the gate carries the direct + alias arms like the others.
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("?resource npa:sameAsSpace ?targetRef"),
+                "alias arm resolves forResource to the canonical ref it aliases");
+        assertTrue(sparql.contains("?targetRef npa:spaceIri ?resource"),
+                "direct arm still present");
+    }
+
+    @Test
+    void presetAssignmentRefStampUpdate_hasNoRoleJoinSoViewOnlyPresetsAreListed() {
+        // Caveat 1: a preset bundling only views (no roles) must still appear in the
+        // listing. The stamp therefore must NOT join the role declaration the way the
+        // role materializer does.
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 0);
+        assertFalse(sparql.contains("npa:presetRole"),
+                "no role join — view-only presets must still be listed");
+        assertFalse(sparql.contains("npa:appliesToInstancesOf"),
+                "not gated on a Space-targeted role declaration");
+        assertFalse(sparql.contains("gen:RoleAssignment"),
+                "this is a listing stamp, not a role attachment");
+    }
+
+    @Test
+    void presetAssignmentRefStampUpdate_hasNoLatestWinsFilter() {
+        // A deactivation is just a newer admin-authored row; latest-wins is resolved by
+        // the consumer over these admin-authored rows (so it is authorization-scoped for
+        // free). The stamp itself does no dct:created shadowing comparison.
+        String sparql = AuthorityResolver.presetAssignmentRefStampUpdate(TEST_GRAPH, 0);
+        assertFalse(sparql.contains("?createdNewer"),
+                "no server-side latest-wins — deferred to the consumer query");
+        assertFalse(sparql.contains("?paNewer"),
+                "no shadowing-candidate probe in the stamp");
+    }
+
+    @Test
+    void presetAssignmentRefInvalidationDelete_scopedToForSpaceRefRows() {
+        String sparql = AuthorityResolver.presetAssignmentRefInvalidationDelete(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("DELETE"), "DELETE clause");
+        assertTrue(sparql.contains("npa:PresetAssignment") && sparql.contains("npa:forSpaceRef ?targetRef"),
+                "deletes only state-graph stamps (which carry npa:forSpaceRef), never the "
+                        + "IRI-keyed extraction rows");
+        assertTrue(sparql.contains("?invNp <http://purl.org/nanopub/x/invalidates> ?assignNp"),
+                "removal is driven by hard retraction of the assignment nanopub");
+        assertTrue(sparql.contains("FILTER (?ln > 5)"),
+                "delta filter on the invalidator's load number");
     }
 
 }

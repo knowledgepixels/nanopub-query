@@ -158,17 +158,41 @@ class AuthorityResolverTierIsolationTest {
         IRI roleX = ex("roleX");
         IRI attNp = ex("np_att");
         extAttachment("att1", S, roleX, PKH_A, attNp);
+        sig(attNp, PKH_A);                       // attachment signed by Alice (pkhA)
         runToFixpoint(AuthorityResolver.attachmentValidationUpdate(STATE, -1));
         assertTrue(hasAssignment(R1, roleX), "precondition: assignment materialized");
 
-        // A later nanopub invalidates the attachment nanopub.
+        // A later nanopub from the SAME publisher (pkhA) invalidates the attachment.
         IRI invNp = ex("np_inv");
         c.add(invNp, INVALIDATES, attNp, ADMINGRAPH);
         c.add(invNp, npa("hasLoadNumber"), vf.createLiteral(1L), ADMINGRAPH);
+        sig(invNp, PKH_A);
         executeUpdate(AuthorityResolver.roleAssignmentInvalidationDelete(STATE, -1));
 
         assertFalse(hasAssignment(R1, roleX),
-                "ref-scoped RoleAssignment removed when its source nanopub is invalidated");
+                "self-retraction (same pubkey) removes the ref-scoped RoleAssignment");
+    }
+
+    @Test
+    void foreignInvalidationIsIgnored_issue112() {
+        // A validly-signed nanopub from a DIFFERENT key must not invalidate another
+        // publisher's materialized state — the griefing/DoS gate of issue #112.
+        IRI roleX = ex("roleX");
+        IRI attNp = ex("np_att");
+        extAttachment("att1", S, roleX, PKH_A, attNp);
+        sig(attNp, PKH_A);                       // attachment signed by Alice (pkhA)
+        runToFixpoint(AuthorityResolver.attachmentValidationUpdate(STATE, -1));
+        assertTrue(hasAssignment(R1, roleX), "precondition: assignment materialized");
+
+        // Mallory (pkhB) tries to retract Alice's (pkhA) attachment.
+        IRI invNp = ex("np_inv");
+        c.add(invNp, INVALIDATES, attNp, ADMINGRAPH);
+        c.add(invNp, npa("hasLoadNumber"), vf.createLiteral(1L), ADMINGRAPH);
+        sig(invNp, PKH_B);
+        executeUpdate(AuthorityResolver.roleAssignmentInvalidationDelete(STATE, -1));
+
+        assertTrue(hasAssignment(R1, roleX),
+                "foreign-key invalidation must NOT remove the RoleAssignment");
     }
 
     // ---------------- seeding helpers ----------------
@@ -192,6 +216,11 @@ class AuthorityResolverTierIsolationTest {
     }
 
     private void loadNum(IRI np) { c.add(np, npa("hasLoadNumber"), vf.createLiteral(0L), ADMINGRAPH); }
+
+    /** Records the signing pubkey-hash of a nanopub (issue #112 self-retraction gate). */
+    private void sig(IRI np, Literal pkh) {
+        c.add(np, NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, pkh, ADMINGRAPH);
+    }
 
     private void extAttachment(String name, IRI iri, IRI role, Literal pkh, IRI np) {
         IRI ra = ex(name);
