@@ -1,3 +1,19 @@
+## [1.17.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.16.0...nanopub-query-1.17.0) (2026-06-19)
+
+### Features
+
+* **spaces:** ref-scope preset-assignment listing ([#122](https://github.com/knowledgepixels/nanopub-query/issues/122)) ([92b27bf](https://github.com/knowledgepixels/nanopub-query/commit/92b27bf88f5f367e3e1b9917b328f102dd9359cb))
+* **spaces:** resolve owl:sameAs aliases in role + preset assignment tiers ([e8b6c3c](https://github.com/knowledgepixels/nanopub-query/commit/e8b6c3cfa4aec7908825bef0e81482b82e41aacd)), closes [#113](https://github.com/knowledgepixels/nanopub-query/issues/113) [#113](https://github.com/knowledgepixels/nanopub-query/issues/113)
+
+### Bug Fixes
+
+* **spaces:** gate invalidations on same publisher ([#112](https://github.com/knowledgepixels/nanopub-query/issues/112)) ([254aa60](https://github.com/knowledgepixels/nanopub-query/commit/254aa604ef878514dbbda5a92e38f8876bf5354a)), closes [#110](https://github.com/knowledgepixels/nanopub-query/issues/110)
+* **spaces:** stop consulting role-declaration invalidation in role tiers ([5990b3e](https://github.com/knowledgepixels/nanopub-query/commit/5990b3ed1360a968b0d3af87d88a78a5c88f8ff3)), closes [#110-class](https://github.com/knowledgepixels/nanopub-query/issues/110-class)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([20265e5](https://github.com/knowledgepixels/nanopub-query/commit/20265e5e0a780abd96de720fdcd9348bc84ed2f9))
+
 ## [1.16.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.15.1...nanopub-query-1.16.0) (2026-06-15)
 
 ### Features
