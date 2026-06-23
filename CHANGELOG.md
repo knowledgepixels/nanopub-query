@@ -1,3 +1,13 @@
+## [1.17.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.0...nanopub-query-1.17.1) (2026-06-23)
+
+### Bug Fixes
+
+* **spaces:** resolve custom role-predicate direction+tier from the role declaration ([d674ed9](https://github.com/knowledgepixels/nanopub-query/commit/d674ed98e56b0d57e8d4d364e5b309a553a6cdf3))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([494420a](https://github.com/knowledgepixels/nanopub-query/commit/494420a3b9cd32ae9434f1c23fe369ece5d50ba0))
+
 ## [1.17.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.16.0...nanopub-query-1.17.0) (2026-06-19)
 
 ### Features
