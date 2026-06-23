@@ -862,6 +862,10 @@ public final class AuthorityResolver {
                        npa:forSpaceRef ?spaceRef ;
                        npa:forSpace ?space ;
                        npa:inverseProperty gen:hasAdmin ;
+                       # Stamp the admin tier so consumers read tier uniformly across all
+                       # RoleInstantiations (?ri npa:hasRoleType ?tier) with no admin
+                       # special-case — matching the non-admin path (issue #125, #127).
+                       npa:hasRoleType gen:AdminRole ;
                        npa:forAgent ?agent ;
                        npa:viaNanopub ?np .
                 } }
