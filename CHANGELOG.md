@@ -1,3 +1,13 @@
+## [1.17.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.1...nanopub-query-1.17.2) (2026-06-23)
+
+### Bug Fixes
+
+* **spaces:** persist role tier + role IRI on non-admin RoleInstantiation rows ([00dd96f](https://github.com/knowledgepixels/nanopub-query/commit/00dd96fb193852c35d80c13938546c606a4f2601)), closes [#125](https://github.com/knowledgepixels/nanopub-query/issues/125)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([b368e72](https://github.com/knowledgepixels/nanopub-query/commit/b368e72633504e6ba18b7278fbf26bd1492f84e8))
+
 ## [1.17.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.0...nanopub-query-1.17.1) (2026-06-23)
 
 ### Bug Fixes
