@@ -208,6 +208,22 @@ GRAPH npa:spacesGraph {
 
 Exactly one of `npa:regularProperty` or `npa:inverseProperty` is emitted per instantiation, matching the predicate direction used in the source nanopub's assertion. Consumers JOIN through the corresponding `npa:RoleDeclaration` (via `gen:hasRegularProperty` / `gen:hasInverseProperty`) to resolve the role IRI and tier.
 
+**Custom (unclassified) predicates.** The extractor knows the direction only of `gen:hasAdmin` and the backcompat predicates. A role declared via a `gen:SpaceMemberRole` nanopub may use any predicate (e.g. `gen:hasMaintainer`), whose direction lives in that declaration — a different nanopub the per-nanopub extractor can't see. For a nanopub *explicitly* typed `gen:RoleInstantiation` whose assertion predicate isn't classifiable, the extractor emits a **neutral** binding instead of dropping it: it records the raw triple endpoints without committing to a direction, with a predicate-discriminated subject (`npari:<artifactCode>_<predHash>`):
+
+```turtle
+GRAPH npa:spacesGraph {
+  npari:<artifactCode>_<predHash> a gen:RoleInstantiation ;
+                       npa:rolePredicate   <predIRI> ;   # the raw assertion predicate
+                       npa:bindingSubject  <subj> ;       # raw assertion subject
+                       npa:bindingObject   <obj> ;        # raw assertion object
+                       npa:viaNanopub      <thisNP> ;
+                       npa:pubkeyHash      "<pubkeyHash>" ;
+                       dct:created         "<timestamp>"^^xsd:dateTime .
+}
+```
+
+The materializer resolves these at tier time: it joins `npa:rolePredicate` against the tier-pinned `npa:RoleDeclaration` attached to the space, and the matched `gen:hasInverseProperty` / `gen:hasRegularProperty` fixes both the direction and which raw endpoint is the space vs. the agent (INVERSE = `<space> pred <agent>`; REGULAR = `<agent> pred <space>`). The materialized space-state row is identical to a pre-classified grant — it carries the resolved `npa:inverseProperty` / `npa:regularProperty`, so read-side queries need no special case. (Gating emission on the explicit type avoids minting inert entries for incidental IRI-valued triples in nanopubs that only matched via a backcompat predicate.)
+
 ### Triples added per `gen:isSubSpaceOf` nanopub
 
 Single-triple-assertion dispatch picks up nanopubs whose assertion uses `gen:isSubSpaceOf` as the predicate (the predicate IRI surfaces in the nanopub's type set, the same trick that catches the 14 backcompat role predicates). Every `<childIri> gen:isSubSpaceOf <parentIri>` triple in the assertion emits one `npa:SubSpaceDeclaration` entry — same shape as the embedded path in `gen:Space` extraction. Multi-triple assertions are allowed; one entry per `(child, parent)` pair. Full schema and validation rule live in [Sub-space relations](#sub-space-relations).

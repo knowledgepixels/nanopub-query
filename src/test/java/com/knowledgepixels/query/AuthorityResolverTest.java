@@ -144,6 +144,12 @@ class AuthorityResolverTest {
                 "tier class is substituted");
         assertTrue(sparql.contains("gen:RoleAssignment"),
                 "attachment gate present");
+        // Also resolves neutral instantiations (custom predicates) by reading the raw
+        // binding endpoints and inferring direction from the role declaration.
+        assertTrue(sparql.contains("npa:rolePredicate"),
+                "neutral custom-predicate instantiations are resolved");
+        assertTrue(sparql.contains("npa:bindingSubject") && sparql.contains("npa:bindingObject"),
+                "raw binding endpoints consumed for direction resolution");
     }
 
     @Test
@@ -643,7 +649,7 @@ class AuthorityResolverTest {
                 "direct arm: ?instSpace is the ref's canonical IRI");
         assertTrue(sparql.contains("?instSpace npa:sameAsSpace ?spaceRef"),
                 "alias arm: ?instSpace is an owl:sameAs alias resolving to the ref");
-        assertTrue(sparql.contains("npa:forSpace   ?instSpace"),
+        assertTrue(sparql.contains("npa:forSpace ?instSpace"),
                 "instantiation is probed by the resolved IRI, not the attachment's IRI");
         // The IRI resolution must precede the instantiation BGP so the lookup stays anchored.
         java.util.regex.Pattern order = java.util.regex.Pattern.compile(

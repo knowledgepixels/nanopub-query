@@ -104,6 +104,53 @@ class AuthorityResolverTierIsolationTest {
     }
 
     @Test
+    void customPredicateResolvesDirectionAndTierFromRoleDeclaration() {
+        // A maintainer assignment using a custom predicate (gen:hasMaintainer) the
+        // extractor can't classify, so it emitted a NEUTRAL instantiation
+        // (npa:rolePredicate + raw bindingSubject/bindingObject). The materializer must
+        // resolve its direction (INVERSE here, from the role declaration's
+        // gen:hasInverseProperty) and tier (MaintainerRole), then materialize it exactly
+        // like a pre-classified grant — carrying npa:inverseProperty for the read side.
+        IRI roleX = ex("roleMaint");
+        IRI pred  = ex("hasMaintainer");
+        extAttachment("att1", S, roleX, PKH_A, ex("np_att"));   // Alice attaches the role to S
+        runToFixpoint(AuthorityResolver.attachmentValidationUpdate(STATE, -1));
+        roleDecl("rd1", roleX, GEN.MAINTAINER_ROLE, GEN.HAS_INVERSE_PROPERTY, pred, ex("np_rd"));
+        // INVERSE source shape <space> pred <agent>: bindingSubject=space, bindingObject=agent.
+        extNeutralInstantiation("ri_cm", S, ex("morgan"), pred, PKH_A, ex("np_cm"));
+        runToFixpoint(AuthorityResolver.nonAdminTierUpdate(
+                STATE, -1, GEN.MAINTAINER_ROLE, AuthorityResolver.PUBLISHER_IS_ADMIN));
+
+        assertTrue(memberInRef(R1, ex("morgan")),
+                "custom-predicate maintainer resolved and materialized in R1");
+        assertTrue(memberCarriesProperty(R1, ex("morgan"), pred),
+                "materialized row carries the resolved npa:inverseProperty (read by get-space-members)");
+        assertFalse(memberInRef(R2, ex("morgan")),
+                "must NOT leak into Bob's ref R2");
+    }
+
+    @Test
+    void customPredicateRegularDirectionSwapsSpaceAndAgent() {
+        // Same path, REGULAR direction: role declaration says the predicate is the
+        // gen:hasRegularProperty, so the source shape is <agent> pred <space> —
+        // bindingSubject is the agent, bindingObject is the space.
+        IRI roleX = ex("roleMaintReg");
+        IRI pred  = ex("maintains");
+        extAttachment("att1", S, roleX, PKH_A, ex("np_att"));
+        runToFixpoint(AuthorityResolver.attachmentValidationUpdate(STATE, -1));
+        roleDecl("rd1", roleX, GEN.MAINTAINER_ROLE, GEN.HAS_REGULAR_PROPERTY, pred, ex("np_rd"));
+        // REGULAR source shape <agent> pred <space>: bindingSubject=agent, bindingObject=space.
+        extNeutralInstantiation("ri_cr", ex("morgan"), S, pred, PKH_A, ex("np_cr"));
+        runToFixpoint(AuthorityResolver.nonAdminTierUpdate(
+                STATE, -1, GEN.MAINTAINER_ROLE, AuthorityResolver.PUBLISHER_IS_ADMIN));
+
+        assertTrue(memberInRef(R1, ex("morgan")),
+                "regular-direction custom-predicate maintainer resolved in R1");
+        assertTrue(maintainerCarriesRegularProperty(R1, ex("morgan"), pred),
+                "materialized row carries the resolved npa:regularProperty");
+    }
+
+    @Test
     void aliasEmitsRefValuedEdgeOnlyForTheGovernedCanonicalRef() {
         IRI aold = ex("space-S-old");
         extAlias("al1", S, aold, PKH_A, ex("np_al"));          // Alice: <S> owl:sameAs <aold>
@@ -253,6 +300,23 @@ class AuthorityResolverTierIsolationTest {
         loadNum(np);
     }
 
+    /**
+     * A neutral (unresolved) instantiation as the extractor emits it for a custom role
+     * predicate: raw bindingSubject/bindingObject + npa:rolePredicate, no direction or
+     * forSpace/forAgent. The materializer resolves those from the role declaration.
+     */
+    private void extNeutralInstantiation(String name, IRI bindingSubject, IRI bindingObject,
+                                         IRI pred, Literal pkh, IRI np) {
+        IRI ri = ex(name);
+        c.add(ri, RDF.TYPE, GEN.ROLE_INSTANTIATION, SPACES);
+        c.add(ri, SpacesVocab.ROLE_PREDICATE, pred, SPACES);
+        c.add(ri, SpacesVocab.BINDING_SUBJECT, bindingSubject, SPACES);
+        c.add(ri, SpacesVocab.BINDING_OBJECT, bindingObject, SPACES);
+        c.add(ri, SpacesVocab.PUBKEY_HASH, pkh, SPACES);
+        c.add(ri, SpacesVocab.VIA_NANOPUB, np, SPACES);
+        loadNum(np);
+    }
+
     private void extAlias(String name, IRI canonical, IRI alias, Literal pkh, IRI np) {
         IRI d = ex(name);
         c.add(d, RDF.TYPE, SpacesVocab.SPACE_ALIAS_DECLARATION, SPACES);
@@ -311,6 +375,11 @@ class AuthorityResolverTierIsolationTest {
     private boolean memberCarriesProperty(IRI ref, IRI agent, IRI pred) {
         return ask("?ri a gen:RoleInstantiation ; npa:forSpaceRef <" + ref + "> ; npa:forAgent <" + agent + "> ;"
                 + " npa:inverseProperty <" + pred + "> .");
+    }
+
+    private boolean maintainerCarriesRegularProperty(IRI ref, IRI agent, IRI pred) {
+        return ask("?ri a gen:RoleInstantiation ; npa:forSpaceRef <" + ref + "> ; npa:forAgent <" + agent + "> ;"
+                + " npa:regularProperty <" + pred + "> .");
     }
 
     private boolean sameAsEdge(IRI alias, IRI canonRef) {
