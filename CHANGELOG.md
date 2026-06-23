@@ -1,3 +1,13 @@
+## [1.17.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.2...nanopub-query-1.17.3) (2026-06-23)
+
+### Bug Fixes
+
+* **spaces:** stamp npa:hasRoleType gen:AdminRole on admin RoleInstantiations ([f39c82d](https://github.com/knowledgepixels/nanopub-query/commit/f39c82db3ed180a468d3900051626a748ee8a753)), closes [#125](https://github.com/knowledgepixels/nanopub-query/issues/125)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([716bec6](https://github.com/knowledgepixels/nanopub-query/commit/716bec6e26ab64c3dc97996033ef221a46518eb8))
+
 ## [1.17.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.1...nanopub-query-1.17.2) (2026-06-23)
 
 ### Bug Fixes
