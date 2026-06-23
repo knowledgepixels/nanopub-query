@@ -1391,6 +1391,16 @@ public final class AuthorityResolver {
                        npa:forSpace ?space ;
                        npa:forAgent ?agent ;
                        ?dirPred ?pred ;
+                       # Persist the tier and role IRI that are already bound at this point —
+                       # the loop's tierClass arg (%7$s) and the anchoring attachment's ?role
+                       # (step 1) — so ref-scoped consumers key on identity rather than
+                       # re-deriving the tier from the bare predicate against GLOBAL
+                       # RoleDeclarations. The bare-predicate re-derivation bleeds tiers
+                       # across spaces that declare the same predicate at different tiers
+                       # (issue #125): consumers should match ?ri2 npa:hasRoleType <tier>
+                       # / gen:hasRole ?role, exactly as the *-roles-ref queries do.
+                       npa:hasRoleType <%7$s> ;
+                       gen:hasRole ?role ;
                        npa:viaNanopub ?np .
                 } }
                 WHERE {
