@@ -111,6 +111,25 @@ public final class SpacesVocab {
     /** The "inverse" direction predicate used in the source assertion (agent &rarr; space). */
     public static final IRI INVERSE_PROPERTY = vf.createIRI(NPA.NAMESPACE, "inverseProperty");
 
+    /**
+     * Custom role predicate on an <em>unresolved</em> {@code gen:RoleInstantiation} — one
+     * whose direction the extractor can't classify (not {@code gen:hasAdmin} and not in
+     * {@link com.knowledgepixels.query.vocabulary.BackcompatRolePredicates}). Carries the
+     * raw assertion predicate IRI; the materializer resolves its direction (and hence
+     * tier) by joining it against an {@link #ROLE_DECLARATION}'s
+     * {@code gen:hasRegularProperty} / {@code gen:hasInverseProperty} that is attached to
+     * the target space. Emitted alongside {@link #BINDING_SUBJECT} / {@link #BINDING_OBJECT}
+     * (the raw assertion endpoints) instead of {@link #FOR_SPACE} / {@link #FOR_AGENT},
+     * since which side is the space isn't known until the direction is resolved.
+     */
+    public static final IRI ROLE_PREDICATE = vf.createIRI(NPA.NAMESPACE, "rolePredicate");
+
+    /** Raw assertion subject of an unresolved {@link #ROLE_PREDICATE} binding. */
+    public static final IRI BINDING_SUBJECT = vf.createIRI(NPA.NAMESPACE, "bindingSubject");
+
+    /** Raw assertion object of an unresolved {@link #ROLE_PREDICATE} binding. */
+    public static final IRI BINDING_OBJECT = vf.createIRI(NPA.NAMESPACE, "bindingObject");
+
     /** Literal pubkey hash stamped alongside {@link org.nanopub.vocabulary.NPX#SIGNED_BY}. */
     public static final IRI PUBKEY_HASH = vf.createIRI(NPA.NAMESPACE, "pubkeyHash");
 

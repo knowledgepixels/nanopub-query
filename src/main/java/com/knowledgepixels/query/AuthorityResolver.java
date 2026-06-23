@@ -1423,30 +1423,55 @@ public final class AuthorityResolver {
                     ?rd a npa:RoleDeclaration ;
                         npa:hasRoleType <%7$s> ;
                         npa:role        ?role .
-                    # 3. Pair direction so only matching combos are explored. ?dirPred
-                    #    carries the matched direction so the materialized row records the
-                    #    role property (read by get-space-members and publisherIsTieredRole).
+                    # 3. Pair role-decl direction to the instantiation in one UNION so only
+                    #    matching combos are explored, binding (?instSpace, ?agent) per arm.
+                    #    ?dirPred carries the resolved direction so the materialized row
+                    #    records the role property (read by get-space-members and
+                    #    publisherIsTieredRole) — identical shape whichever arm matched.
+                    #
+                    #    The first two arms handle instantiations the extractor already
+                    #    classified (npa:regularProperty / npa:inverseProperty). The last two
+                    #    resolve a custom predicate the extractor left neutral (npa:rolePredicate
+                    #    with raw npa:bindingSubject / npa:bindingObject): the role declaration
+                    #    supplies the direction, which fixes which raw endpoint is the space vs
+                    #    the agent. INVERSE = <space> pred <agent>; REGULAR = <agent> pred <space>.
                     {
                       ?rd gen:hasRegularProperty ?pred .
-                      ?ri npa:regularProperty    ?pred .
+                      ?ri npa:regularProperty ?pred ;
+                          npa:forSpace ?instSpace ;
+                          npa:forAgent ?agent .
                       BIND(npa:regularProperty AS ?dirPred)
                     }
                     UNION
                     {
                       ?rd gen:hasInverseProperty ?pred .
-                      ?ri npa:inverseProperty    ?pred .
+                      ?ri npa:inverseProperty ?pred ;
+                          npa:forSpace ?instSpace ;
+                          npa:forAgent ?agent .
                       BIND(npa:inverseProperty AS ?dirPred)
                     }
-                    # 4. Targeted instantiation lookup — (?instSpace, ?pred) bound. The
-                    #    instantiation names its space by IRI; ?instSpace was resolved to this
-                    #    ref above (canonical or owl:sameAs alias), so an alias-named
-                    #    instantiation joins the same ?spaceRef as a canonical one. The
-                    #    materialized row still carries npa:forSpace ?space (the attachment's
-                    #    IRI) for the transitional dual-emit, so pre-ref reads see the member
-                    #    under the space's primary IRI.
+                    UNION
+                    {
+                      ?rd gen:hasInverseProperty ?pred .
+                      ?ri npa:rolePredicate   ?pred ;
+                          npa:bindingSubject  ?instSpace ;
+                          npa:bindingObject   ?agent .
+                      BIND(npa:inverseProperty AS ?dirPred)
+                    }
+                    UNION
+                    {
+                      ?rd gen:hasRegularProperty ?pred .
+                      ?ri npa:rolePredicate   ?pred ;
+                          npa:bindingObject   ?instSpace ;
+                          npa:bindingSubject  ?agent .
+                      BIND(npa:regularProperty AS ?dirPred)
+                    }
+                    # 4. Common instantiation columns. ?instSpace was resolved to this ref
+                    #    above (canonical or owl:sameAs alias), so an alias-named instantiation
+                    #    joins the same ?spaceRef as a canonical one. The materialized row still
+                    #    carries npa:forSpace ?space (the attachment's IRI) for the transitional
+                    #    dual-emit, so pre-ref reads see the member under the space's primary IRI.
                     ?ri a gen:RoleInstantiation ;
-                        npa:forSpace   ?instSpace ;
-                        npa:forAgent   ?agent ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
                   }

@@ -152,7 +152,7 @@ public final class SpacesExtractor {
             extractSpaceMemberRole(np, ctx, out);
         }
         if (isRoleInstantiation) {
-            extractRoleInstantiation(np, ctx, out);
+            extractRoleInstantiation(np, ctx, types.contains(GEN.ROLE_INSTANTIATION), out);
         }
         if (isSubSpaceOf) {
             extractSubSpaceOf(np, ctx, out);
@@ -523,7 +523,8 @@ public final class SpacesExtractor {
 
     // ---------------- gen:RoleInstantiation (and backcompat) ----------------
 
-    private static void extractRoleInstantiation(Nanopub np, Context ctx, List<Statement> out) {
+    private static void extractRoleInstantiation(Nanopub np, Context ctx,
+                                                 boolean explicitRoleInstantiation, List<Statement> out) {
         // Find the assignment triple. Directionality (matches the publisher convention
         // used by gen:hasRegularProperty / gen:hasInverseProperty in role-definition
         // nanopubs):
@@ -531,11 +532,7 @@ public final class SpacesExtractor {
         //   INVERSE: <space> <predicate> <agent>  → npa:inverseProperty.
         // gen:hasAdmin is hardcoded INVERSE (space-centric: <space> hasAdmin <agent>).
         // The 14 backwards-compat predicates are classified in
-        // {@link BackcompatRolePredicates#DIRECTIONS}. User-defined role predicates from
-        // gen:SpaceMemberRole nanopubs aren't resolvable here without the role-declaration
-        // registry; FIXME: the materializer in PR 2 should refine direction for the
-        // typed-but-unknown-predicate case. For now we emit only triples whose predicate
-        // we know the direction of.
+        // {@link BackcompatRolePredicates#DIRECTIONS}.
         for (Statement st : np.getAssertion()) {
             IRI predicate = st.getPredicate();
             BackcompatRolePredicates.Direction direction = directionFor(predicate);
@@ -581,6 +578,42 @@ public final class SpacesExtractor {
             out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
             addProvenance(subject, ctx, out);
             return;
+        }
+
+        // No predicate with a known direction. For a nanopub explicitly typed
+        // gen:RoleInstantiation, the assertion still binds an agent to a space via a
+        // custom role predicate declared in a gen:SpaceMemberRole nanopub (e.g.
+        // gen:hasMaintainer). We can't classify its direction here — that lives in the
+        // role declaration, a different nanopub the extractor can't see — so emit a
+        // neutral binding carrying the raw (subject, predicate, object). The materializer
+        // resolves direction + tier by joining the predicate against the role declaration
+        // attached to the space (see AuthorityResolver#nonAdminTierUpdate). Gated on the
+        // explicit type so we don't mint inert entries for incidental IRI-valued triples
+        // in nanopubs that only matched via a backcompat predicate.
+        if (!explicitRoleInstantiation) {
+            return;
+        }
+        for (Statement st : np.getAssertion()) {
+            IRI predicate = st.getPredicate();
+            if (predicate.equals(RDF.TYPE) || directionFor(predicate) != null) {
+                continue;
+            }
+            if (!(st.getSubject() instanceof IRI subjIri)) {
+                continue;
+            }
+            if (!(st.getObject() instanceof IRI objIri)) {
+                continue;
+            }
+            // Discriminate the subject by predicate so multiple custom-predicate triples
+            // in one nanopub don't collide on the artifact-code-derived subject.
+            IRI subject = SpacesVocab.forRoleInstantiation(
+                    ctx.artifactCode(), Utils.createHash(predicate.stringValue()));
+            out.add(vf.createStatement(subject, RDF.TYPE, GEN.ROLE_INSTANTIATION, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.ROLE_PREDICATE, predicate, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.BINDING_SUBJECT, subjIri, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.BINDING_OBJECT, objIri, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+            addProvenance(subject, ctx, out);
         }
     }
 
