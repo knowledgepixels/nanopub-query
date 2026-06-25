@@ -244,17 +244,18 @@ public final class AuthorityResolver {
         lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.presetAttachment
                 + counts.presetAssignmentRef
                 + counts.attachment + counts.maintainer + counts.member + counts.observer
-                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
+                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource
+                + counts.governingSpaceRef;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         logger.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
-                        + "subspace={} subspace-prefix={} maintained-resource={}) durationMs={}",
+                        + "subspace={} subspace-prefix={} maintained-resource={} governing-space-ref={}) durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
-                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
+                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource, counts.governingSpaceRef,
                 durationMs);
     }
 
@@ -323,6 +324,7 @@ public final class AuthorityResolver {
             counts.observer           += lateCounts.observer;
             counts.subSpace           += lateCounts.subSpace;
             counts.subSpacePrefix     += lateCounts.subSpacePrefix;
+            counts.governingSpaceRef  += lateCounts.governingSpaceRef;
             counts.maintainedResource += lateCounts.maintainedResource;
         }
 
@@ -334,17 +336,18 @@ public final class AuthorityResolver {
         lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.presetAttachment
                 + counts.presetAssignmentRef
                 + counts.attachment + counts.maintainer + counts.member + counts.observer
-                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
+                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource
+                + counts.governingSpaceRef;
         lastIncrementalCycleDurationMs = durationMs;
         logger.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
-                        + "subspace={} subspace-prefix={} maintained-resource={}) "
+                        + "subspace={} subspace-prefix={} maintained-resource={} governing-space-ref={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
-                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
+                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource, counts.governingSpaceRef,
                 structuralInvalidation, structuralAdds, durationMs);
     }
 
@@ -454,6 +457,10 @@ public final class AuthorityResolver {
         // future inserts) and any newly-orphaned children pick up fallback edges.
         c.subSpacePrefix = runTierLabeled("subspace-prefix(late)", graph,
                 subSpacePrefixFallbackUpdate(graph));
+        // Reflexive governing-space-ref late sweep (issue #130): catches refs whose
+        // SpaceRef aggregate became visible only this cycle. Self-healing dedup.
+        c.governingSpaceRef = runTierLabeled("governing-space-ref(late)", graph,
+                governingSpaceRefReflexiveUpdate(graph));
         // Preset-attachment late-arrival: catches assignments whose preset declaration or
         // admin grant only became valid in this same cycle. Runs before attachment(late)
         // so the non-admin late tiers below see this cycle's fresh preset-derived RAs.
@@ -560,6 +567,7 @@ public final class AuthorityResolver {
         int subSpace;
         int subSpacePrefix;
         int maintainedResource;
+        int governingSpaceRef;
     }
 
     /**
@@ -599,6 +607,12 @@ public final class AuthorityResolver {
         // delta-arrivals; the dedup FILTER NOT EXISTS prevents re-insertion.
         c.subSpacePrefix = runTierLabeled("subspace-prefix", graph,
                 subSpacePrefixFallbackUpdate(graph));
+        // Reflexive governing-space-ref edges (issue #130). Self-healing, no load filter;
+        // runs after the maintained-resource admit so a maintained resource that is itself
+        // a space already has its maintained governing edge by now (the two are independent
+        // anyway — different subjects/objects). Order vs. other tiers doesn't matter.
+        c.governingSpaceRef = runTierLabeled("governing-space-ref", graph,
+                governingSpaceRefReflexiveUpdate(graph));
         // Preset-attachment runs immediately before the regular attachment tier so the
         // gen:RoleAssignment rows it materializes (from active, admin-authored preset
         // assignments) are picked up by the downstream non-admin tiers in the same pass,
@@ -1715,6 +1729,12 @@ public final class AuthorityResolver {
                      npa:viaNanopub      ?np .
                   ?r npa:isMaintainedBy        ?sRef .
                   ?sRef npa:hasMaintainedResource ?r .
+                  # Uniform ref-valued resource→governing-space-ref edge (issue #130). The
+                  # same predicate the reflexive space self-edge uses, so a single consumer
+                  # hop covers both "resource maintained by space S" and "resource IS a space".
+                  # Backed by the same MaintainedResourceLink below, so the invalidation
+                  # cleanup sweeps it alongside isMaintainedBy.
+                  ?r npa:hasGoverningSpaceRef  ?sRef .
                   # Reified per-(nanopub, resource→ref) provenance link (issue #125 finding
                   # #5): lets the invalidation cleanup drop the convenience edges below once
                   # no surviving link backs them, instead of leaving them sticky.
@@ -1990,6 +2010,46 @@ public final class AuthorityResolver {
                       ?tagIri a npa:DerivedSubSpaceLink .
                     }
                   }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH);
+    }
+
+    /**
+     * Reflexive governing-space-ref pass (issue #130). For every {@code SpaceRef}
+     * aggregate {@code ?spaceRef} (identified by {@code npa:spaceIri ?space} in the
+     * extraction graph), emits {@code <space> npa:hasGoverningSpaceRef <spaceRef>} into
+     * the space-state graph — the space pointing at its own ref through the same predicate
+     * a maintained resource uses to point at its maintaining space's ref (emitted in
+     * {@link #maintainedResourceAdmitUpdate}).
+     *
+     * <p>This removes the zero-hop special case from consumer authority gates: instead of
+     * {@code ?resource npa:isMaintainedBy? ?space} (a bare-IRI optional path that breaks
+     * once the hop is ref-valued), a consumer does a single mandatory
+     * {@code ?resource npa:hasGoverningSpaceRef ?spaceRef} that binds whether the resource
+     * is a maintained resource or a space itself. A space IRI claimed by several refs emits
+     * one edge per ref — the non-ref consumer variant's merged-across-refs behaviour falls
+     * out naturally; the ref variant pins {@code ?passedRef}.
+     *
+     * <p>Self-healing, like {@link #subSpacePrefixFallbackUpdate}: the edge has no source
+     * nanopub (it follows purely from a {@code SpaceRef} existing), so there is no
+     * invalidation handling and no load-number filter — always full-scan, with the dedup
+     * {@code FILTER NOT EXISTS} on the edge preventing re-insertion. A {@code SpaceRef}
+     * disappearing is itself a structural-rebuild event, which clears its reflexive edge.
+     */
+    static String governingSpaceRefReflexiveUpdate(IRI graph) {
+        return """
+                PREFIX npa: <%1$s>
+                INSERT { GRAPH <%2$s> {
+                  ?space npa:hasGoverningSpaceRef ?spaceRef .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?spaceRef npa:spaceIri ?space . }
+                  FILTER NOT EXISTS { GRAPH <%2$s> {
+                    ?space npa:hasGoverningSpaceRef ?spaceRef .
+                  } }
                 }
                 """.formatted(
                 NPA.NAMESPACE,
@@ -2368,9 +2428,26 @@ public final class AuthorityResolver {
                       { ?l npa:maintainerSpaceRef ?o } UNION { ?l npa:maintainerSpace ?o }
                     }
                   }
+                } ;
+                # 4. Orphan-sweep the maintained arm of hasGoverningSpaceRef (issue #130).
+                #    Only the ref-valued maintained edge is removed here — it is backed by a
+                #    MaintainedResourceLink. The reflexive space self-edge (subject = a space
+                #    IRI that has its own SpaceRef) is NOT a maintained edge and is left to the
+                #    self-healing reflexive pass, so the guard keeps any ?r that is itself a space.
+                DELETE { GRAPH <%2$s> { ?r npa:hasGoverningSpaceRef ?o . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?r npa:hasGoverningSpaceRef ?o .
+                    FILTER NOT EXISTS {
+                      ?l a npa:MaintainedResourceLink ;
+                         npa:resourceIri ?r ;
+                         npa:maintainerSpaceRef ?o .
+                    }
+                    FILTER NOT EXISTS { GRAPH <%7$s> { ?o npa:spaceIri ?r . } }
+                  }
                 }
                 """, NPA.NAMESPACE, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
-                samePublisherClause("invNp", "np"));
+                samePublisherClause("invNp", "np"), SpacesVocab.SPACES_GRAPH);
     }
 
     /**

@@ -577,6 +577,41 @@ class AuthorityResolverTest {
     }
 
     @Test
+    void maintainedResourceAdmitUpdate_emitsUniformGoverningSpaceRefEdge() {
+        // Issue #130: the maintained resource also gets the uniform ref-valued
+        // resource→governing-space-ref edge, pointing at the same authorizing ref.
+        String sparql = AuthorityResolver.maintainedResourceAdmitUpdate(TEST_GRAPH, 0);
+        assertTrue(sparql.contains("?r npa:hasGoverningSpaceRef  ?sRef"),
+                "emits ref-valued hasGoverningSpaceRef to the authorizing ref");
+    }
+
+    @Test
+    void governingSpaceRefReflexiveUpdate_emitsRefValuedSelfEdgeFromSpaceIri() {
+        // Issue #130: every SpaceRef yields <space> hasGoverningSpaceRef <ref>, keyed on the
+        // extraction-graph spaceIri, deduped on the edge (self-healing, no nanopub).
+        String sparql = AuthorityResolver.governingSpaceRefReflexiveUpdate(TEST_GRAPH);
+        assertTrue(sparql.contains("?space npa:hasGoverningSpaceRef ?spaceRef"),
+                "emits the reflexive space→ref edge");
+        assertTrue(sparql.contains("?spaceRef npa:spaceIri ?space"),
+                "anchors on the SpaceRef's spaceIri in the extraction graph");
+        assertTrue(sparql.contains("FILTER NOT EXISTS"),
+                "deduped on the edge — self-healing, idempotent across cycles");
+        assertFalse(sparql.contains("hasLoadNumber"),
+                "no load-number filter — full-scan, follows purely from SpaceRef existence");
+    }
+
+    @Test
+    void maintainedResourceConvenienceEdgeCleanup_sweepsGoverningRefButKeepsReflexive() {
+        // Issue #130 + #125 #5: the maintained arm of hasGoverningSpaceRef is orphan-swept
+        // (backed by MaintainedResourceLink), while the reflexive self-edge is guarded out.
+        String sparql = AuthorityResolver.maintainedResourceConvenienceEdgeCleanup(TEST_GRAPH, 5);
+        assertTrue(sparql.contains("?r npa:hasGoverningSpaceRef ?o"),
+                "orphan-sweeps the maintained governing edge");
+        assertTrue(sparql.contains("?o npa:spaceIri ?r"),
+                "guard keeps the reflexive self-edge (object ref's spaceIri equals the subject)");
+    }
+
+    @Test
     void maintainedResourceInvalidationDelete_targetsDeclarationRowsOnly() {
         String sparql = AuthorityResolver.maintainedResourceInvalidationDelete(TEST_GRAPH, 5);
         assertTrue(sparql.contains("DELETE"), "DELETE clause");
