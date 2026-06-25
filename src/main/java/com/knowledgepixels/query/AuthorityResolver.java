@@ -68,6 +68,7 @@ public final class AuthorityResolver {
     private static final IRI NPA_AGENT = vf.createIRI(NPA.NAMESPACE, "agent");
     private static final IRI NPA_PUBKEY = vf.createIRI(NPA.NAMESPACE, "pubkey");
     private static final IRI NPA_TRUST_STATUS = vf.createIRI(NPA.NAMESPACE, "trustStatus");
+    private static final IRI NPA_VIA_NANOPUB = vf.createIRI(NPA.NAMESPACE, "viaNanopub");
     private static final IRI NPA_LOADED = vf.createIRI(NPA.NAMESPACE, "loaded");
     private static final IRI NPA_TO_LOAD = vf.createIRI(NPA.NAMESPACE, "toLoad");
 
@@ -2674,6 +2675,15 @@ public final class AuthorityResolver {
                     spacesConn.add(accountStateIri, NPA_AGENT, agent, newGraph);
                     spacesConn.add(accountStateIri, NPA_PUBKEY, pubkey, newGraph);
                     spacesConn.add(accountStateIri, NPA_TRUST_STATUS, statusIri, newGraph);
+                    // Mirror the authorizing introduction provenance when present (issue #125
+                    // finding #4). Optional: absent for snapshots from registries that predate
+                    // nanopub-registry#117/#118, so consumers (e.g. get-space-members-ref) must
+                    // treat npa:viaNanopub on an AccountState as best-effort, not guaranteed.
+                    Value viaNanopub = trustConn.getStatements(accountStateIri, NPA_VIA_NANOPUB, null, trustStateIri)
+                            .stream().findFirst().map(Statement::getObject).orElse(null);
+                    if (viaNanopub != null) {
+                        spacesConn.add(accountStateIri, NPA_VIA_NANOPUB, viaNanopub, newGraph);
+                    }
                     count++;
                 }
             }
