@@ -70,6 +70,7 @@ public class TrustStateLoader {
     private static final IRI NPA_PATH_COUNT = vf.createIRI(NPA.NAMESPACE, "pathCount");
     private static final IRI NPA_RATIO = vf.createIRI(NPA.NAMESPACE, "ratio");
     private static final IRI NPA_QUOTA = vf.createIRI(NPA.NAMESPACE, "quota");
+    private static final IRI NPA_VIA_NANOPUB = vf.createIRI(NPA.NAMESPACE, "viaNanopub");
 
     private static final CloseableHttpClient httpClient =
             HttpClientBuilder.create().setDefaultRequestConfig(Utils.getHttpRequestConfig()).build();
@@ -259,6 +260,14 @@ public class TrustStateLoader {
                 if (a.quota() != null) {
                     conn.add(accountStateIri, NPA_QUOTA,
                             vf.createLiteral(a.quota()), trustStateIri);
+                }
+                // Authorizing introduction nanopub (nanopub-registry#117/#118; issue #125
+                // finding #4). Nullable: absent on snapshots from registries that predate
+                // the field, so only emit when present. createIRI is fine — the registry
+                // produces a nanopub trusty URI here, same as the agent IRI above.
+                if (a.introNanopub() != null && !a.introNanopub().isBlank()) {
+                    conn.add(accountStateIri, NPA_VIA_NANOPUB,
+                            vf.createIRI(a.introNanopub()), trustStateIri);
                 }
             }
 

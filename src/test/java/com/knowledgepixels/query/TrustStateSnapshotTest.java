@@ -26,7 +26,8 @@ class TrustStateSnapshotTest {
                   "depth": 1,
                   "pathCount": 1,
                   "ratio": 0.008181818181818182,
-                  "quota": 100000
+                  "quota": 100000,
+                  "introNanopub": "http://purl.org/np/RAn2hFURf8krekyne_hB3hdvF-PB-r4Qvy3uLFXAp1CQ0"
                 },
                 {
                   "pubkey": "1162349fdeaf431e71ab55898cb2a425b971d466150c2aa5b3c1beb498045a37",
@@ -83,6 +84,18 @@ class TrustStateSnapshotTest {
         assertEquals(2, second.depth());
         assertEquals(3, second.pathCount());
         assertEquals(24000L, second.quota());
+    }
+
+    @Test
+    void parse_extractsIntroNanopubWhenPresentAndNullWhenAbsent() {
+        // nanopub-registry#117/#118: the authorizing intro is stamped per account. It is
+        // additive, so a snapshot from a registry that predates it has no field → null.
+        TrustStateSnapshot s = TrustStateSnapshot.parse(FIXTURE);
+        assertEquals("http://purl.org/np/RAn2hFURf8krekyne_hB3hdvF-PB-r4Qvy3uLFXAp1CQ0",
+                s.accounts().getFirst().introNanopub(),
+                "introNanopub extracted when present");
+        assertNull(s.accounts().get(1).introNanopub(),
+                "introNanopub is null when the account row omits it (pre-#118 registry)");
     }
 
     @Test
