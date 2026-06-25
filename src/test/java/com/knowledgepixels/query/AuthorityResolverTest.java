@@ -310,6 +310,39 @@ class AuthorityResolverTest {
                 AuthorityResolver.presetAssignmentRefInvalidationDelete(TEST_GRAPH, 5), "invNp", "assignNp");
     }
 
+    @Test
+    void subSpaceConvenienceEdgeCleanup_gatesOnSamePublisher() {
+        // The link-delete phase joins npx:invalidates under the same-publisher gate.
+        assertSamePublisherGate(AuthorityResolver.subSpaceConvenienceEdgeCleanup(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void maintainedResourceConvenienceEdgeCleanup_gatesOnSamePublisher() {
+        assertSamePublisherGate(
+                AuthorityResolver.maintainedResourceConvenienceEdgeCleanup(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void aliasConvenienceEdgeCleanup_gatesOnSamePublisher() {
+        assertSamePublisherGate(AuthorityResolver.aliasConvenienceEdgeCleanup(TEST_GRAPH, 5), "invNp", "np");
+    }
+
+    @Test
+    void convenienceEdgeCleanups_orphanSweepKeepsBackedEdges() {
+        // Each cleanup's orphan-sweep must guard the edge delete with a FILTER NOT EXISTS on
+        // the surviving provenance link, so an edge another declaration still backs is kept.
+        assertTrue(AuthorityResolver.aliasConvenienceEdgeCleanup(TEST_GRAPH, 5)
+                        .contains("FILTER NOT EXISTS"),
+                "alias orphan-sweep guards on surviving SpaceAliasLink");
+        assertTrue(AuthorityResolver.maintainedResourceConvenienceEdgeCleanup(TEST_GRAPH, 5)
+                        .contains("?l a npa:MaintainedResourceLink"),
+                "maintained orphan-sweep checks MaintainedResourceLink backers");
+        // Sub-space orphan-sweep recognizes both explicit and URL-prefix-derived backers.
+        String ss = AuthorityResolver.subSpaceConvenienceEdgeCleanup(TEST_GRAPH, 5);
+        assertTrue(ss.contains("npa:SubSpaceLink") && ss.contains("npa:DerivedSubSpaceLink"),
+                "sub-space orphan-sweep keeps edges backed by a declaration or the prefix fallback");
+    }
+
     // ---------------- Sub-space admit + invalidation (PR 2) ----------------
 
     @Test
@@ -377,12 +410,15 @@ class AuthorityResolverTest {
                 "invalidation filter for primary nanopub");
         assertTrue(sparql.contains("?_inv_np2 "),
                 "invalidation filter for Mode B co-declaration");
-        // Dedup is on the emitted ref-to-ref edge (per-space-ref isolation).
+        // Dedup is on the per-(nanopub, ref-pair) provenance link (issue #125 finding #5),
+        // so every backing declaration records its own removable npa:SubSpaceLink.
         java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
                 "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<" + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
-                        + ">\\s*\\{\\s*\\?childRef\\s+npa:isSubSpaceOf\\s+\\?parentRef");
+                        + ">\\s*\\{\\s*\\?ssLink\\s+a\\s+npa:SubSpaceLink");
         assertTrue(dedup.matcher(sparql).find(),
-                "dedup excludes already-emitted ref-to-ref edges");
+                "dedup excludes ref-pairs already recorded by this nanopub's SubSpaceLink");
+        assertTrue(sparql.contains("?ssLink a npa:SubSpaceLink"),
+                "emits the reified provenance link carrying npa:viaNanopub");
     }
 
     @Test
@@ -529,13 +565,15 @@ class AuthorityResolverTest {
                 "load-number delta filter on the declaration nanopub");
         assertTrue(sparql.contains("?_inv_np "),
                 "invalidation filter for the declaration nanopub");
-        // Dedup is on the emitted resource → ref edge (per-space-ref isolation).
+        // Dedup is on the per-(nanopub, resource→ref) provenance link (issue #125 finding #5).
         java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
                 "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<"
                         + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
-                        + ">\\s*\\{\\s*\\?r\\s+npa:isMaintainedBy\\s+\\?sRef");
+                        + ">\\s*\\{\\s*\\?mrLink\\s+a\\s+npa:MaintainedResourceLink");
         assertTrue(dedup.matcher(sparql).find(),
-                "dedup excludes already-emitted resource→ref edges");
+                "dedup excludes resource→ref pairs already recorded by this nanopub's link");
+        assertTrue(sparql.contains("?mrLink a npa:MaintainedResourceLink"),
+                "emits the reified provenance link carrying npa:viaNanopub");
     }
 
     @Test
@@ -600,9 +638,17 @@ class AuthorityResolverTest {
         // The declaration type appears in the INSERT and the anchor.
         assertTrue(countOccurrences(sparql, "a npa:SpaceAliasDeclaration") >= 2,
                 "declaration type in INSERT + anchor");
-        // Dedup is on the emitted ref-valued edge, so re-runs add each (alias, ref) once.
-        assertTrue(countOccurrences(sparql, "?alias npa:sameAsSpace ?canonRef") >= 2,
-                "edge emitted in INSERT and checked in the dedup FILTER NOT EXISTS");
+        // The ref-valued edge is emitted once in the INSERT.
+        assertTrue(sparql.contains("?alias npa:sameAsSpace ?canonRef"),
+                "ref-valued edge emitted in INSERT");
+        // Dedup is now on the per-(nanopub, alias→ref) provenance link (issue #125 finding #5),
+        // so every backing declaration records its own removable npa:SpaceAliasLink.
+        java.util.regex.Pattern dedup = java.util.regex.Pattern.compile(
+                "FILTER\\s+NOT\\s+EXISTS\\s*\\{\\s*GRAPH\\s+<"
+                        + java.util.regex.Pattern.quote(TEST_GRAPH.stringValue())
+                        + ">\\s*\\{\\s*\\?alLink\\s+a\\s+npa:SpaceAliasLink");
+        assertTrue(dedup.matcher(sparql).find(),
+                "dedup excludes alias→ref pairs already recorded by this nanopub's link");
     }
 
     private static int countOccurrences(String haystack, String needle) {
