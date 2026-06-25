@@ -1,3 +1,22 @@
+## [1.18.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.3...nanopub-query-1.18.0) (2026-06-25)
+
+### Features
+
+* **spaces:** materialize uniform ref-valued hasGoverningSpaceRef edge ([#130](https://github.com/knowledgepixels/nanopub-query/issues/130)) ([8842cd8](https://github.com/knowledgepixels/nanopub-query/commit/8842cd852bf8b9e35f9df6a7552ceebb2920e0ed)), closes [#125](https://github.com/knowledgepixels/nanopub-query/issues/125) [#5](https://github.com/knowledgepixels/nanopub-query/issues/5) [#125](https://github.com/knowledgepixels/nanopub-query/issues/125)
+
+### Bug Fixes
+
+* **spaces:** clean up convenience structural edges on invalidation ([#125](https://github.com/knowledgepixels/nanopub-query/issues/125) finding [#5](https://github.com/knowledgepixels/nanopub-query/issues/5)) ([75bf767](https://github.com/knowledgepixels/nanopub-query/commit/75bf76769a892b3340a6e8aa7ed386bdfa905cc7))
+* **trust:** mirror authorizing introNanopub onto AccountState ([#125](https://github.com/knowledgepixels/nanopub-query/issues/125) finding [#4](https://github.com/knowledgepixels/nanopub-query/issues/4)) ([2cb1361](https://github.com/knowledgepixels/nanopub-query/commit/2cb13611da1f2317a037c7d4bfd5ab0cb742b26f)), closes [117/#118](https://github.com/117/nanopub-query/issues/118)
+
+### Build and continuous integration
+
+* **deps:** lock file maintenance ([3fd7f6a](https://github.com/knowledgepixels/nanopub-query/commit/3fd7f6aaa489c96f14e3aeb7c29c6300bf888f07))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([3da282a](https://github.com/knowledgepixels/nanopub-query/commit/3da282af66f55e23c868e7424caf44ccf57f2efe))
+
 ## [1.17.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.2...nanopub-query-1.17.3) (2026-06-23)
 
 ### Bug Fixes
