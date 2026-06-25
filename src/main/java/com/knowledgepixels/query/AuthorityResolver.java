@@ -68,6 +68,7 @@ public final class AuthorityResolver {
     private static final IRI NPA_AGENT = vf.createIRI(NPA.NAMESPACE, "agent");
     private static final IRI NPA_PUBKEY = vf.createIRI(NPA.NAMESPACE, "pubkey");
     private static final IRI NPA_TRUST_STATUS = vf.createIRI(NPA.NAMESPACE, "trustStatus");
+    private static final IRI NPA_VIA_NANOPUB = vf.createIRI(NPA.NAMESPACE, "viaNanopub");
     private static final IRI NPA_LOADED = vf.createIRI(NPA.NAMESPACE, "loaded");
     private static final IRI NPA_TO_LOAD = vf.createIRI(NPA.NAMESPACE, "toLoad");
 
@@ -244,17 +245,18 @@ public final class AuthorityResolver {
         lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.presetAttachment
                 + counts.presetAssignmentRef
                 + counts.attachment + counts.maintainer + counts.member + counts.observer
-                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
+                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource
+                + counts.governingSpaceRef;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         logger.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
-                        + "subspace={} subspace-prefix={} maintained-resource={}) durationMs={}",
+                        + "subspace={} subspace-prefix={} maintained-resource={} governing-space-ref={}) durationMs={}",
                 newGraph, mirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
-                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
+                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource, counts.governingSpaceRef,
                 durationMs);
     }
 
@@ -323,6 +325,7 @@ public final class AuthorityResolver {
             counts.observer           += lateCounts.observer;
             counts.subSpace           += lateCounts.subSpace;
             counts.subSpacePrefix     += lateCounts.subSpacePrefix;
+            counts.governingSpaceRef  += lateCounts.governingSpaceRef;
             counts.maintainedResource += lateCounts.maintainedResource;
         }
 
@@ -334,17 +337,18 @@ public final class AuthorityResolver {
         lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.presetAttachment
                 + counts.presetAssignmentRef
                 + counts.attachment + counts.maintainer + counts.member + counts.observer
-                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource;
+                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource
+                + counts.governingSpaceRef;
         lastIncrementalCycleDurationMs = durationMs;
         logger.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
-                        + "subspace={} subspace-prefix={} maintained-resource={}) "
+                        + "subspace={} subspace-prefix={} maintained-resource={} governing-space-ref={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
                 graph, lastProcessed, currentLoadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
-                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource,
+                counts.subSpace, counts.subSpacePrefix, counts.maintainedResource, counts.governingSpaceRef,
                 structuralInvalidation, structuralAdds, durationMs);
     }
 
@@ -373,21 +377,27 @@ public final class AuthorityResolver {
         // an invalidated RD neither deletes rows nor triggers a rebuild.
         // Sub-space declarations are structural — invalidating one (Mode A) or one
         // of two co-declarations (Mode B) changes the validated parent/child
-        // topology. The DELETE removes the per-declaration row; the convenience
-        // direct triples are left sticky and cleaned on the next periodic rebuild.
+        // topology. The DELETE removes the per-declaration row; the convenience-edge
+        // cleanup then drops the now-unbacked direct triples (issue #125 finding #5)
+        // instead of leaving them sticky until the periodic rebuild. The structural
+        // flag still fires so downstream rows derived through a removed edge stay
+        // rebuild-bounded.
         if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             subSpaceInvalidationCheckWhere(graph, lastProcessed))) {
             executeUpdate(subSpaceInvalidationDelete(graph, lastProcessed));
+            executeUpdate(subSpaceConvenienceEdgeCleanup(graph, lastProcessed));
             structural = true;
         }
         // Space-alias declarations are structural — invalidating one removes an
         // owl:sameAs edge that feeds the admin-authority closure (issue #113). The
-        // DELETE removes the per-declaration row; the convenience npa:sameAsSpace edge
-        // is left sticky and cleaned on the next periodic rebuild (same policy as
-        // sub-space declarations).
+        // DELETE removes the per-declaration row; the convenience-edge cleanup then
+        // drops the now-unbacked npa:sameAsSpace edge (issue #125 finding #5 — the
+        // load-bearing case), so admin authority can no longer outlive a retraction
+        // until the next periodic rebuild.
         if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             aliasInvalidationCheckWhere(graph, lastProcessed))) {
             executeUpdate(aliasInvalidationDelete(graph, lastProcessed));
+            executeUpdate(aliasConvenienceEdgeCleanup(graph, lastProcessed));
             structural = true;
         }
         // Preset-derived RoleAssignment removal (issue #302). NOT npx:invalidates: a newer
@@ -409,8 +419,15 @@ public final class AuthorityResolver {
         // hard-retracted (issue #122) — no flag (display leaf, nothing downstream).
         executeUpdate(presetAssignmentRefInvalidationDelete(graph, lastProcessed));
         // Maintained-resource declaration deletes — no flag (leaf relation, no
-        // downstream caches to bound).
-        executeUpdate(maintainedResourceInvalidationDelete(graph, lastProcessed));
+        // downstream caches to bound). The per-declaration delete removes the row; the
+        // convenience-edge cleanup drops the now-unbacked isMaintainedBy edges (issue
+        // #125 finding #5). Guarded so the orphan-sweep only scans when something was
+        // actually invalidated (the delete itself was already a no-op otherwise).
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+                            maintainedResourceInvalidationCheckWhere(graph, lastProcessed))) {
+            executeUpdate(maintainedResourceInvalidationDelete(graph, lastProcessed));
+            executeUpdate(maintainedResourceConvenienceEdgeCleanup(graph, lastProcessed));
+        }
         if (structural) setNeedsFullRebuild();
         return structural;
     }
@@ -441,6 +458,10 @@ public final class AuthorityResolver {
         // future inserts) and any newly-orphaned children pick up fallback edges.
         c.subSpacePrefix = runTierLabeled("subspace-prefix(late)", graph,
                 subSpacePrefixFallbackUpdate(graph));
+        // Reflexive governing-space-ref late sweep (issue #130): catches refs whose
+        // SpaceRef aggregate became visible only this cycle. Self-healing dedup.
+        c.governingSpaceRef = runTierLabeled("governing-space-ref(late)", graph,
+                governingSpaceRefReflexiveUpdate(graph));
         // Preset-attachment late-arrival: catches assignments whose preset declaration or
         // admin grant only became valid in this same cycle. Runs before attachment(late)
         // so the non-admin late tiers below see this cycle's fresh preset-derived RAs.
@@ -547,6 +568,7 @@ public final class AuthorityResolver {
         int subSpace;
         int subSpacePrefix;
         int maintainedResource;
+        int governingSpaceRef;
     }
 
     /**
@@ -586,6 +608,12 @@ public final class AuthorityResolver {
         // delta-arrivals; the dedup FILTER NOT EXISTS prevents re-insertion.
         c.subSpacePrefix = runTierLabeled("subspace-prefix", graph,
                 subSpacePrefixFallbackUpdate(graph));
+        // Reflexive governing-space-ref edges (issue #130). Self-healing, no load filter;
+        // runs after the maintained-resource admit so a maintained resource that is itself
+        // a space already has its maintained governing edge by now (the two are independent
+        // anyway — different subjects/objects). Order vs. other tiers doesn't matter.
+        c.governingSpaceRef = runTierLabeled("governing-space-ref", graph,
+                governingSpaceRefReflexiveUpdate(graph));
         // Preset-attachment runs immediately before the regular attachment tier so the
         // gen:RoleAssignment rows it materializes (from active, admin-authored preset
         // assignments) are picked up by the downstream non-admin tiers in the same pass,
@@ -1563,6 +1591,17 @@ public final class AuthorityResolver {
                      npa:viaNanopub  ?np .
                   ?childRef  npa:isSubSpaceOf ?parentRef .
                   ?parentRef npa:hasSubSpace  ?childRef  .
+                  # Reified per-(nanopub, ref-pair) provenance link (issue #125 finding #5):
+                  # carries npa:viaNanopub plus both the ref and IRI endpoints, so the
+                  # invalidation cleanup can drop the convenience edges below once no
+                  # surviving link backs them — instead of leaving them sticky until the
+                  # next periodic full rebuild.
+                  ?ssLink a npa:SubSpaceLink ;
+                          npa:viaNanopub     ?np ;
+                          npa:childSpaceRef  ?childRef ;
+                          npa:parentSpaceRef ?parentRef ;
+                          npa:childSpace     ?child ;
+                          npa:parentSpace    ?parent .
                   # TRANSITIONAL-DUAL-EMIT (Phase 1.5; remove in Phase 4): IRI-valued
                   # sub-space edge alongside the ref-to-ref one, so pre-ref published
                   # queries that key on the bare Space IRI keep binding on a mixed-version
@@ -1641,9 +1680,14 @@ public final class AuthorityResolver {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 6. Dedup last — on the emitted ref-to-ref edge.
+                  # 6. Mint the per-(nanopub, ref-pair) provenance link IRI and dedup on it
+                  #    (not on the bare edge). Keyed on ?np so every backing declaration of
+                  #    the same ref-pair records its own removable link; the convenience
+                  #    edges above are re-asserted idempotently.
+                  BIND(IRI(CONCAT("http://purl.org/nanopub/admin/spacelink/subspace/",
+                                  MD5(CONCAT(STR(?np), "|", STR(?childRef), "|", STR(?parentRef))))) AS ?ssLink)
                   FILTER NOT EXISTS { GRAPH <%3$s> {
-                    ?childRef npa:isSubSpaceOf ?parentRef .
+                    ?ssLink a npa:SubSpaceLink .
                   } }
                 }
                 """.formatted(
@@ -1686,6 +1730,20 @@ public final class AuthorityResolver {
                      npa:viaNanopub      ?np .
                   ?r npa:isMaintainedBy        ?sRef .
                   ?sRef npa:hasMaintainedResource ?r .
+                  # Uniform ref-valued resource→governing-space-ref edge (issue #130). The
+                  # same predicate the reflexive space self-edge uses, so a single consumer
+                  # hop covers both "resource maintained by space S" and "resource IS a space".
+                  # Backed by the same MaintainedResourceLink below, so the invalidation
+                  # cleanup sweeps it alongside isMaintainedBy.
+                  ?r npa:hasGoverningSpaceRef  ?sRef .
+                  # Reified per-(nanopub, resource→ref) provenance link (issue #125 finding
+                  # #5): lets the invalidation cleanup drop the convenience edges below once
+                  # no surviving link backs them, instead of leaving them sticky.
+                  ?mrLink a npa:MaintainedResourceLink ;
+                          npa:viaNanopub         ?np ;
+                          npa:resourceIri        ?r ;
+                          npa:maintainerSpaceRef ?sRef ;
+                          npa:maintainerSpace    ?s .
                   # TRANSITIONAL-DUAL-EMIT (Phase 1.5; remove in Phase 4): IRI-valued
                   # maintained-resource edge alongside the resource→ref one, so pre-ref
                   # published queries (e.g. get-view-displays' maintained hop) keep binding
@@ -1723,9 +1781,13 @@ public final class AuthorityResolver {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 6. Dedup last — on the emitted resource → ref edge.
+                  # 6. Mint the per-(nanopub, resource→ref) provenance link IRI and dedup on
+                  #    it (not on the bare edge), so every backing declaration records its own
+                  #    removable link; the convenience edges above are re-asserted idempotently.
+                  BIND(IRI(CONCAT("http://purl.org/nanopub/admin/spacelink/maintained/",
+                                  MD5(CONCAT(STR(?np), "|", STR(?r), "|", STR(?sRef))))) AS ?mrLink)
                   FILTER NOT EXISTS { GRAPH <%3$s> {
-                    ?r npa:isMaintainedBy ?sRef .
+                    ?mrLink a npa:MaintainedResourceLink .
                   } }
                 }
                 """.formatted(
@@ -1785,6 +1847,16 @@ public final class AuthorityResolver {
                      npa:aliasSpace     ?alias ;
                      npa:viaNanopub     ?np .
                   ?alias npa:sameAsSpace ?canonRef .
+                  # Reified per-(nanopub, alias→canonical ref) provenance link (issue #125
+                  # finding #5). The alias edge feeds the admin-authority closure, so this
+                  # is the load-bearing case: the cleanup can now drop the edge when its
+                  # declaration is invalidated, rather than letting admin authority outlive
+                  # a retraction until the next periodic full rebuild.
+                  ?alLink a npa:SpaceAliasLink ;
+                          npa:viaNanopub        ?np ;
+                          npa:aliasSpace        ?alias ;
+                          npa:canonicalSpaceRef ?canonRef ;
+                          npa:canonicalSpace    ?canonical .
                   # TRANSITIONAL-DUAL-EMIT (Phase 1.5; remove in Phase 4): IRI-valued
                   # alias edge alongside the ref-valued one, so pre-ref published queries
                   # that resolve owl:sameAs by bare canonical IRI keep binding on a
@@ -1840,9 +1912,14 @@ public final class AuthorityResolver {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
-                  # 6. Dedup last — on the emitted (alias, canonical ref) edge.
+                  # 6. Mint the per-(nanopub, alias→canonical ref) provenance link IRI and
+                  #    dedup on it (not on the bare edge), so every backing declaration records
+                  #    its own removable link; the convenience edges above are re-asserted
+                  #    idempotently.
+                  BIND(IRI(CONCAT("http://purl.org/nanopub/admin/spacelink/alias/",
+                                  MD5(CONCAT(STR(?np), "|", STR(?alias), "|", STR(?canonRef))))) AS ?alLink)
                   FILTER NOT EXISTS { GRAPH <%3$s> {
-                    ?alias npa:sameAsSpace ?canonRef .
+                    ?alLink a npa:SpaceAliasLink .
                   } }
                 }
                 """.formatted(
@@ -1899,6 +1976,12 @@ public final class AuthorityResolver {
                   ?tagIri a npa:DerivedSubSpaceLink ;
                           npa:childSpace     ?child ;
                           npa:parentSpace    ?parent ;
+                          # Ref endpoints too (issue #125 finding #5), so the sub-space
+                          # orphan-sweep recognizes a prefix-derived ref edge as backed and
+                          # never deletes it. Derived links have no source nanopub, so they
+                          # are never invalidation-deleted; the fallback self-heals each cycle.
+                          npa:childSpaceRef  ?childRef ;
+                          npa:parentSpaceRef ?parentRef ;
                           npa:derivationKind npa:byUrlPrefix .
                 } }
                 WHERE {
@@ -1928,6 +2011,46 @@ public final class AuthorityResolver {
                       ?tagIri a npa:DerivedSubSpaceLink .
                     }
                   }
+                }
+                """.formatted(
+                NPA.NAMESPACE,
+                graph,
+                SpacesVocab.SPACES_GRAPH);
+    }
+
+    /**
+     * Reflexive governing-space-ref pass (issue #130). For every {@code SpaceRef}
+     * aggregate {@code ?spaceRef} (identified by {@code npa:spaceIri ?space} in the
+     * extraction graph), emits {@code <space> npa:hasGoverningSpaceRef <spaceRef>} into
+     * the space-state graph — the space pointing at its own ref through the same predicate
+     * a maintained resource uses to point at its maintaining space's ref (emitted in
+     * {@link #maintainedResourceAdmitUpdate}).
+     *
+     * <p>This removes the zero-hop special case from consumer authority gates: instead of
+     * {@code ?resource npa:isMaintainedBy? ?space} (a bare-IRI optional path that breaks
+     * once the hop is ref-valued), a consumer does a single mandatory
+     * {@code ?resource npa:hasGoverningSpaceRef ?spaceRef} that binds whether the resource
+     * is a maintained resource or a space itself. A space IRI claimed by several refs emits
+     * one edge per ref — the non-ref consumer variant's merged-across-refs behaviour falls
+     * out naturally; the ref variant pins {@code ?passedRef}.
+     *
+     * <p>Self-healing, like {@link #subSpacePrefixFallbackUpdate}: the edge has no source
+     * nanopub (it follows purely from a {@code SpaceRef} existing), so there is no
+     * invalidation handling and no load-number filter — always full-scan, with the dedup
+     * {@code FILTER NOT EXISTS} on the edge preventing re-insertion. A {@code SpaceRef}
+     * disappearing is itself a structural-rebuild event, which clears its reflexive edge.
+     */
+    static String governingSpaceRefReflexiveUpdate(IRI graph) {
+        return """
+                PREFIX npa: <%1$s>
+                INSERT { GRAPH <%2$s> {
+                  ?space npa:hasGoverningSpaceRef ?spaceRef .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?spaceRef npa:spaceIri ?space . }
+                  FILTER NOT EXISTS { GRAPH <%2$s> {
+                    ?space npa:hasGoverningSpaceRef ?spaceRef .
+                  } }
                 }
                 """.formatted(
                 NPA.NAMESPACE,
@@ -2069,9 +2192,8 @@ public final class AuthorityResolver {
      * DELETE template for validated {@code npa:SubSpaceDeclaration} rows whose
      * source nanopub was invalidated. Removes the per-declaration row by subject;
      * the convenience direct triples ({@code <child> npa:isSubSpaceOf <parent>}
-     * and inverse) are left sticky and cleaned by the next periodic full rebuild
-     * (same staleness policy as admin-RI invalidation — see {@code
-     * doc/design-space-repositories.md} on the structural-rebuild flag).
+     * and inverse) are then dropped by {@link #subSpaceConvenienceEdgeCleanup} in the
+     * same cycle (issue #125 finding #5) once no surviving link backs them.
      */
     static String subSpaceInvalidationDelete(IRI graph, long lastProcessed) {
         return String.format("""
@@ -2092,10 +2214,10 @@ public final class AuthorityResolver {
      * DELETE template for validated {@code npa:MaintainedResourceDeclaration} rows
      * whose source nanopub was invalidated. Removes the per-declaration row by
      * subject; the convenience direct triples ({@code <r> npa:isMaintainedBy <s>}
-     * and inverse) are left sticky and cleaned by the next periodic full rebuild
-     * (same staleness policy as sub-space declaration invalidation, but without
-     * the structural-rebuild flag — maintained-resource is a leaf relation, no
-     * downstream consumers depend on its closure).
+     * and inverse) are then dropped by {@link #maintainedResourceConvenienceEdgeCleanup}
+     * in the same cycle (issue #125 finding #5). No structural-rebuild flag —
+     * maintained-resource is a leaf relation, no downstream consumers depend on its
+     * closure, so the prompt edge cleanup fully resolves its invalidation.
      */
     static String maintainedResourceInvalidationDelete(IRI graph, long lastProcessed) {
         return String.format("""
@@ -2148,10 +2270,11 @@ public final class AuthorityResolver {
     /**
      * DELETE template for validated {@code npa:SpaceAliasDeclaration} rows whose
      * source nanopub was invalidated. Removes the per-declaration row by subject; the
-     * convenience {@code <alias> npa:sameAsSpace <canonical>} edge is left sticky and
-     * cleaned by the next periodic full rebuild (same staleness policy as sub-space
-     * declaration invalidation — the alias feeds the authority closure, so this kind
-     * is structural and flips {@code npa:needsFullRebuild}).
+     * convenience {@code <alias> npa:sameAsSpace <canonical>} edge is then dropped by
+     * {@link #aliasConvenienceEdgeCleanup} in the same cycle (issue #125 finding #5),
+     * so an alias can no longer grant admin authority after its declaration is retracted.
+     * The alias feeds the authority closure, so this kind is still structural and flips
+     * {@code npa:needsFullRebuild} to bound any rows already derived through the edge.
      */
     static String aliasInvalidationDelete(IRI graph, long lastProcessed) {
         return String.format("""
@@ -2166,6 +2289,209 @@ public final class AuthorityResolver {
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 aliasInvalidationCheckWhere(graph, lastProcessed));
+    }
+
+    /**
+     * WHERE clause shared by the maintained-resource invalidation ASK precheck and the
+     * matching cleanup. Identifies validated {@code npa:MaintainedResourceDeclaration}
+     * rows in the space-state graph whose {@code npa:viaNanopub} is the target of an
+     * {@code npx:invalidates} triple in {@code npa:graph} whose subject nanopub has a
+     * load number in {@code (lastProcessed, ∞)}.
+     */
+    static String maintainedResourceInvalidationCheckWhere(IRI graph, long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?d a npa:MaintainedResourceDeclaration ;
+                       npa:viaNanopub ?np .
+                  }
+                  GRAPH <%2$s> {
+                    ?invNp <%3$s> ?np ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
+                    %5$s
+                  }
+                """, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
+    }
+
+    /**
+     * Convenience-edge cleanup for invalidated sub-space declarations (issue #125
+     * finding #5). Run after {@link #subSpaceInvalidationDelete} (which removes the
+     * {@code npa:SubSpaceDeclaration} rows). Two phases as one multi-operation update:
+     * <ol>
+     *   <li>delete every {@code npa:SubSpaceLink} provenance link whose
+     *       {@code npa:viaNanopub} was invalidated (same {@code npx:invalidates} +
+     *       same-publisher gate as the declaration delete);</li>
+     *   <li>orphan-sweep: delete the convenience {@code npa:isSubSpaceOf} /
+     *       {@code npa:hasSubSpace} edges (both ref- and IRI-valued) that no surviving
+     *       link backs — neither a {@code npa:SubSpaceLink} (explicit declaration) nor a
+     *       {@code npa:DerivedSubSpaceLink} (URL-prefix fallback).</li>
+     * </ol>
+     * Edges backed by another surviving declaration or by the URL-prefix fallback are
+     * kept. The {@code npa:needsFullRebuild} flag still fires for the structural kind, so
+     * downstream rows derived through a removed edge remain rebuild-bounded; this only
+     * stops the convenience edges themselves from going sticky.
+     */
+    static String subSpaceConvenienceEdgeCleanup(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                # 1. Drop sub-space provenance links whose source nanopub was invalidated.
+                DELETE { GRAPH <%2$s> { ?l ?p ?o . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?l a npa:SubSpaceLink ;
+                       npa:viaNanopub ?np .
+                    ?l ?p ?o .
+                  }
+                  GRAPH <%3$s> {
+                    ?invNp <%4$s> ?np ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                    %6$s
+                  }
+                } ;
+                # 2. Orphan-sweep isSubSpaceOf edges (ref- and IRI-valued) with no backing link.
+                DELETE { GRAPH <%2$s> { ?c npa:isSubSpaceOf ?p . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?c npa:isSubSpaceOf ?p .
+                    FILTER NOT EXISTS {
+                      { ?l a npa:SubSpaceLink } UNION { ?l a npa:DerivedSubSpaceLink }
+                      { { ?l npa:childSpaceRef ?c . ?l npa:parentSpaceRef ?p }
+                        UNION
+                        { ?l npa:childSpace ?c . ?l npa:parentSpace ?p } }
+                    }
+                  }
+                } ;
+                # 3. Orphan-sweep the inverse hasSubSpace edges symmetrically.
+                DELETE { GRAPH <%2$s> { ?p npa:hasSubSpace ?c . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?p npa:hasSubSpace ?c .
+                    FILTER NOT EXISTS {
+                      { ?l a npa:SubSpaceLink } UNION { ?l a npa:DerivedSubSpaceLink }
+                      { { ?l npa:childSpaceRef ?c . ?l npa:parentSpaceRef ?p }
+                        UNION
+                        { ?l npa:childSpace ?c . ?l npa:parentSpace ?p } }
+                    }
+                  }
+                }
+                """, NPA.NAMESPACE, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
+    }
+
+    /**
+     * Convenience-edge cleanup for invalidated maintained-resource declarations (issue
+     * #125 finding #5). Run after {@link #maintainedResourceInvalidationDelete}. Deletes
+     * the {@code npa:MaintainedResourceLink} provenance links whose source nanopub was
+     * invalidated, then orphan-sweeps the {@code npa:isMaintainedBy} /
+     * {@code npa:hasMaintainedResource} edges (ref- and IRI-valued) that no surviving link
+     * backs. See {@link #subSpaceConvenienceEdgeCleanup} for the two-phase structure.
+     */
+    static String maintainedResourceConvenienceEdgeCleanup(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                # 1. Drop maintained-resource provenance links whose source nanopub was invalidated.
+                DELETE { GRAPH <%2$s> { ?l ?p ?o . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?l a npa:MaintainedResourceLink ;
+                       npa:viaNanopub ?np .
+                    ?l ?p ?o .
+                  }
+                  GRAPH <%3$s> {
+                    ?invNp <%4$s> ?np ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                    %6$s
+                  }
+                } ;
+                # 2. Orphan-sweep isMaintainedBy edges (ref- and IRI-valued) with no backing link.
+                DELETE { GRAPH <%2$s> { ?r npa:isMaintainedBy ?o . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?r npa:isMaintainedBy ?o .
+                    FILTER NOT EXISTS {
+                      ?l a npa:MaintainedResourceLink ;
+                         npa:resourceIri ?r .
+                      { ?l npa:maintainerSpaceRef ?o } UNION { ?l npa:maintainerSpace ?o }
+                    }
+                  }
+                } ;
+                # 3. Orphan-sweep the inverse hasMaintainedResource edges symmetrically.
+                DELETE { GRAPH <%2$s> { ?o npa:hasMaintainedResource ?r . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?o npa:hasMaintainedResource ?r .
+                    FILTER NOT EXISTS {
+                      ?l a npa:MaintainedResourceLink ;
+                         npa:resourceIri ?r .
+                      { ?l npa:maintainerSpaceRef ?o } UNION { ?l npa:maintainerSpace ?o }
+                    }
+                  }
+                } ;
+                # 4. Orphan-sweep the maintained arm of hasGoverningSpaceRef (issue #130).
+                #    Only the ref-valued maintained edge is removed here — it is backed by a
+                #    MaintainedResourceLink. The reflexive space self-edge (subject = a space
+                #    IRI that has its own SpaceRef) is NOT a maintained edge and is left to the
+                #    self-healing reflexive pass, so the guard keeps any ?r that is itself a space.
+                DELETE { GRAPH <%2$s> { ?r npa:hasGoverningSpaceRef ?o . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?r npa:hasGoverningSpaceRef ?o .
+                    FILTER NOT EXISTS {
+                      ?l a npa:MaintainedResourceLink ;
+                         npa:resourceIri ?r ;
+                         npa:maintainerSpaceRef ?o .
+                    }
+                    FILTER NOT EXISTS { GRAPH <%7$s> { ?o npa:spaceIri ?r . } }
+                  }
+                }
+                """, NPA.NAMESPACE, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"), SpacesVocab.SPACES_GRAPH);
+    }
+
+    /**
+     * Convenience-edge cleanup for invalidated space-alias declarations (issue #125
+     * finding #5 — the load-bearing case, since the alias edge feeds the admin-authority
+     * closure). Run after {@link #aliasInvalidationDelete}. Deletes the
+     * {@code npa:SpaceAliasLink} provenance links whose source nanopub was invalidated,
+     * then orphan-sweeps the {@code npa:sameAsSpace} edges (ref- and IRI-valued) that no
+     * surviving link backs. See {@link #subSpaceConvenienceEdgeCleanup} for the two-phase
+     * structure.
+     */
+    static String aliasConvenienceEdgeCleanup(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                # 1. Drop alias provenance links whose source nanopub was invalidated.
+                DELETE { GRAPH <%2$s> { ?l ?p ?o . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?l a npa:SpaceAliasLink ;
+                       npa:viaNanopub ?np .
+                    ?l ?p ?o .
+                  }
+                  GRAPH <%3$s> {
+                    ?invNp <%4$s> ?np ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                    %6$s
+                  }
+                } ;
+                # 2. Orphan-sweep sameAsSpace edges (ref- and IRI-valued) with no backing link.
+                DELETE { GRAPH <%2$s> { ?alias npa:sameAsSpace ?o . } }
+                WHERE {
+                  GRAPH <%2$s> {
+                    ?alias npa:sameAsSpace ?o .
+                    FILTER NOT EXISTS {
+                      ?l a npa:SpaceAliasLink ;
+                         npa:aliasSpace ?alias .
+                      { ?l npa:canonicalSpaceRef ?o } UNION { ?l npa:canonicalSpace ?o }
+                    }
+                  }
+                }
+                """, NPA.NAMESPACE, graph, NPA.GRAPH, NPX.INVALIDATES, lastProcessed,
+                samePublisherClause("invNp", "np"));
     }
 
     /**
@@ -2349,6 +2675,15 @@ public final class AuthorityResolver {
                     spacesConn.add(accountStateIri, NPA_AGENT, agent, newGraph);
                     spacesConn.add(accountStateIri, NPA_PUBKEY, pubkey, newGraph);
                     spacesConn.add(accountStateIri, NPA_TRUST_STATUS, statusIri, newGraph);
+                    // Mirror the authorizing introduction provenance when present (issue #125
+                    // finding #4). Optional: absent for snapshots from registries that predate
+                    // nanopub-registry#117/#118, so consumers (e.g. get-space-members-ref) must
+                    // treat npa:viaNanopub on an AccountState as best-effort, not guaranteed.
+                    Value viaNanopub = trustConn.getStatements(accountStateIri, NPA_VIA_NANOPUB, null, trustStateIri)
+                            .stream().findFirst().map(Statement::getObject).orElse(null);
+                    if (viaNanopub != null) {
+                        spacesConn.add(accountStateIri, NPA_VIA_NANOPUB, viaNanopub, newGraph);
+                    }
                     count++;
                 }
             }

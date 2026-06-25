@@ -59,6 +59,11 @@ public record TrustStateSnapshot(
      *                      Used to break ties when multiple intros declare the same {@code (agent, pubkey)};
      *                      consumers picking one canonical name per agent across keys typically use
      *                      {@code MAX(ratio)} with this as a secondary tiebreaker.
+     * @param introNanopub IRI of the authorizing introduction nanopub for this {@code (agent, pubkey)}
+     *                     (the intro carrying the key declaration; nanopub-registry#117/#118), or
+     *                     {@code null} when running against a registry whose snapshot predates the
+     *                     field — additive non-breaking schema, so absence must be tolerated during
+     *                     the fleet rollout. Tracks the same name-winning intro as {@code name}.
      */
     public record AccountEntry(
             String pubkey,
@@ -69,8 +74,20 @@ public record TrustStateSnapshot(
             Double ratio,
             Long quota,
             String name,
-            Instant nameCreatedAt
-    ) {}
+            Instant nameCreatedAt,
+            String introNanopub
+    ) {
+        /**
+         * Back-compat constructor without {@code introNanopub} (defaults to {@code null}) —
+         * the field is additive (nanopub-registry#117/#118). Convenient for call sites that
+         * predate it; production parsing always uses the canonical constructor.
+         */
+        public AccountEntry(String pubkey, String agent, String status, Integer depth,
+                            Integer pathCount, Double ratio, Long quota, String name,
+                            Instant nameCreatedAt) {
+            this(pubkey, agent, status, depth, pathCount, ratio, quota, name, nameCreatedAt, null);
+        }
+    }
 
     /**
      * Parses a {@code /trust-state/<hash>.json} envelope from its JSON
@@ -123,7 +140,8 @@ public record TrustStateSnapshot(
                     a.getDouble("ratio"),
                     unwrapLongNullable(a, "quota"),
                     a.getString("name"),
-                    unwrapDateNullable(a, "nameCreatedAt")
+                    unwrapDateNullable(a, "nameCreatedAt"),
+                    a.getString("introNanopub")
             ));
         }
 
