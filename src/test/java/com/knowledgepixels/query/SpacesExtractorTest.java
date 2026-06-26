@@ -984,6 +984,95 @@ class SpacesExtractorTest {
         assertContainsInContext(out, NPA.THIS_REPO, CURRENT_LOAD_COUNTER, vf.createLiteral(42L), NPA.GRAPH);
     }
 
+    // ---------------- gen:RevokedRoleInstantiation / gen:detachedRole (issue #129) ----------------
+
+    @Test
+    void extract_revokedRoleInstantiation_nonAdmin_emitsRoleRevocationRow() throws Exception {
+        IRI role = vf.createIRI("https://example.org/roles/reviewer");
+        IRI revNode = vf.createIRI(NP_BASE + "#rev");
+        Nanopub np = creator()
+                .type(GEN.REVOKED_ROLE_INSTANTIATION)
+                .assertion(revNode, RDF.TYPE, GEN.REVOKED_ROLE_INSTANTIATION)
+                .assertion(revNode, GEN.FOR_SPACE, SPACE_IRI_1)
+                .assertion(revNode, GEN.FOR_AGENT, MEMBER_AGENT)
+                .assertion(revNode, GEN.HAS_ROLE, role)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forRoleRevocation(ARTIFACT_CODE,
+                Utils.createHash(MEMBER_AGENT.stringValue() + "\n" + role.stringValue()));
+        assertContains(out, subject, RDF.TYPE, ROLE_REVOCATION);
+        assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);
+        assertContains(out, subject, REVOKED_ROLE, role);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+        // dct:created (the latest-wins key) rides along via addProvenance.
+        assertContains(out, subject, DCTERMS.CREATED, vf.createLiteral(new Date(1_700_000_000_000L)));
+    }
+
+    @Test
+    void extract_revokedRoleInstantiation_admin_keysOnAdminRole() throws Exception {
+        // Admin revocation carries gen:hasRole gen:AdminRole (decision #1), so the extractor
+        // keys the negative on gen:AdminRole — matching the npa:hasRoleType gen:AdminRole the
+        // admin tier stamps. One vocab term, one extraction path.
+        IRI revNode = vf.createIRI(NP_BASE + "#rev");
+        Nanopub np = creator()
+                .type(GEN.REVOKED_ROLE_INSTANTIATION)
+                .assertion(revNode, RDF.TYPE, GEN.REVOKED_ROLE_INSTANTIATION)
+                .assertion(revNode, GEN.FOR_SPACE, SPACE_IRI_1)
+                .assertion(revNode, GEN.FOR_AGENT, ADMIN_AGENT_1)
+                .assertion(revNode, GEN.HAS_ROLE, GEN.ADMIN_ROLE)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forRoleRevocation(ARTIFACT_CODE,
+                Utils.createHash(ADMIN_AGENT_1.stringValue() + "\n" + GEN.ADMIN_ROLE.stringValue()));
+        assertContains(out, subject, RDF.TYPE, ROLE_REVOCATION);
+        assertContains(out, subject, FOR_AGENT, ADMIN_AGENT_1);
+        assertContains(out, subject, REVOKED_ROLE, GEN.ADMIN_ROLE);
+    }
+
+    @Test
+    void extract_revokedRoleInstantiation_missingForAgent_emitsNothing() throws Exception {
+        IRI role = vf.createIRI("https://example.org/roles/reviewer");
+        IRI revNode = vf.createIRI(NP_BASE + "#rev");
+        Nanopub np = creator()
+                .type(GEN.REVOKED_ROLE_INSTANTIATION)
+                .assertion(revNode, RDF.TYPE, GEN.REVOKED_ROLE_INSTANTIATION)
+                .assertion(revNode, GEN.FOR_SPACE, SPACE_IRI_1)
+                .assertion(revNode, GEN.HAS_ROLE, role)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        assertTrue(out.stream().noneMatch(st -> ROLE_REVOCATION.equals(st.getObject())),
+                "an incomplete revocation node emits no RoleRevocation row");
+    }
+
+    @Test
+    void extract_detachedRole_emitsRoleDetachmentRow() throws Exception {
+        IRI role = vf.createIRI("https://example.org/roles/reviewer");
+        Nanopub np = creator()
+                .type(GEN.DETACHED_ROLE)
+                .assertion(SPACE_IRI_1, GEN.DETACHED_ROLE, role)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forRoleDetachment(ARTIFACT_CODE, Utils.createHash(role.stringValue()));
+        assertContains(out, subject, RDF.TYPE, ROLE_DETACHMENT);
+        assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, REVOKED_ROLE, role);
+        assertContains(out, subject, VIA_NANOPUB, NP_URI);
+        assertContains(out, subject, DCTERMS.CREATED, vf.createLiteral(new Date(1_700_000_000_000L)));
+    }
+
+    @Test
+    void triggerTypes_includeRevocationVocab() {
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.REVOKED_ROLE_INSTANTIATION),
+                "RevokedRoleInstantiation is space-relevant");
+        assertTrue(SpacesExtractor.TRIGGER_TYPES.contains(GEN.DETACHED_ROLE),
+                "detachedRole is space-relevant");
+    }
+
     // ---------------- helpers ----------------
 
     private SpacesExtractor.Context defaultContext() {

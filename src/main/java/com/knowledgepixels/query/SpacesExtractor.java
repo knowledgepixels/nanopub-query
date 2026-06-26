@@ -70,6 +70,8 @@ public final class SpacesExtractor {
         s.add(GEN.IS_MAINTAINED_BY);
         s.add(GEN.PRESET);
         s.add(GEN.PRESET_ASSIGNMENT);
+        s.add(GEN.REVOKED_ROLE_INSTANTIATION);
+        s.add(GEN.DETACHED_ROLE);
         s.addAll(BackcompatRolePredicates.ALL);
         TRIGGER_TYPES = Collections.unmodifiableSet(s);
     }
@@ -141,6 +143,11 @@ public final class SpacesExtractor {
         // the assertion type even without a pubinfo npx:hasNanopubType marker.
         boolean isPreset = types.contains(GEN.PRESET);
         boolean isPresetAssignment = types.contains(GEN.PRESET_ASSIGNMENT);
+        // Role revocation (issue #129). RevokedRoleInstantiation is a typed node carrying
+        // gen:forSpace/forAgent/hasRole; gen:detachedRole is a single-predicate-assertion
+        // (auto-typed like gen:hasRole). Both emit key-level negatives, never state rows.
+        boolean isRevokedRoleInstantiation = types.contains(GEN.REVOKED_ROLE_INSTANTIATION);
+        boolean isDetachedRole = types.contains(GEN.DETACHED_ROLE);
 
         if (isSpace) {
             extractSpace(np, ctx, out);
@@ -165,6 +172,12 @@ public final class SpacesExtractor {
         }
         if (isPresetAssignment) {
             extractPresetAssignment(np, ctx, out);
+        }
+        if (isRevokedRoleInstantiation) {
+            extractRevokedRoleInstantiation(np, ctx, out);
+        }
+        if (isDetachedRole) {
+            extractDetachedRole(np, ctx, out);
         }
 
         return out;
@@ -915,6 +928,84 @@ public final class SpacesExtractor {
         out.add(vf.createStatement(subject, SpacesVocab.IS_ACTIVATED, vf.createLiteral(!deactivated), GRAPH));
         out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
         addProvenance(subject, ctx, out);
+    }
+
+    // ---------------- gen:RevokedRoleInstantiation (role revocation, issue #129) ----------------
+
+    /**
+     * A {@code gen:RevokedRoleInstantiation} nanopub asserts that an agent no longer holds a
+     * role in a space (a key-level negative on {@code (space, agent, role)}). The assertion
+     * shape is a typed node:
+     * <pre>{@code :r a gen:RevokedRoleInstantiation ; gen:forSpace <s> ; gen:forAgent <a> ; gen:hasRole <role> .}</pre>
+     * For an <em>admin</em> revocation the role is {@code gen:AdminRole} (the admin tier carries
+     * no per-role IRI), so the same shape covers every tier. Emits one {@code npa:RoleRevocation}
+     * row per revoked node; the {@code dct:created} from {@link #addProvenance} is the latest-wins
+     * key the materializer uses to decide whether this negative shadows the standing assertion.
+     * This negative never materializes as a state row — it is consumed as a suppression filter /
+     * displacement DELETE in the tier where the key is bound.
+     */
+    private static void extractRevokedRoleInstantiation(Nanopub np, Context ctx, List<Statement> out) {
+        // One pass over the assertion: index IRI-valued (subject -> predicate -> object) and
+        // collect the RevokedRoleInstantiation-typed nodes. Avoids the quadratic re-scan a
+        // per-node singleIriObject lookup would incur on a multi-revocation nanopub.
+        Map<IRI, Map<IRI, IRI>> bySubject = new LinkedHashMap<>();
+        List<IRI> revokedNodes = new ArrayList<>();
+        for (Statement st : np.getAssertion()) {
+            if (!(st.getSubject() instanceof IRI s) || !(st.getObject() instanceof IRI o)) {
+                continue;
+            }
+            bySubject.computeIfAbsent(s, k -> new LinkedHashMap<>()).putIfAbsent(st.getPredicate(), o);
+            if (st.getPredicate().equals(RDF.TYPE) && GEN.REVOKED_ROLE_INSTANTIATION.equals(o)) {
+                revokedNodes.add(s);
+            }
+        }
+        for (IRI node : revokedNodes) {
+            Map<IRI, IRI> props = bySubject.getOrDefault(node, Map.of());
+            IRI space = props.get(GEN.FOR_SPACE);
+            IRI agent = props.get(GEN.FOR_AGENT);
+            IRI role = props.get(GEN.HAS_ROLE);
+            if (space == null || agent == null || role == null) {
+                logger.warn("Ignoring role revocation node {} in {}: missing forSpace/forAgent/hasRole",
+                        node, np.getUri());
+                continue;
+            }
+            // Separator that cannot appear in an IRI (newline) so distinct (agent, role) pairs
+            // in the same nanopub never collide onto one nparev: subject.
+            String discriminator = Utils.createHash(agent.stringValue() + "\n" + role.stringValue());
+            IRI subject = SpacesVocab.forRoleRevocation(ctx.artifactCode(), discriminator);
+            out.add(vf.createStatement(subject, RDF.TYPE, SpacesVocab.ROLE_REVOCATION, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.FOR_SPACE, space, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.FOR_AGENT, agent, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.REVOKED_ROLE, role, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+            addProvenance(subject, ctx, out);
+        }
+    }
+
+    // ---------------- gen:detachedRole (role detachment, issue #129) ----------------
+
+    /**
+     * A {@code gen:detachedRole} nanopub asserts {@code <space> gen:detachedRole <role>} — the
+     * stative antonym of {@code gen:hasRole}, a key-level negative on {@code (space, role)}.
+     * Emits one {@code npa:RoleDetachment} row per triple; latest-wins (by {@code dct:created})
+     * against direct <em>and</em> preset-derived attachments removes the role's availability in
+     * the space, cascading to the instantiations anchored on it. Never materializes as a state row.
+     */
+    private static void extractDetachedRole(Nanopub np, Context ctx, List<Statement> out) {
+        for (Statement st : np.getAssertion()) {
+            if (!st.getPredicate().equals(GEN.DETACHED_ROLE)
+                || !(st.getSubject() instanceof IRI spaceIri)
+                || !(st.getObject() instanceof IRI roleIri)) {
+                continue;
+            }
+            String roleHash = Utils.createHash(roleIri.stringValue());
+            IRI subject = SpacesVocab.forRoleDetachment(ctx.artifactCode(), roleHash);
+            out.add(vf.createStatement(subject, RDF.TYPE, SpacesVocab.ROLE_DETACHMENT, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.FOR_SPACE, spaceIri, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.REVOKED_ROLE, roleIri, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
+            addProvenance(subject, ctx, out);
+        }
     }
 
     /** Collects all IRI objects of {@code subject predicate ?o} triples in the assertion. */

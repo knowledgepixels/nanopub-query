@@ -413,6 +413,37 @@ public final class AuthorityResolver {
             executeUpdate(presetDeactivationDelete(graph, lastProcessed));
             structural = true;
         }
+        // Admin role-instantiation revocation (issue #129). STRUCTURAL — admin RIs feed every
+        // downstream tier, so a removed admin must bound the staleness via a full rebuild
+        // (mirrors adminInvalidationDelete). Root admins are exempt inside the check-where.
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ true,
+                            adminRevocationCheckWhere(graph, lastProcessed))) {
+            executeUpdate(adminRevocationDelete(graph, lastProcessed));
+            structural = true;
+        }
+        // Role detachment (issue #129). STRUCTURAL — removing a (ref, role) attachment
+        // (direct or preset-derived) cascades to the instantiations anchored on it, bounded
+        // by the periodic full rebuild. The attachment-tier inline filters then keep the
+        // detached role suppressed until a newer attachment / preset assignment out-ranks it.
+        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+                            roleDetachmentCheckWhere(graph, lastProcessed))) {
+            executeUpdate(roleDetachmentDelete(graph, lastProcessed));
+            structural = true;
+        }
+        // Non-admin role-instantiation revocation (issue #129), run once per tier so the
+        // authorization arms are the compile-time set for that tier (mirrors the inline
+        // suppression filter). STRUCTURAL: a revoked maintainer or member is a sub-granting
+        // authority — members/observers they granted are validated via the maint-pub /
+        // member-pub arms of nonAdminTierUpdate, so removing the revoked agent's own RI must
+        // schedule a full rebuild to re-evaluate (and drop) those now-unauthorized downstream
+        // grants. The inline suppression filter prevents re-materialization on that rebuild.
+        for (IRI revTier : List.of(GEN.MAINTAINER_ROLE, GEN.MEMBER_ROLE, GEN.OBSERVER_ROLE)) {
+            if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+                                roleRevocationCheckWhere(graph, lastProcessed, revTier))) {
+                executeUpdate(roleRevocationDelete(graph, lastProcessed, revTier));
+                structural = true;
+            }
+        }
         // Leaf-tier RI deletes — no flag.
         executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
         // Ref-scoped preset-assignment listing stamps whose assignment nanopub was
@@ -680,6 +711,188 @@ public final class AuthorityResolver {
                 """.formatted(tierClass);
     }
 
+    // ---------------- Role revocation / detachment (issue #129) ----------------
+
+    /**
+     * {@code xsd:dateTime} epoch literal — the latest-wins fallback for any assertion that
+     * lacks {@code dct:created}. Per issue #129's "treat missing as epoch": a positive
+     * assertion without a timestamp sorts oldest (always loses), and a negative
+     * (revocation / detachment) without one is inert (can never out-rank a timestamped
+     * positive). Written as a full datatype IRI since the tier templates only declare
+     * {@code npa:} / {@code gen:}.
+     */
+    private static final String EPOCH_DT =
+            "\"1970-01-01T00:00:00.000Z\"^^<http://www.w3.org/2001/XMLSchema#dateTime>";
+
+    /** Inner {@code GRAPH} block matching a revoker who is a validated admin of {@code ?spaceRef}. */
+    private static String revokerAdminGraphBlock(IRI graph) {
+        return String.format("""
+                GRAPH <%1$s> {
+                  ?revAcct a npa:AccountState ; npa:pubkey ?revPkh ; npa:agent ?revAgent .
+                  ?revRI a gen:RoleInstantiation ;
+                         npa:forSpaceRef ?spaceRef ;
+                         npa:inverseProperty gen:hasAdmin ;
+                         npa:forAgent ?revAgent .
+                }""", graph);
+    }
+
+    /** Inner {@code GRAPH} block matching a revoker who holds {@code tier} in {@code ?spaceRef}. */
+    private static String revokerTierGraphBlock(IRI graph, IRI tier) {
+        return String.format("""
+                GRAPH <%1$s> {
+                  ?revAcct a npa:AccountState ; npa:pubkey ?revPkh ; npa:agent ?revAgent .
+                  ?revRI a gen:RoleInstantiation ;
+                         npa:forSpaceRef ?spaceRef ;
+                         npa:forAgent ?revAgent ;
+                         npa:hasRoleType <%2$s> .
+                }""", graph, tier);
+    }
+
+    /** Inner {@code GRAPH} block matching a self-revoke: the revoker's key belongs to {@code ?agent}. */
+    private static String revokerSelfGraphBlock(IRI graph) {
+        return String.format("""
+                GRAPH <%1$s> {
+                  ?revAcct a npa:AccountState ; npa:pubkey ?revPkh ; npa:agent ?agent .
+                }""", graph);
+    }
+
+    /**
+     * Authorization arms for an instantiation revocation targeting a <em>compile-time</em>
+     * tier — issue #129's matrix, the single arm builder used by BOTH the inline suppression
+     * filter and the (per-tier-scoped) displacement DELETE, so the two paths can never
+     * authorize different revokers and flip-flop a row. UNION of only the arms the matrix
+     * permits for {@code targetTier}: admin of {@code ?spaceRef} (revokes any non-admin); a
+     * maintainer (member/observer targets); a member (observer target); plus the assignee
+     * itself (self-leave, any tier). A revoker must hold a tier strictly higher than the
+     * target. Compile-time selection (no runtime {@code ?tier} variable) deliberately avoids
+     * the SPARQL pitfall where a {@code FILTER} inside a {@code UNION} branch cannot see a
+     * {@code ?tier} bound in the enclosing group.
+     */
+    private static String revocationAuthorityArmsForTier(IRI graph, IRI targetTier) {
+        List<String> arms = new ArrayList<>();
+        arms.add("{ " + revokerAdminGraphBlock(graph) + " }");
+        if (GEN.MEMBER_ROLE.equals(targetTier) || GEN.OBSERVER_ROLE.equals(targetTier)) {
+            arms.add("{ " + revokerTierGraphBlock(graph, GEN.MAINTAINER_ROLE) + " }");
+        }
+        if (GEN.OBSERVER_ROLE.equals(targetTier)) {
+            arms.add("{ " + revokerTierGraphBlock(graph, GEN.MEMBER_ROLE) + " }");
+        }
+        arms.add("{ " + revokerSelfGraphBlock(graph) + " }");
+        return String.join("\nUNION\n", arms);
+    }
+
+    /**
+     * Inline suppression filter for {@code nonAdminTierUpdate}: rejects a candidate
+     * instantiation ({@code ?ri}, created {@code ?candCreated}) whose {@code (space, agent,
+     * role)} key has a newer authorized {@code npa:RoleRevocation}, using
+     * {@link #revocationAuthorityArmsForTier} for {@code targetTier} (the loop tier) — the same
+     * builder the displacement DELETE uses, so suppression and re-materialization always agree.
+     * The revocation's named space is matched against any IRI denoting {@code ?spaceRef}
+     * (canonical or validated {@code owl:sameAs} alias, issue #113), so an alias-named
+     * revocation is not a silent no-op. Latest-wins by {@code dct:created} ({@link #EPOCH_DT}
+     * fallback) with an {@code STR()} subject tiebreak. Not wrapped in {@code invalidationFilter}:
+     * per issue #129 the only un-revoke path is a newer positive re-assignment.
+     */
+    private static String nonAdminRevocationSuppressionFilter(IRI graph, IRI targetTier) {
+        return String.format("""
+                FILTER NOT EXISTS {
+                  { GRAPH <%2$s> { ?spaceRef npa:spaceIri ?revSpace . } }
+                  UNION
+                  { GRAPH <%1$s> { ?revSpace npa:sameAsSpace ?spaceRef . } }
+                  GRAPH <%2$s> {
+                    ?rev a npa:RoleRevocation ;
+                         npa:forSpace    ?revSpace ;
+                         npa:forAgent    ?agent ;
+                         npa:revokedRole ?role ;
+                         npa:pubkeyHash  ?revPkh .
+                    OPTIONAL { ?rev <http://purl.org/dc/terms/created> ?revCreatedRaw . }
+                  }
+                  BIND(COALESCE(?revCreatedRaw, %4$s) AS ?revCreated)
+                  FILTER (?revCreated > ?candCreated
+                          || (?revCreated = ?candCreated && STR(?rev) > STR(?ri)))
+                  { %3$s }
+                }""", graph, SpacesVocab.SPACES_GRAPH,
+                revocationAuthorityArmsForTier(graph, targetTier), EPOCH_DT);
+    }
+
+    /**
+     * Inline suppression filter for {@code adminTierUpdate}: rejects an admin instantiation
+     * ({@code ?ri}, created {@code ?candCreated}) whose {@code (ref, agent)} key has a newer
+     * authorized admin {@code npa:RoleRevocation} ({@code revokedRole = gen:AdminRole}) —
+     * authorized by an admin of the ref (admins revoke admins) or by the agent itself
+     * (self-leave). <b>Root admins are exempt</b> (issue #129/#110): a nested
+     * {@code FILTER NOT EXISTS} on {@code npa:hasRootAdmin} makes any revocation against a
+     * root admin structurally inert, overriding self-leave. {@code gen:AdminRole} resolves
+     * via the {@code gen:} prefix the admin-tier template declares.
+     */
+    private static String adminRevocationSuppressionFilter(IRI graph) {
+        return String.format("""
+                FILTER NOT EXISTS {
+                  FILTER NOT EXISTS { GRAPH <%2$s> {
+                    ?rootDef a npa:SpaceDefinition ;
+                             npa:forSpaceRef  ?spaceRef ;
+                             npa:hasRootAdmin ?agent .
+                  } }
+                  { GRAPH <%2$s> { ?spaceRef npa:spaceIri ?revSpace . } }
+                  UNION
+                  { GRAPH <%1$s> { ?revSpace npa:sameAsSpace ?spaceRef . } }
+                  GRAPH <%2$s> {
+                    ?rev a npa:RoleRevocation ;
+                         npa:forSpace    ?revSpace ;
+                         npa:forAgent    ?agent ;
+                         npa:revokedRole gen:AdminRole ;
+                         npa:pubkeyHash  ?revPkh .
+                    OPTIONAL { ?rev <http://purl.org/dc/terms/created> ?revCreatedRaw . }
+                  }
+                  BIND(COALESCE(?revCreatedRaw, %4$s) AS ?revCreated)
+                  FILTER (?revCreated > ?candCreated
+                          || (?revCreated = ?candCreated && STR(?rev) > STR(?ri)))
+                  { %3$s }
+                }""", graph, SpacesVocab.SPACES_GRAPH,
+                "{ " + revokerAdminGraphBlock(graph) + " }\nUNION\n{ "
+                        + revokerSelfGraphBlock(graph) + " }",
+                EPOCH_DT);
+    }
+
+    /**
+     * Inline suppression filter for the attachment tiers ({@code attachmentValidationUpdate}
+     * and {@code presetAttachmentValidationUpdate}): rejects a {@code (targetRef, role)}
+     * attachment whose effective timestamp ({@code ?<createdVar>}) is out-ranked by a newer
+     * admin-authored {@code npa:RoleDetachment} (issue #129). Authority = admin of
+     * {@code ?targetRef} (matching who may attach). Non-sticky latest-wins: a newer
+     * attachment / preset assignment naturally re-attaches because its timestamp beats the
+     * detachment. The detachment's named space is matched against any IRI denoting
+     * {@code ?targetRef} (canonical or {@code owl:sameAs} alias).
+     *
+     * @param createdVar     bare name of the attachment's effective-created variable
+     * @param attachSubjVar  bare name of the attachment subject variable (for the STR tiebreak)
+     */
+    private static String roleDetachmentSuppressionFilter(IRI graph, String createdVar, String attachSubjVar) {
+        return String.format("""
+                FILTER NOT EXISTS {
+                  { GRAPH <%2$s> { ?targetRef npa:spaceIri ?detSpace . } }
+                  UNION
+                  { GRAPH <%1$s> { ?detSpace npa:sameAsSpace ?targetRef . } }
+                  GRAPH <%2$s> {
+                    ?det a npa:RoleDetachment ;
+                         npa:forSpace    ?detSpace ;
+                         npa:revokedRole ?role ;
+                         npa:pubkeyHash  ?detPkh .
+                    OPTIONAL { ?det <http://purl.org/dc/terms/created> ?detCreatedRaw . }
+                  }
+                  BIND(COALESCE(?detCreatedRaw, %5$s) AS ?detCreated)
+                  FILTER (?detCreated > ?%3$s
+                          || (?detCreated = ?%3$s && STR(?det) > STR(?%4$s)))
+                  GRAPH <%1$s> {
+                    ?detAcct a npa:AccountState ; npa:pubkey ?detPkh ; npa:agent ?detAgent .
+                    ?detAdminRI a gen:RoleInstantiation ;
+                                npa:forSpaceRef ?targetRef ;
+                                npa:inverseProperty gen:hasAdmin ;
+                                npa:forAgent ?detAgent .
+                  }
+                }""", graph, SpacesVocab.SPACES_GRAPH, createdVar, attachSubjVar, EPOCH_DT);
+    }
+
     /** Wraps {@link #runTierLoop} with tier-name context for logs/exceptions. */
     private int runTierLabeled(String tier, IRI graph, String sparqlUpdate) {
         try {
@@ -941,7 +1154,10 @@ public final class AuthorityResolver {
                         npa:forAgent        ?agent ;
                         npa:pubkeyHash      ?pkh ;
                         npa:viaNanopub      ?np .
+                    # Candidate grant timestamp for the admin-revocation latest-wins (#129).
+                    OPTIONAL { ?ri <http://purl.org/dc/terms/created> ?candCreatedRaw . }
                   }
+                  BIND(COALESCE(?candCreatedRaw, %9$s) AS ?candCreated)
                   # 3a. Mint the per-ref state subject: (?ri, ?spaceRef) → ?sri.
                   BIND(IRI(CONCAT(STR(?ri), "__", ENCODE_FOR_URI(STR(?spaceRef)))) AS ?sri)
                   %6$s
@@ -950,6 +1166,10 @@ public final class AuthorityResolver {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
                   }
+                  # 4a. Admin-revocation latest-wins (issue #129): suppress if a newer
+                  #     authorized admin revocation shadows (ref, agent) — unless ?agent is a
+                  #     root admin (constitutional exemption, overrides self-leave).
+                  %10$s
                   # 5. Dedup last — keyed on (ref, agent).
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
@@ -966,7 +1186,9 @@ public final class AuthorityResolver {
                 lastProcessed,
                 invalidationFilter("np"),
                 spaceRefAliveFilter(),
-                NPA.GRAPH);
+                NPA.GRAPH,
+                EPOCH_DT,
+                adminRevocationSuppressionFilter(graph));
     }
 
     /**
@@ -1031,7 +1253,10 @@ public final class AuthorityResolver {
                         gen:hasRole  ?role ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
+                    # Attachment timestamp for the detachment latest-wins (issue #129).
+                    OPTIONAL { ?ra <http://purl.org/dc/terms/created> ?attCreatedRaw . }
                   }
+                  BIND(COALESCE(?attCreatedRaw, %8$s) AS ?attCreated)
                   GRAPH <%7$s> {
                     ?np npa:hasLoadNumber ?ln .
                     FILTER (?ln > %5$d)
@@ -1064,6 +1289,9 @@ public final class AuthorityResolver {
                   }
                   BIND(IRI(CONCAT(STR(?ra), "__", ENCODE_FOR_URI(STR(?targetRef)))) AS ?ra2)
                   %6$s
+                  # Detachment latest-wins (issue #129): suppress if a newer admin-authored
+                  # gen:detachedRole out-ranks this (ref, role) attachment.
+                  %9$s
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleAssignment ;
                               npa:forSpaceRef ?targetRef ;
@@ -1077,7 +1305,9 @@ public final class AuthorityResolver {
                 SpacesVocab.SPACES_GRAPH,
                 lastProcessed,
                 invalidationFilter("np"),
-                NPA.GRAPH);
+                NPA.GRAPH,
+                EPOCH_DT,
+                roleDetachmentSuppressionFilter(graph, "attCreated", "ra"));
     }
 
     /**
@@ -1226,6 +1456,10 @@ public final class AuthorityResolver {
                   }
                   # 8. Defensive: drop if the assignment nanopub itself was hard-retracted.
                   %6$s
+                  # 8a. Detachment latest-wins (issue #129): suppress if a newer admin-authored
+                  #     gen:detachedRole out-ranks this preset-derived (ref, role) attachment.
+                  #     Non-sticky: a newer PresetAssignment (newer ?created) re-attaches.
+                  %10$s
                   # 9. Dedup last — keyed on (ref, role).
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleAssignment ;
@@ -1242,7 +1476,8 @@ public final class AuthorityResolver {
                 invalidationFilter("assignNp"),
                 NPA.GRAPH,
                 invalidationFilter("pdNpNewer"),
-                invalidationFilter("pdNp"));
+                invalidationFilter("pdNp"),
+                roleDetachmentSuppressionFilter(graph, "created", "pa"));
     }
 
     /**
@@ -1516,7 +1751,11 @@ public final class AuthorityResolver {
                     ?ri a gen:RoleInstantiation ;
                         npa:pubkeyHash ?pkh ;
                         npa:viaNanopub ?np .
+                    # Candidate grant timestamp for the revocation latest-wins (issue #129);
+                    # absent ⇒ epoch (always loses).
+                    OPTIONAL { ?ri <http://purl.org/dc/terms/created> ?candCreatedRaw . }
                   }
+                  BIND(COALESCE(?candCreatedRaw, %11$s) AS ?candCreated)
                   # 5. Publisher constraint (incl. AccountState resolution).
                   GRAPH <%3$s> {
                     %8$s
@@ -1538,6 +1777,9 @@ public final class AuthorityResolver {
                   #    issue #112. Role IRIs are version-pinned, so the attached definition is
                   #    immutable regardless of the declaration nanopub's later lifecycle.
                   %6$s
+                  # 7a. Revocation latest-wins (issue #129): suppress if a newer authorized
+                  #     gen:RevokedRoleInstantiation shadows this (space, agent, role) key.
+                  %10$s
                   # 8. Dedup last — keyed on (ref, agent, nanopub).
                   FILTER NOT EXISTS { GRAPH <%3$s> {
                     ?existing a gen:RoleInstantiation ;
@@ -1555,7 +1797,9 @@ public final class AuthorityResolver {
                 invalidationFilter("np"),
                 tierClass,
                 publisherConstraint,
-                NPA.GRAPH);
+                NPA.GRAPH,
+                nonAdminRevocationSuppressionFilter(graph, tierClass),
+                EPOCH_DT);
     }
 
     /**
@@ -2567,6 +2811,228 @@ public final class AuthorityResolver {
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 presetDeactivationCheckWhere(graph, lastProcessed));
+    }
+
+    /**
+     * WHERE clause matching a materialized <em>non-admin</em> {@code gen:RoleInstantiation}
+     * row whose {@code (forSpaceRef, forAgent, gen:hasRole)} key is shadowed by a newer
+     * authorized {@code npa:RoleRevocation} (issue #129). The grant timestamp comes from the
+     * originating instantiation in the extraction graph (the materialized row carries no
+     * {@code dct:created}); the revocation nanopub's load number must be in
+     * {@code (lastProcessed, ∞)} so only revocations new in this cycle trigger a delete.
+     * Authorization is keyed on the row's bound {@code ?tier} (the matrix: a strictly-higher
+     * tier in the ref, or self). Not an {@code npx:invalidates} check.
+     */
+    static String roleRevocationCheckWhere(IRI graph, long lastProcessed, IRI targetTier) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?ri2 a gen:RoleInstantiation ;
+                         npa:forSpaceRef ?spaceRef ;
+                         npa:forAgent    ?agent ;
+                         gen:hasRole     ?role ;
+                         npa:hasRoleType <%7$s> ;
+                         npa:viaNanopub  ?np .
+                  }
+                  OPTIONAL { GRAPH <%2$s> {
+                    ?riSrc npa:viaNanopub ?np ;
+                           <http://purl.org/dc/terms/created> ?candCreatedRaw .
+                  } }
+                  BIND(COALESCE(?candCreatedRaw, %5$s) AS ?candCreated)
+                  { GRAPH <%2$s> { ?spaceRef npa:spaceIri ?revSpace . } }
+                  UNION
+                  { GRAPH <%1$s> { ?revSpace npa:sameAsSpace ?spaceRef . } }
+                  GRAPH <%2$s> {
+                    ?rev a npa:RoleRevocation ;
+                         npa:forSpace    ?revSpace ;
+                         npa:forAgent    ?agent ;
+                         npa:revokedRole ?role ;
+                         npa:pubkeyHash  ?revPkh ;
+                         npa:viaNanopub  ?revNp .
+                    OPTIONAL { ?rev <http://purl.org/dc/terms/created> ?revCreatedRaw . }
+                  }
+                  BIND(COALESCE(?revCreatedRaw, %5$s) AS ?revCreated)
+                  GRAPH <%3$s> {
+                    ?revNp npa:hasLoadNumber ?lnRev .
+                    FILTER (?lnRev > %4$d)
+                  }
+                  FILTER (?revCreated > ?candCreated
+                          || (?revCreated = ?candCreated && STR(?rev) > STR(?ri2)))
+                  { %6$s }
+                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed,
+                EPOCH_DT, revocationAuthorityArmsForTier(graph, targetTier), targetTier);
+    }
+
+    /**
+     * DELETE template removing a non-admin {@code gen:RoleInstantiation} row of {@code
+     * targetTier} shadowed by a newer authorized revocation (issue #129). Removes the whole
+     * row by subject. Run once per non-admin tier (maintainer/member/observer) so the
+     * authorization arms are the compile-time set for that tier — matching the inline
+     * suppression filter, no runtime {@code ?tier} (see {@link #revocationAuthorityArmsForTier}).
+     * Caller sets {@code needsFullRebuild} (a revoked maintainer/member is a sub-granting
+     * authority).
+     */
+    static String roleRevocationDelete(IRI graph, long lastProcessed, IRI targetTier) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?ri2 ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?ri2 ?p ?o . }
+                %4$s
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                roleRevocationCheckWhere(graph, lastProcessed, targetTier));
+    }
+
+    /**
+     * WHERE clause matching a materialized <em>admin</em> {@code gen:RoleInstantiation} row
+     * whose {@code (forSpaceRef, forAgent)} key is shadowed by a newer authorized admin
+     * {@code npa:RoleRevocation} ({@code revokedRole = gen:AdminRole}), authorized by an
+     * admin of the ref or by the agent itself. <b>Root admins are exempt</b> (constitutional,
+     * issue #129/#110): the nested {@code FILTER NOT EXISTS} on {@code npa:hasRootAdmin}
+     * makes the revocation inert. The revocation nanopub's load number must be in
+     * {@code (lastProcessed, ∞)}.
+     */
+    static String adminRevocationCheckWhere(IRI graph, long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?sri a gen:RoleInstantiation ;
+                         npa:forSpaceRef     ?spaceRef ;
+                         npa:inverseProperty gen:hasAdmin ;
+                         npa:forAgent        ?agent ;
+                         npa:viaNanopub      ?np .
+                  }
+                  FILTER NOT EXISTS { GRAPH <%2$s> {
+                    ?rootDef a npa:SpaceDefinition ;
+                             npa:forSpaceRef  ?spaceRef ;
+                             npa:hasRootAdmin ?agent .
+                  } }
+                  OPTIONAL { GRAPH <%2$s> {
+                    ?riSrc npa:viaNanopub ?np ;
+                           <http://purl.org/dc/terms/created> ?candCreatedRaw .
+                  } }
+                  BIND(COALESCE(?candCreatedRaw, %5$s) AS ?candCreated)
+                  { GRAPH <%2$s> { ?spaceRef npa:spaceIri ?revSpace . } }
+                  UNION
+                  { GRAPH <%1$s> { ?revSpace npa:sameAsSpace ?spaceRef . } }
+                  GRAPH <%2$s> {
+                    ?rev a npa:RoleRevocation ;
+                         npa:forSpace    ?revSpace ;
+                         npa:forAgent    ?agent ;
+                         npa:revokedRole gen:AdminRole ;
+                         npa:pubkeyHash  ?revPkh ;
+                         npa:viaNanopub  ?revNp .
+                    OPTIONAL { ?rev <http://purl.org/dc/terms/created> ?revCreatedRaw . }
+                  }
+                  BIND(COALESCE(?revCreatedRaw, %5$s) AS ?revCreated)
+                  GRAPH <%3$s> {
+                    ?revNp npa:hasLoadNumber ?lnRev .
+                    FILTER (?lnRev > %4$d)
+                  }
+                  FILTER (?revCreated > ?candCreated
+                          || (?revCreated = ?candCreated && STR(?rev) > STR(?sri)))
+                  { %6$s }
+                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed, EPOCH_DT,
+                "{ " + revokerAdminGraphBlock(graph) + " }\nUNION\n{ "
+                        + revokerSelfGraphBlock(graph) + " }");
+    }
+
+    /**
+     * DELETE template removing an admin {@code gen:RoleInstantiation} row shadowed by a newer
+     * authorized admin revocation (issue #129). Removes the whole row by subject.
+     * <b>Structural</b> — admin RIs feed every downstream tier — so the caller sets
+     * {@code npa:needsFullRebuild} (mirrors {@code adminInvalidationDelete}). The
+     * {@code adminTierUpdate} inline suppression filter prevents re-materialization.
+     */
+    static String adminRevocationDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?sri ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?sri ?p ?o . }
+                %4$s
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                adminRevocationCheckWhere(graph, lastProcessed));
+    }
+
+    /**
+     * WHERE clause matching a materialized {@code gen:RoleAssignment} row (direct
+     * <em>or</em> preset-derived) whose {@code (forSpaceRef, gen:hasRole)} key is shadowed by
+     * a newer admin-authored {@code npa:RoleDetachment} (issue #129). The attachment
+     * timestamp comes from whichever extraction row shares the materialized row's
+     * {@code npa:viaNanopub} (a {@code RoleAssignment} for direct attachments, a
+     * {@code PresetAssignment} for preset-derived ones). The detachment nanopub's load number
+     * must be in {@code (lastProcessed, ∞)}; authority = admin of the ref.
+     */
+    static String roleDetachmentCheckWhere(IRI graph, long lastProcessed) {
+        return String.format("""
+                  GRAPH <%1$s> {
+                    ?ra2 a gen:RoleAssignment ;
+                         npa:forSpaceRef ?targetRef ;
+                         gen:hasRole     ?role ;
+                         npa:viaNanopub  ?np .
+                  }
+                  OPTIONAL { GRAPH <%2$s> {
+                    ?attSrc npa:viaNanopub ?np ;
+                            <http://purl.org/dc/terms/created> ?attCreatedRaw .
+                  } }
+                  BIND(COALESCE(?attCreatedRaw, %5$s) AS ?attCreated)
+                  { GRAPH <%2$s> { ?targetRef npa:spaceIri ?detSpace . } }
+                  UNION
+                  { GRAPH <%1$s> { ?detSpace npa:sameAsSpace ?targetRef . } }
+                  GRAPH <%2$s> {
+                    ?det a npa:RoleDetachment ;
+                         npa:forSpace    ?detSpace ;
+                         npa:revokedRole ?role ;
+                         npa:pubkeyHash  ?detPkh ;
+                         npa:viaNanopub  ?detNp .
+                    OPTIONAL { ?det <http://purl.org/dc/terms/created> ?detCreatedRaw . }
+                  }
+                  BIND(COALESCE(?detCreatedRaw, %5$s) AS ?detCreated)
+                  GRAPH <%3$s> {
+                    ?detNp npa:hasLoadNumber ?lnDet .
+                    FILTER (?lnDet > %4$d)
+                  }
+                  FILTER (?detCreated > ?attCreated
+                          || (?detCreated = ?attCreated && STR(?det) > STR(?ra2)))
+                  GRAPH <%1$s> {
+                    ?detAcct a npa:AccountState ; npa:pubkey ?detPkh ; npa:agent ?detAgent .
+                    ?detAdminRI a gen:RoleInstantiation ;
+                                npa:forSpaceRef ?targetRef ;
+                                npa:inverseProperty gen:hasAdmin ;
+                                npa:forAgent ?detAgent .
+                  }
+                """, graph, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed, EPOCH_DT);
+    }
+
+    /**
+     * DELETE template removing a {@code gen:RoleAssignment} row (direct or preset-derived)
+     * shadowed by a newer admin-authored {@code gen:detachedRole} (issue #129). Removes the
+     * whole row by subject. <b>Structural</b> — instantiations anchored on the removed
+     * attachment are bounded by the periodic full rebuild (the cascade), so the caller sets
+     * {@code npa:needsFullRebuild}. The attachment-tier inline filters prevent
+     * re-materialization until a newer attachment / preset assignment out-ranks the detach
+     * (non-sticky).
+     */
+    static String roleDetachmentDelete(IRI graph, long lastProcessed) {
+        return String.format("""
+                PREFIX npa: <%1$s>
+                PREFIX gen: <%2$s>
+                DELETE { GRAPH <%3$s> {
+                  ?ra2 ?p ?o .
+                } }
+                WHERE {
+                  GRAPH <%3$s> { ?ra2 ?p ?o . }
+                %4$s
+                }
+                """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
+                roleDetachmentCheckWhere(graph, lastProcessed));
     }
 
     /**
