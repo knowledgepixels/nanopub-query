@@ -142,6 +142,35 @@ public class GEN {
      */
     public static final IRI APPLIES_TO_INSTANCES_OF = VocabUtils.createIRI(NAMESPACE, "appliesToInstancesOf");
 
+    // ---------------- Role revocation (issue #129) ----------------
+
+    /**
+     * Class IRI for an instantiation revocation: a key-level negative assertion that
+     * an agent no longer holds a role in a space, however it was granted. Mirrors
+     * {@link #DEACTIVATED_PRESET_ASSIGNMENT} — active-by-default, resolved by
+     * authorization-scoped latest-wins on {@code dct:created}, <em>not</em>
+     * {@code npx:invalidates} (which stays for nanopub-level undo). Carries
+     * {@code forSpace}, {@code forAgent}, and {@link #HAS_ROLE} (the version-pinned
+     * role IRI; {@link #ADMIN_ROLE} for admin revocations). See
+     * {@code doc/design-space-repositories.md}.
+     */
+    public static final IRI REVOKED_ROLE_INSTANTIATION = VocabUtils.createIRI(NAMESPACE, "RevokedRoleInstantiation");
+
+    /** Predicate on a {@link #REVOKED_ROLE_INSTANTIATION} naming the space whose role is revoked. */
+    public static final IRI FOR_SPACE = VocabUtils.createIRI(NAMESPACE, "forSpace");
+
+    /** Predicate on a {@link #REVOKED_ROLE_INSTANTIATION} naming the agent whose role is revoked. */
+    public static final IRI FOR_AGENT = VocabUtils.createIRI(NAMESPACE, "forAgent");
+
+    /**
+     * Predicate detaching a role from a space ({@code <space> gen:detachedRole <role>}):
+     * the stative antonym of {@link #HAS_ROLE}, keyed on {@code (space, role)}. A winning
+     * (admin-authored, latest-wins) detachment removes the role's availability, so direct
+     * <em>and</em> preset-derived attachments and the instantiations anchored on them drop
+     * out. Single-predicate-assertion auto-typed like {@code gen:hasRole}.
+     */
+    public static final IRI DETACHED_ROLE = VocabUtils.createIRI(NAMESPACE, "detachedRole");
+
     private GEN() {
     }
 

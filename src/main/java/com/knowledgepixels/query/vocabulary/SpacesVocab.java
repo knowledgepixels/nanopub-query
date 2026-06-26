@@ -50,6 +50,10 @@ public final class SpacesVocab {
     public static final String NPAPA_NAMESPACE = "http://purl.org/nanopub/admin/presetassign/";
     /** Namespace for preset-declaration entries ({@code npapd:<artifactCode>}). */
     public static final String NPAPD_NAMESPACE = "http://purl.org/nanopub/admin/presetdecl/";
+    /** Namespace for role-revocation entries ({@code nparev:<artifactCode>_<discriminatorHash>}). */
+    public static final String NPAREV_NAMESPACE = "http://purl.org/nanopub/admin/rolerevoc/";
+    /** Namespace for role-detachment entries ({@code npadet:<artifactCode>_<roleHash>}). */
+    public static final String NPADET_NAMESPACE = "http://purl.org/nanopub/admin/roledetach/";
     /** Namespace for space-state graph IRIs ({@code npass:<trustStateHash>_<loadCounter>}). */
     public static final String NPASS_NAMESPACE = "http://purl.org/nanopub/admin/spacestate/";
 
@@ -78,6 +82,21 @@ public final class SpacesVocab {
 
     /** RDF type for a preset-declaration extraction entry (from a {@code gen:Preset} nanopub). */
     public static final IRI PRESET_DECLARATION = vf.createIRI(NPA.NAMESPACE, "PresetDeclaration");
+
+    /**
+     * RDF type for a role-revocation extraction entry (from a {@code gen:RevokedRoleInstantiation}
+     * nanopub). A key-level negative on {@code (forSpace, forAgent, revokedRole)}; never
+     * materializes as a state row — consumed as a suppression filter / displacement DELETE in the
+     * tier where the key is bound. See {@code doc/design-space-repositories.md} (issue #129).
+     */
+    public static final IRI ROLE_REVOCATION = vf.createIRI(NPA.NAMESPACE, "RoleRevocation");
+
+    /**
+     * RDF type for a role-detachment extraction entry (from a {@code gen:detachedRole} triple).
+     * A key-level negative on {@code (forSpace, revokedRole)}; competes against both direct and
+     * preset-derived attachments by latest-wins. See issue #129.
+     */
+    public static final IRI ROLE_DETACHMENT = vf.createIRI(NPA.NAMESPACE, "RoleDetachment");
 
     // -------- Properties on extraction entries --------
 
@@ -138,6 +157,14 @@ public final class SpacesVocab {
 
     /** Tier class of a {@link #ROLE_DECLARATION}: gen:MaintainerRole / MemberRole / ObserverRole. */
     public static final IRI HAS_ROLE_TYPE = vf.createIRI(NPA.NAMESPACE, "hasRoleType");
+
+    /**
+     * The role IRI carried by a {@link #ROLE_REVOCATION} or {@link #ROLE_DETACHMENT} negative
+     * entry — the version-pinned role being revoked/detached ({@code gen:AdminRole} for admin
+     * revocations). Matched against a materialized RI's {@code gen:hasRole} / admin
+     * {@code npa:hasRoleType gen:AdminRole}, or an attachment's {@code gen:hasRole}.
+     */
+    public static final IRI REVOKED_ROLE = vf.createIRI(NPA.NAMESPACE, "revokedRole");
 
     /** Links a {@link #SUB_SPACE_DECLARATION} to the child Space IRI. */
     public static final IRI CHILD_SPACE = vf.createIRI(NPA.NAMESPACE, "childSpace");
@@ -314,6 +341,30 @@ public final class SpacesVocab {
     /** Mints {@code npapd:<artifactCode>} for a preset-declaration entry. */
     public static IRI forPresetDeclaration(String artifactCode) {
         return vf.createIRI(NPAPD_NAMESPACE, artifactCode);
+    }
+
+    /**
+     * Mints {@code nparev:<artifactCode>_<discriminatorHash>} for a role-revocation entry.
+     * Including a discriminator hash (on {@code <agent>+<role>}) lets a single nanopub revoke
+     * multiple {@code (agent, role)} keys without subject collision.
+     *
+     * @param artifactCode     trusty-URI artifact code of the originating nanopub
+     * @param discriminatorHash {@code Utils.createHash(<agentIri> + <roleIri>)}
+     */
+    public static IRI forRoleRevocation(String artifactCode, String discriminatorHash) {
+        return vf.createIRI(NPAREV_NAMESPACE, artifactCode + "_" + discriminatorHash);
+    }
+
+    /**
+     * Mints {@code npadet:<artifactCode>_<roleHash>} for a role-detachment entry.
+     * Including the role-IRI hash lets a single nanopub detach multiple roles without
+     * subject collision.
+     *
+     * @param artifactCode trusty-URI artifact code of the originating nanopub
+     * @param roleHash     {@code Utils.createHash(<roleIri>)}
+     */
+    public static IRI forRoleDetachment(String artifactCode, String roleHash) {
+        return vf.createIRI(NPADET_NAMESPACE, artifactCode + "_" + roleHash);
     }
 
     /**
