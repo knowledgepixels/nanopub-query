@@ -9,8 +9,10 @@ Nanopub Query is the second-generation query service for nanopublications.
 You can check out Nanopub Query at these instances:
 
 - https://query.knowledgepixels.com/
-- https://query.np.trustyuri.net/
+- https://query.nanodash.net/
 - https://query.petapico.org/
+
+The current status of the live instances is shown at https://monitor.knowledgepixels.com/.
 
 ## Documentation
 
