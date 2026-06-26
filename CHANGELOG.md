@@ -1,3 +1,23 @@
+## [1.19.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.18.0...nanopub-query-1.19.0) (2026-06-26)
+
+### Features
+
+* **spaces:** revoke & re-assign space roles (authorization-scoped latest-wins) ([#129](https://github.com/knowledgepixels/nanopub-query/issues/129)) ([db7b0fd](https://github.com/knowledgepixels/nanopub-query/commit/db7b0fdbb5873795636e8187f054a87e69f50106)), closes [#302](https://github.com/knowledgepixels/nanopub-query/issues/302)
+
+### Build and continuous integration
+
+* **deps:** update actions/checkout action to v7.0.0 ([1a1bbea](https://github.com/knowledgepixels/nanopub-query/commit/1a1bbea884ad044a74144330c5cf582e335209bd))
+* **deps:** update actions/setup-java action to v5.3.0 ([dcef619](https://github.com/knowledgepixels/nanopub-query/commit/dcef619eb03c56673ce59d279ec3fc65922c2139))
+* **deps:** update actions/setup-node action to v6.4.0 ([9f9fce8](https://github.com/knowledgepixels/nanopub-query/commit/9f9fce86232182c5b3a70f88ba3b8aac99e11ae7))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([08eb084](https://github.com/knowledgepixels/nanopub-query/commit/08eb0841032d7b05e7f7f3fec4e28155c6bf99cb))
+
+### Refactoring
+
+* **deps:** move versions into properties section ([3f26627](https://github.com/knowledgepixels/nanopub-query/commit/3f266270d3b56ccefa970bb5368bcaf96d6d86d6))
+
 ## [1.18.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.17.3...nanopub-query-1.18.0) (2026-06-25)
 
 ### Features
