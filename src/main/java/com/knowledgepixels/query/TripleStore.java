@@ -8,6 +8,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import com.google.common.hash.Hashing;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
@@ -23,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,6 +57,44 @@ public class TripleStore {
      * {@link RepositoryConnectionWrapper} that intercepts {@code close()} exactly once.
      */
     private final ConcurrentHashMap<String, AtomicInteger> openConnections = new ConcurrentHashMap<>();
+
+    /**
+     * Handles evicted from {@link #repositories} but not yet shut down. Eviction is
+     * deferred and idle-only: calling {@link HTTPRepository#shutDown()} closes the
+     * session manager and kills any live (possibly streaming) server-side transaction
+     * with the {@code MMapIndexInput - Already closed} error, which can wedge the
+     * underlying LMDB store on the server for <em>every</em> client. Instead of shutting
+     * a handle down the instant its app-side connection count hits zero — a count that
+     * can momentarily read zero between operations, or undercount a result set still
+     * being streamed — we park it here and only shut it down from
+     * {@link #reapPendingShutdowns()} once it has stayed idle for {@link #SHUTDOWN_GRACE_MS}.
+     * Guarded by the {@code this} monitor, like {@link #repositories}.
+     */
+    private final Map<String, Repository> pendingShutdown = new LinkedHashMap<>();
+    private final Map<String, Long> pendingShutdownSince = new HashMap<>();
+
+    /** Idle grace period before a parked handle is actually shut down. */
+    private static final long SHUTDOWN_GRACE_MS = 60_000;
+
+    /**
+     * Repos that are never evicted. The core named repos plus the view-critical type
+     * repos: ResourceView and ViewDisplay are queried and federated into constantly by
+     * the spaces/view UI, so they churn through the {@code cap 100} LRU fastest and were
+     * the handles most exposed to the shutdown-during-use race. Pinning a handful of
+     * them is cheap (a few always-warm LMDB envs) and removes the thrash on exactly the
+     * repos that wedge.
+     */
+    private static final Set<String> PINNED_REPO_NAMES = buildPinnedRepoNames();
+
+    private static Set<String> buildPinnedRepoNames() {
+        Set<String> names = new HashSet<>(Arrays.asList("admin", "empty", "meta", "full", "spaces", "last30d"));
+        for (String typeIri : new String[] {
+                "https://w3id.org/kpxl/gen/terms/ResourceView",
+                "https://w3id.org/kpxl/gen/terms/ViewDisplay" }) {
+            names.add("type_" + Hashing.sha256().hashString(typeIri, StandardCharsets.UTF_8).toString());
+        }
+        return Collections.unmodifiableSet(names);
+    }
 
     private String endpointBase = null;
     private String endpointType = null;
@@ -140,12 +180,23 @@ public class TripleStore {
     @GeneratedFlagForDependentElements
     Repository getRepository(String name) {
         synchronized (this) {
+            // Reap parked handles that have now been idle long enough, even when we're
+            // not over cap, so a burst that parked some repos doesn't leave them warm
+            // forever if load then drops. Cheap: early-returns when nothing is parked.
+            reapPendingShutdowns();
             if (repositories.size() > 100) {
                 evictIdleRepos();
             }
             if (repositories.containsKey(name)) {
                 // Move to the end of the list:
                 Repository repo = repositories.remove(name);
+                repositories.put(name, repo);
+            } else if (pendingShutdown.containsKey(name)) {
+                // Needed again before its grace period elapsed: resurrect the parked
+                // handle instead of shutting it down and re-creating, avoiding both the
+                // re-init round-trip and any shutdown/use race.
+                Repository repo = pendingShutdown.remove(name);
+                pendingShutdownSince.remove(name);
                 repositories.put(name, repo);
             } else {
                 Repository repository = null;
@@ -200,35 +251,91 @@ public class TripleStore {
 
     /**
      * Evicts the eldest cache entries until either the size is back within the
-     * 100-entry cap or every remaining entry has at least one open connection.
+     * 100-entry cap or every remaining entry is pinned or has an open connection.
      * The cap is load-bearing — each cached entry keeps an LMDB environment alive
      * on the RDF4J server (in-memory cache, mmap pages, native memory), so
-     * exceeding it by much risks server-side OOM. Actively-used repos are skipped
-     * rather than shut down, because {@link org.eclipse.rdf4j.repository.http.HTTPRepository#shutDown()}
-     * closes the session manager and kills any live transaction on that repo with
-     * a connection-close error (the {@code MMapIndexInput – Already closed}
-     * failure mode observed on query-3 in the April test). The cache self-converges
-     * as active repos become idle.
+     * exceeding it by much risks server-side OOM.
+     *
+     * <p>Eviction is <em>non-destructive</em>: it only unlinks the handle from the
+     * live cache into {@link #pendingShutdown}; it does <strong>not</strong> call
+     * {@link org.eclipse.rdf4j.repository.http.HTTPRepository#shutDown()} here.
+     * Shutting a handle down closes the session manager and kills any live transaction
+     * on that repo with a connection-close error (the {@code MMapIndexInput – Already
+     * closed} failure mode observed on query-3 in the April test), which can wedge the
+     * server-side LMDB store for every client. The actual shutdown happens later in
+     * {@link #reapPendingShutdowns()}, only after a repo has stayed provably idle for
+     * {@link #SHUTDOWN_GRACE_MS}. Pinned and actively-used repos are skipped entirely.
+     * The cap is still enforced immediately, because unlinked handles leave
+     * {@link #repositories} right away.
      */
+    /**
+     * Current time in millis. A seam so tests can drive the eviction grace period
+     * deterministically instead of sleeping.
+     */
+    long nowMillis() {
+        return System.currentTimeMillis();
+    }
+
     @GeneratedFlagForDependentElements
-    private void evictIdleRepos() {
+    void evictIdleRepos() {
+        reapPendingShutdowns();
         List<String> skipped = new ArrayList<>();
+        long now = nowMillis();
         Iterator<Entry<String, Repository>> iter = repositories.entrySet().iterator();
         while (iter.hasNext() && repositories.size() > 100) {
             Entry<String, Repository> e = iter.next();
-            AtomicInteger active = openConnections.get(e.getKey());
+            String name = e.getKey();
+            if (PINNED_REPO_NAMES.contains(name)) {
+                skipped.add(name);
+                continue;
+            }
+            AtomicInteger active = openConnections.get(name);
             if (active != null && active.get() > 0) {
-                skipped.add(e.getKey());
+                skipped.add(name);
                 continue;
             }
             iter.remove();
-            logger.info("Shutting down repo: {}", e.getKey());
-            e.getValue().shutDown();
-            logger.info("Shutdown complete");
+            // Park for deferred shutdown rather than shutting down in this hot path.
+            pendingShutdown.put(name, e.getValue());
+            pendingShutdownSince.put(name, now);
         }
         if (!skipped.isEmpty()) {
-            logger.warn("Skipped eviction for {} active repo(s); cache size is now {} (cap 100). Active names: {}",
+            logger.warn("Skipped eviction for {} active/pinned repo(s); cache size is now {} (cap 100). Active names: {}",
                     skipped.size(), repositories.size(), skipped);
+        }
+    }
+
+    /**
+     * Shuts down handles parked in {@link #pendingShutdown} that have stayed idle
+     * ({@code openConnections == 0}) for at least {@link #SHUTDOWN_GRACE_MS}. The grace
+     * period keeps eviction from killing a server-side transaction whose app-side
+     * connection count merely dipped to zero between operations, or that is still
+     * streaming a result set. A handle re-requested before it is reaped is resurrected
+     * in {@link #getRepository(String)} and never shut down. Must be called under the
+     * {@code this} monitor.
+     */
+    void reapPendingShutdowns() {
+        if (pendingShutdown.isEmpty()) {
+            return;
+        }
+        long now = nowMillis();
+        Iterator<Entry<String, Repository>> iter = pendingShutdown.entrySet().iterator();
+        while (iter.hasNext()) {
+            Entry<String, Repository> e = iter.next();
+            String name = e.getKey();
+            AtomicInteger active = openConnections.get(name);
+            Long since = pendingShutdownSince.get(name);
+            if ((active == null || active.get() == 0) && since != null && now - since >= SHUTDOWN_GRACE_MS) {
+                iter.remove();
+                pendingShutdownSince.remove(name);
+                logger.info("Shutting down idle repo (deferred): {}", name);
+                try {
+                    e.getValue().shutDown();
+                } catch (Exception ex) {
+                    logger.warn("Deferred shutdown failed for repo '{}': {}", name, ex.getMessage());
+                }
+                logger.info("Shutdown complete");
+            }
         }
     }
 
