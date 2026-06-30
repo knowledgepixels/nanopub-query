@@ -1,3 +1,17 @@
+## [1.19.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.19.0...nanopub-query-1.19.1) (2026-06-30)
+
+### Bug Fixes
+
+* **triplestore:** defer repo-cache eviction shutdown and pin hot repos ([b842064](https://github.com/knowledgepixels/nanopub-query/commit/b842064b8c1122753855c0255dcc35e7443477bf))
+
+### Documentation
+
+* update live instance list in README ([d59621a](https://github.com/knowledgepixels/nanopub-query/commit/d59621ae9a3feae6fed2ba3e444036a84f73f365))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([ae15437](https://github.com/knowledgepixels/nanopub-query/commit/ae15437c54b190b3095258b9fe8410a46633a4b9))
+
 ## [1.19.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.18.0...nanopub-query-1.19.0) (2026-06-26)
 
 ### Features
