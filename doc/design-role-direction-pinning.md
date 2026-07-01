@@ -63,27 +63,37 @@ declaration. That requires the direction to be **pinned in the assigning nanopub
 
 ## Decision
 
-Two parts, deployable independently.
+Two parts, deployable independently. The settled choices (see conversation, 2026-07-01):
+keep the `BackcompatRolePredicates` name; fix **only** `gen:hasMaintainer` in Part A;
+reserve `gen:hasHelper` as the Part B pilot; dedicated `gen:InverseRoleProperty` /
+`gen:RegularRoleProperty` vocabulary; **strict drop** for an absent pin; inline
+`gen:Space` assignments honored iff fixed-predicate **or** pinned.
 
-### Part A — immediate fix: promote the known predicates (closes #136)
+### Part A — immediate fix: promote `gen:hasMaintainer` (partially closes #136)
 
-Add `gen:hasHelper` and `gen:hasMaintainer` (both **INVERSE**) to the known
-predicate→direction map, and **rename / re-document** that map. It is currently
-`BackcompatRolePredicates`, documented as *temporary, to be dropped once deployments move
-to `gen:RoleInstantiation`*. That framing is now wrong: the map is the permanent home for
-**known-direction role predicates**, not just legacy ones. Suggested rename:
-`KnownRolePredicateDirections` (keep the Wikidata/3pff/legacy entries; they are simply the
-known set). Re-document so a future cleanup does not delete it and reintroduce this bug.
+Add **only `gen:hasMaintainer` (INVERSE)** to the known predicate→direction map,
+`BackcompatRolePredicates`.
 
-Effect: `hasHelper`/`hasMaintainer` are resolved at extraction time into `spacesGraph`
-like every other known predicate, on both the `gen:RoleInstantiation` path
+- **Keep the name and the "backcompat" framing.** The map is *not* reframed as permanent:
+  the intent is still to retire it once pinning (Part B) is universal — at that point the
+  few remaining old relations either break or get converted. Adding `hasMaintainer` is a
+  pragmatic shortcut for a currently-common predicate, not a promise to keep the map
+  forever. Do re-document lightly so it's clear the list is "resolve-without-a-pin, to be
+  drained," not "legacy only."
+- **Deliberately leave `gen:hasHelper` OUT.** It stays unresolved (dropped, per Part B's
+  strict rule) so it can serve as the **test/pilot predicate** for the pubinfo pin. The
+  few existing `hasHelper` instances (biochementity et al.) will be **manually migrated**
+  — republished with the pin — after Part B ships.
+
+Effect: `hasMaintainer` is resolved at extraction time into `spacesGraph` like every other
+known predicate, on both the `gen:RoleInstantiation` path
 (`SpacesExtractor.extractRoleInstantiation`) and the inline `gen:Space` path
-(`emitInlineRoleInstantiations`). Existing data is corrected by a full
+(`emitInlineRoleInstantiations`). Existing `hasMaintainer` data is corrected by a full
 re-materialization / re-ingest.
 
-This is a pragmatic backstop for *known* predicates. It does **not** scale to genuinely
-new custom predicates (each would need a code change + redeploy). Part B removes that
-limitation.
+**Part A does not fully close #136.** The biochementity case in the issue is a `hasHelper`
+membership, which is intentionally *not* fixed here; it is resolved by Part B + the manual
+migration of those instances. The bot-as-admin workaround stays until then.
 
 ### Part B — going forward: pin direction in the assigning nanopub
 
@@ -108,7 +118,7 @@ unambiguous even when one nanopub carries several role triples or several agents
 per-nanopub flat flag breaks the moment a nanopub mixes predicates; per-triple
 reification (RDF-star) is heavier than needed. Per-predicate is the sweet spot.
 
-#### Triple structure → **classify the predicate** (recommended)
+#### Triple structure → **classify the predicate** (decided)
 
 ```turtle
 # in pubinfo
@@ -118,30 +128,33 @@ gen:hasHelper a gen:InverseRoleProperty .     # or gen:RegularRoleProperty
 Reads naturally ("hasHelper is an inverse role property"), one triple per predicate used,
 and is reusable across nanopubs. New vocabulary: two classes `gen:InverseRoleProperty` /
 `gen:RegularRoleProperty` in the KPXL `gen` namespace (`https://w3id.org/kpxl/gen/terms/`).
+Formal publication of the terms is a **follow-up, not a blocker** — Nanodash may emit them
+before they are defined.
 
-Close alternative — reuse the declaration vocabulary with the nanopub as subject:
-
-```turtle
-# in pubinfo
-<this-np> gen:hasInverseProperty gen:hasHelper .
-```
-
-Maximally consistent with role declarations and scopes cleanly to "this nanopub uses it
-inverse," but it reuses `gen:hasInverseProperty` with a *nanopub* in the subject position
-where declarations put a *role* — a small domain stretch. We lean to the dedicated classes
-to avoid overloading the declaration predicate.
+(The rejected alternative — `<this-np> gen:hasInverseProperty gen:hasHelper` — was more
+consistent with role declarations but overloaded `gen:hasInverseProperty` with a nanopub
+in the subject position where declarations put a role.)
 
 #### Extractor resolution precedence
 
-For each role triple in the assertion, resolve direction by:
+For each role triple in the assertion (and each inline role triple in a `gen:Space`
+nanopub — see below), resolve direction by:
 
-1. **Known map** (`KnownRolePredicateDirections`) — short-circuits known/legacy predicates
-   (and all existing data).
-2. **pubinfo pin** — the direction class / triple above.
-3. **Fallback** — neutral binding (today's path 2), or drop. See open question below.
+1. **`BackcompatRolePredicates`** — short-circuits known/legacy predicates (and all
+   existing data).
+2. **pubinfo pin** — the direction class above.
+3. **Drop.** No known-map entry and no pin ⇒ the role triple is **rejected** (not emitted
+   as a neutral binding). Strict by decision.
 
 With (1) or (2) satisfied, the extractor emits the normalized shape directly into
-`spacesGraph`, and `get-space-members` works with no query change.
+`spacesGraph`, and `get-space-members` works with no query change. Because (3) never
+produces a neutral row, the **neutral path becomes vestigial**: after a full re-ingest on
+the new extractor, no neutral rows remain, and the extractor's neutral branch plus the
+materializer's `nonAdminTierUpdate` UNION arms 3–4 (which only resolve neutral bindings)
+can be **removed**. Sequence this removal *after* the re-ingest and *after* the existing
+`hasHelper` instances are migrated to pins — otherwise those un-pinned instances are
+dropped on re-ingest and their members vanish (no worse than today's #136 state, but the
+migration is what restores them).
 
 #### The role declaration stays the validation authority
 
@@ -169,45 +182,67 @@ The fix does not change these, but they bound what any redesign can rely on:
   data.
 - **Inline `gen:Space` path (`emitInlineRoleInstantiations`):** groups by
   `(space, predicate, direction)` with multi-valued `forAgent` — safe by construction
-  (fixed space, one direction per predicate; only the agent set is collapsed). But it
+  (fixed space, one direction per predicate; only the agent set is collapsed). But today it
   handles **only** known-map predicates: an inline `<space> gen:hasHelper <bot>` in a
-  `gen:Space` nanopub is **silently dropped** (no neutral fallback on this path). Part A
-  fixes this for these two predicates; Part B's pin would also need to be honored here if
-  helper/maintainer members are declared inline in the Space nanopub.
+  `gen:Space` nanopub is **silently dropped**. **Decision (B.3):** this path must apply the
+  same precedence as the `gen:RoleInstantiation` path — resolve inline assignments iff the
+  predicate is in `BackcompatRolePredicates` **or** carries a pubinfo pin, dropping
+  otherwise. So Part A makes inline `hasMaintainer` work; Part B makes inline pinned
+  predicates (incl. migrated `hasHelper`) work. Factor the precedence into a shared
+  `resolveDirection(predicate, pins)` helper used by both paths.
 
-**Orthogonal keying hazard.** Direction pinning fixes *which side is the space*; it does
-nothing about the neutral path collapsing same-predicate-across-multiple-spaces. If
-batched multi-space assignment nanopubs are ever allowed, key the minted RI subject on
-`(predicate, space)` (or the full triple), independently of this design.
+**Multi-space batching (decided).** A single role-assigning nanopub **may** bind one
+predicate across multiple spaces, and each binding must become its own assignment. So the
+minted RI subject is keyed on **`(predicate, space)`** (a hash of both), not
+`hash(predicate)` alone. This also requires reworking the `gen:RoleInstantiation`
+classified branch, which today emits one row and returns: it must iterate all role triples,
+resolve each, group by `(space, predicate, direction)` with multi-valued `forAgent`, and
+emit one row per group — the same grouping `emitInlineRoleInstantiations` already does, but
+across multiple spaces. This belongs with Part B's `resolveDirection` refactor; until then
+the classified path keeps its current one-assignment-per-nanopub limit (unchanged status
+quo, not a regression, so Part A is unaffected).
+
+## Settled decisions
+
+- **Absent-pin behavior:** strict **drop/reject** (not neutral-fallback). Enables removing
+  the neutral machinery after re-ingest + `hasHelper` migration (see precedence section).
+  Accepts that convention-unaware third-party publishers of *unknown* predicates get
+  dropped — an explicit strictness choice.
+- **Vocabulary:** dedicated `gen:InverseRoleProperty` / `gen:RegularRoleProperty` classes.
+- **Inline `gen:Space` path:** honored iff fixed-predicate or pinned (B.3 above).
+- **Predicate scope in Part A:** `gen:hasMaintainer` only; `gen:hasHelper` reserved as the
+  Part B pilot and migrated manually.
+- **Multi-space batching:** supported — one nanopub may assign one predicate across several
+  spaces, each a separate assignment; key the RI subject on `(predicate, space)` and group
+  by `(space, predicate, direction)`.
+- **Vocabulary publication:** Nanodash may emit the new `gen:` classes before they are
+  formally defined; publishing them in the kpxl vocab is a follow-up.
 
 ## Open questions
 
-1. **Absent-pin behavior (Part B).** When a *new* custom predicate has no pubinfo pin and
-   is not in the known map: fall back to neutral (keep today's path 2 + materializer
-   resolution, so nothing regresses but the machinery stays), or **drop** (reject as
-   malformed, which lets us eventually retire the whole neutral path — extractor neutral
-   branch + `nonAdminTierUpdate` arms 3–4)? In an open publishing ecosystem, a hard drop
-   breaks convention-unaware third-party publishers, so the realistic path is
-   neutral-fallback now with a deprecation plan to require the pin later. Until then, Part
-   B is a *fast path added on top of* the existing machinery, not a removal.
-2. **Vocabulary choice.** Dedicated classes `gen:InverseRoleProperty` /
-   `gen:RegularRoleProperty` (recommended) vs. reusing `gen:hasInverseProperty` /
-   `gen:hasRegularProperty` with the nanopub as subject.
-3. **Inline Space path (Part B).** Whether helper/maintainer (and future custom) members
-   can be declared inline in a `gen:Space` nanopub, and if so whether the pin is honored
-   there too (adding a neutral/pinned path to `emitInlineRoleInstantiations`, which today
-   drops unknown predicates).
+1. **Timing of neutral-path removal.** Gated on (a) a full re-ingest on the new extractor
+   and (b) migration of existing `hasHelper` instances to pins. Track as a follow-up, not
+   part of the first Part B cut.
 
 ## Rollout
 
-- **Part A** — code change to the known-predicate map + rename/re-document; unit test
-  mirroring `AuthorityResolverTierIsolationTest.customPredicateResolvesDirectionAndTierFromRoleDeclaration`
+- **Part A** — add `gen:hasMaintainer` (INVERSE) to `BackcompatRolePredicates` (lightly
+  re-document, no rename); unit test mirroring
+  `AuthorityResolverTierIsolationTest.customPredicateResolvesDirectionAndTierFromRoleDeclaration`
   but asserting the **`spacesGraph`** normalized shape; full re-materialization / re-ingest
-  to correct existing data. Closes #136. Independent of Part B.
-- **Part B** — extractor change (precedence + read the pubinfo pin) + the
-  `gen:InverseRoleProperty` / `gen:RegularRoleProperty` vocabulary; Nanodash emits the pin
-  for new role-assigning nanopubs; decide the absent-pin behavior (open question 1) before
-  any move to retire the neutral path.
+  to correct existing `hasMaintainer` data. **Partially** closes #136 (`hasHelper` deferred
+  to Part B). Independent of Part B.
+- **Part B** —
+  1. Extractor: shared `resolveDirection(predicate, pins)` with precedence
+     `BackcompatRolePredicates` → pubinfo pin → **drop**; wire into both
+     `extractRoleInstantiation` and `emitInlineRoleInstantiations`, and rework the
+     classified branch to group by `(space, predicate, direction)` with per-`(predicate,
+     space)` subject keying (multi-space support).
+  2. Nanodash emits the pin using `gen:InverseRoleProperty` / `gen:RegularRoleProperty`
+     (may precede formal vocab definition — cross-repo dependency, not blocked on the vocab).
+  3. Migrate existing `hasHelper` instances (republish with pins); then full re-ingest.
+  4. Follow-up: remove the now-vestigial neutral branch + `nonAdminTierUpdate` arms 3–4;
+     publish the `gen:` vocab term definitions.
 
 ## Related
 
