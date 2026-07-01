@@ -333,6 +333,7 @@ public final class SpacesExtractor {
      */
     private static void emitInlineRoleInstantiations(Nanopub np, Context ctx, IRI spaceIri,
                                                      List<Statement> out) {
+        Map<IRI, BackcompatRolePredicates.Direction> pins = directionPins(np);
         Map<IRI, BackcompatRolePredicates.Direction> directionByPred = new LinkedHashMap<>();
         Map<IRI, Set<IRI>> agentsByPred = new LinkedHashMap<>();
         for (Statement st : np.getAssertion()) {
@@ -340,7 +341,9 @@ public final class SpacesExtractor {
             if (GEN.HAS_ADMIN.equals(predicate)) {
                 continue; // already emitted above
             }
-            BackcompatRolePredicates.Direction direction = BackcompatRolePredicates.DIRECTIONS.get(predicate);
+            // Direction from the backcompat list or, for a user-defined predicate, a pubinfo
+            // pin (issue #136 Part B); unresolved predicates are dropped.
+            BackcompatRolePredicates.Direction direction = resolveDirection(predicate, pins);
             if (direction == null) {
                 continue;
             }
@@ -594,22 +597,37 @@ public final class SpacesExtractor {
         }
 
         // No predicate with a known direction. For a nanopub explicitly typed
-        // gen:RoleInstantiation, the assertion still binds an agent to a space via a
-        // custom role predicate declared in a gen:SpaceMemberRole nanopub (e.g.
-        // gen:hasMaintainer). We can't classify its direction here — that lives in the
-        // role declaration, a different nanopub the extractor can't see — so emit a
-        // neutral binding carrying the raw (subject, predicate, object). The materializer
-        // resolves direction + tier by joining the predicate against the role declaration
-        // attached to the space (see AuthorityResolver#nonAdminTierUpdate). Gated on the
-        // explicit type so we don't mint inert entries for incidental IRI-valued triples
-        // in nanopubs that only matched via a backcompat predicate.
+        // gen:RoleInstantiation, the assertion binds an agent to a space via a user-defined
+        // role predicate whose direction is pinned in pubinfo (<pred> a
+        // gen:InverseRoleProperty / gen:RegularRoleProperty; issue #136 Part B). We resolve
+        // the direction from that pin and emit the normalized shape directly, so
+        // get-space-members (which reads the raw spacesGraph) surfaces the member without a
+        // materializer round-trip. A predicate with neither a known direction nor a pin is
+        // DROPPED — no neutral binding is emitted (strict). Gated on the explicit type so we
+        // don't mint entries for incidental IRI-valued triples in backcompat-only nanopubs.
+        //
+        // One nanopub may bind a predicate across several spaces, each its own assignment:
+        // group by (space, predicate) with multi-valued forAgent and mint one subject per
+        // (predicate, space). (The classified branch above keeps its legacy one-per-nanopub
+        // shape for the drainable backcompat predicates.)
         if (!explicitRoleInstantiation) {
             return;
         }
+        Map<IRI, BackcompatRolePredicates.Direction> pins = directionPins(np);
+        if (pins.isEmpty()) {
+            return;
+        }
+        // Keyed by [predicate, spaceSide] (List equality is value-based).
+        Map<List<IRI>, BackcompatRolePredicates.Direction> directionByKey = new LinkedHashMap<>();
+        Map<List<IRI>, Set<IRI>> agentsByKey = new LinkedHashMap<>();
         for (Statement st : np.getAssertion()) {
             IRI predicate = st.getPredicate();
             if (predicate.equals(RDF.TYPE) || directionFor(predicate) != null) {
                 continue;
+            }
+            BackcompatRolePredicates.Direction direction = pins.get(predicate);
+            if (direction == null) {
+                continue; // unpinned custom predicate → dropped
             }
             if (!(st.getSubject() instanceof IRI subjIri)) {
                 continue;
@@ -617,14 +635,36 @@ public final class SpacesExtractor {
             if (!(st.getObject() instanceof IRI objIri)) {
                 continue;
             }
-            // Discriminate the subject by predicate so multiple custom-predicate triples
-            // in one nanopub don't collide on the artifact-code-derived subject.
-            IRI subject = SpacesVocab.forRoleInstantiation(
-                    ctx.artifactCode(), Utils.createHash(predicate.stringValue()));
+            IRI spaceSide;
+            IRI agentSide;
+            if (direction == BackcompatRolePredicates.Direction.REGULAR) {
+                agentSide = subjIri;
+                spaceSide = objIri;
+            } else {
+                spaceSide = subjIri;
+                agentSide = objIri;
+            }
+            List<IRI> key = List.of(predicate, spaceSide);
+            directionByKey.put(key, direction);
+            agentsByKey.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(agentSide);
+        }
+        for (Map.Entry<List<IRI>, Set<IRI>> entry : agentsByKey.entrySet()) {
+            IRI predicate = entry.getKey().get(0);
+            IRI spaceSide = entry.getKey().get(1);
+            BackcompatRolePredicates.Direction direction = directionByKey.get(entry.getKey());
+            // Discriminate by (predicate, space) so several predicates AND several spaces
+            // in one nanopub each get a distinct entry.
+            IRI subject = SpacesVocab.forRoleInstantiation(ctx.artifactCode(),
+                    Utils.createHash(predicate.stringValue() + "\n" + spaceSide.stringValue()));
             out.add(vf.createStatement(subject, RDF.TYPE, GEN.ROLE_INSTANTIATION, GRAPH));
-            out.add(vf.createStatement(subject, SpacesVocab.ROLE_PREDICATE, predicate, GRAPH));
-            out.add(vf.createStatement(subject, SpacesVocab.BINDING_SUBJECT, subjIri, GRAPH));
-            out.add(vf.createStatement(subject, SpacesVocab.BINDING_OBJECT, objIri, GRAPH));
+            out.add(vf.createStatement(subject, SpacesVocab.FOR_SPACE, spaceSide, GRAPH));
+            IRI directionPredicate = (direction == BackcompatRolePredicates.Direction.REGULAR)
+                    ? SpacesVocab.REGULAR_PROPERTY
+                    : SpacesVocab.INVERSE_PROPERTY;
+            out.add(vf.createStatement(subject, directionPredicate, predicate, GRAPH));
+            for (IRI agent : entry.getValue()) {
+                out.add(vf.createStatement(subject, SpacesVocab.FOR_AGENT, agent, GRAPH));
+            }
             out.add(vf.createStatement(subject, SpacesVocab.VIA_NANOPUB, np.getUri(), GRAPH));
             addProvenance(subject, ctx, out);
         }
@@ -635,6 +675,38 @@ public final class SpacesExtractor {
             return BackcompatRolePredicates.Direction.INVERSE;
         }
         return BackcompatRolePredicates.DIRECTIONS.get(predicate);
+    }
+
+    /**
+     * Direction pins declared in the nanopub's pubinfo: {@code <pred> a
+     * gen:InverseRoleProperty} or {@code <pred> a gen:RegularRoleProperty}. Lets the
+     * extractor resolve a user-defined role predicate's direction from the assigning
+     * nanopub alone (issue #136 Part B; see {@code doc/design-role-direction-pinning.md}).
+     */
+    private static Map<IRI, BackcompatRolePredicates.Direction> directionPins(Nanopub np) {
+        Map<IRI, BackcompatRolePredicates.Direction> pins = new LinkedHashMap<>();
+        for (Statement st : np.getPubinfo()) {
+            if (!RDF.TYPE.equals(st.getPredicate()) || !(st.getSubject() instanceof IRI predicate)) {
+                continue;
+            }
+            if (GEN.INVERSE_ROLE_PROPERTY.equals(st.getObject())) {
+                pins.put(predicate, BackcompatRolePredicates.Direction.INVERSE);
+            } else if (GEN.REGULAR_ROLE_PROPERTY.equals(st.getObject())) {
+                pins.put(predicate, BackcompatRolePredicates.Direction.REGULAR);
+            }
+        }
+        return pins;
+    }
+
+    /**
+     * Resolves a role predicate's direction: a statically-known predicate
+     * ({@link #directionFor}) wins; otherwise a pubinfo {@code pins} entry; otherwise
+     * {@code null} (the predicate is dropped).
+     */
+    private static BackcompatRolePredicates.Direction resolveDirection(IRI predicate,
+            Map<IRI, BackcompatRolePredicates.Direction> pins) {
+        BackcompatRolePredicates.Direction known = directionFor(predicate);
+        return (known != null) ? known : pins.get(predicate);
     }
 
     // ---------------- gen:isSubSpaceOf (standalone path) ----------------

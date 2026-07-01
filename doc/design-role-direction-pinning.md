@@ -212,9 +212,10 @@ quo, not a regression, so Part A is unaffected).
 - **Inline `gen:Space` path:** honored iff fixed-predicate or pinned (B.3 above).
 - **Predicate scope in Part A:** `gen:hasMaintainer` only; `gen:hasHelper` reserved as the
   Part B pilot and migrated manually.
-- **Multi-space batching:** supported — one nanopub may assign one predicate across several
-  spaces, each a separate assignment; key the RI subject on `(predicate, space)` and group
-  by `(space, predicate, direction)`.
+- **Multi-space batching:** supported on the **pinned** path — one nanopub may assign one
+  predicate across several spaces, each a separate assignment; RI subject keyed on
+  `(predicate, space)`, grouped by `(space, predicate)`. The backcompat classified branch
+  keeps its legacy one-per-nanopub shape (no multi-space data there).
 - **Vocabulary publication:** Nanodash may emit the new `gen:` classes before they are
   formally defined; publishing them in the kpxl vocab is a follow-up.
 
@@ -233,16 +234,21 @@ quo, not a regression, so Part A is unaffected).
   to correct existing `hasMaintainer` data. **Partially** closes #136 (`hasHelper` deferred
   to Part B). Independent of Part B.
 - **Part B** —
-  1. Extractor: shared `resolveDirection(predicate, pins)` with precedence
-     `BackcompatRolePredicates` → pubinfo pin → **drop**; wire into both
-     `extractRoleInstantiation` and `emitInlineRoleInstantiations`, and rework the
-     classified branch to group by `(space, predicate, direction)` with per-`(predicate,
-     space)` subject keying (multi-space support).
+  1. **DONE (extractor side, this repo):** `gen:InverseRoleProperty` / `gen:RegularRoleProperty`
+     added to `GEN`; `directionPins(np)` reads the pubinfo pins; shared
+     `resolveDirection(predicate, pins)` with precedence `BackcompatRolePredicates` → pin →
+     **drop**; wired into both `extractRoleInstantiation` (its former neutral branch is
+     replaced by pin-resolution grouped by `(space, predicate)` with per-`(predicate, space)`
+     subject keying — multi-space support) and `emitInlineRoleInstantiations`. **Scope note:**
+     the backcompat *classified* branch was intentionally left unchanged (legacy
+     one-assignment-per-nanopub), so multi-space batching applies to **pinned** predicates
+     (the forward path), not the drainable backcompat ones — which have no multi-space data.
   2. Nanodash emits the pin using `gen:InverseRoleProperty` / `gen:RegularRoleProperty`
      (may precede formal vocab definition — cross-repo dependency, not blocked on the vocab).
   3. Migrate existing `hasHelper` instances (republish with pins); then full re-ingest.
-  4. Follow-up: remove the now-vestigial neutral branch + `nonAdminTierUpdate` arms 3–4;
-     publish the `gen:` vocab term definitions.
+  4. Follow-up: remove the now-vestigial neutral branch + `nonAdminTierUpdate` arms 3–4
+     (safe only *after* re-ingest, since old neutral rows in `spacesGraph` still rely on
+     arms 3–4 until then); publish the `gen:` vocab term definitions.
 
 ## Related
 

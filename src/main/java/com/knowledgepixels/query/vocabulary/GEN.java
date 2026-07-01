@@ -62,6 +62,22 @@ public class GEN {
     public static final IRI HAS_INVERSE_PROPERTY = VocabUtils.createIRI(NAMESPACE, "hasInverseProperty");
 
     /**
+     * Pubinfo pin (issue #136 Part B) marking a role predicate as <em>inverse</em>-direction:
+     * the role-assigning triple is {@code <space> <predicate> <agent>}. Lets the extractor
+     * resolve a user-defined predicate's direction from the assigning nanopub alone, without the
+     * separate role declaration. Mirrors {@link #HAS_INVERSE_PROPERTY} on the role declaration.
+     * See {@code doc/design-role-direction-pinning.md}.
+     */
+    public static final IRI INVERSE_ROLE_PROPERTY = VocabUtils.createIRI(NAMESPACE, "InverseRoleProperty");
+
+    /**
+     * Pubinfo pin (issue #136 Part B) marking a role predicate as <em>regular</em>-direction:
+     * the role-assigning triple is {@code <agent> <predicate> <space>}. Mirrors
+     * {@link #HAS_REGULAR_PROPERTY} on the role declaration.
+     */
+    public static final IRI REGULAR_ROLE_PROPERTY = VocabUtils.createIRI(NAMESPACE, "RegularRoleProperty");
+
+    /**
      * Nanopub type (new) for role-instantiation nanopubs — those that grant a role to
      * an agent in a space. Extraction entries are also tagged with this class.
      */
