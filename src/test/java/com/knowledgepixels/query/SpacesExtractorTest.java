@@ -360,17 +360,14 @@ class SpacesExtractorTest {
         assertDoesNotContain(out, subject, INVERSE_PROPERTY, plansToAttend);
     }
 
-    // ---------------- gen:RoleInstantiation with a custom (unclassified) predicate ----------------
+    // ---------------- gen:RoleInstantiation with a custom (pinned / unpinned) predicate ----------------
 
     @Test
-    void extract_customPredicateExplicitlyTyped_emitsNeutralBinding() throws Exception {
-        // gen:hasHelper is a user-defined role predicate (declared via a
-        // gen:SpaceMemberRole nanopub's gen:hasInverseProperty); it is deliberately kept
-        // out of BackcompatRolePredicates as the pinning pilot (issue #136), so the
-        // extractor can't classify its direction. For a nanopub explicitly typed
-        // gen:RoleInstantiation we emit a neutral binding carrying the raw
-        // (subject, predicate, object); the materializer resolves direction + tier from
-        // the role declaration.
+    void extract_customPredicateExplicitlyTyped_noPin_isDropped() throws Exception {
+        // gen:hasHelper is a user-defined role predicate deliberately kept out of
+        // BackcompatRolePredicates as the pinning pilot (issue #136 Part B). Without a
+        // pubinfo direction pin the extractor cannot classify it and DROPS it (strict — no
+        // neutral binding is emitted).
         IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
         Nanopub np = creator()
                 .type(GEN.ROLE_INSTANTIATION)
@@ -378,27 +375,15 @@ class SpacesExtractorTest {
                 .finalizeNanopub();
 
         List<Statement> out = SpacesExtractor.extract(np, defaultContext());
-        IRI subject = forRoleInstantiation(ARTIFACT_CODE, Utils.createHash(hasHelper.stringValue()));
 
-        assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
-        assertContains(out, subject, ROLE_PREDICATE, hasHelper);
-        assertContains(out, subject, BINDING_SUBJECT, SPACE_IRI_1);
-        assertContains(out, subject, BINDING_OBJECT, MEMBER_AGENT);
-        assertContains(out, subject, VIA_NANOPUB, NP_URI);
-        // No direction was committed: neither the classified split nor regular/inverse.
-        assertDoesNotContain(out, subject, FOR_SPACE, SPACE_IRI_1);
-        assertDoesNotContain(out, subject, FOR_AGENT, MEMBER_AGENT);
-        assertDoesNotContain(out, subject, INVERSE_PROPERTY, hasHelper);
-        assertDoesNotContain(out, subject, REGULAR_PROPERTY, hasHelper);
+        assertTrue(out.isEmpty(), "Unpinned custom-predicate instantiation must be dropped");
     }
 
     @Test
     void extract_customPredicateNotExplicitlyTyped_emitsNothing() throws Exception {
         // Without an explicit gen:RoleInstantiation type, a single-triple
         // <space> hasHelper <agent> only auto-types as hasHelper, which is not a
-        // trigger type — so the nanopub isn't space-relevant and nothing is emitted. (The
-        // neutral path is gated on the explicit type to avoid minting inert entries for
-        // incidental IRI-valued triples in nanopubs matched only via a backcompat predicate.)
+        // trigger type — so the nanopub isn't space-relevant and nothing is emitted.
         IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
         Nanopub np = creator()
                 .assertion(SPACE_IRI_1, hasHelper, MEMBER_AGENT)
@@ -407,6 +392,102 @@ class SpacesExtractorTest {
         List<Statement> out = SpacesExtractor.extract(np, defaultContext());
 
         assertTrue(out.isEmpty(), "Untyped custom-predicate binding must not be space-relevant");
+    }
+
+    @Test
+    void extract_pinnedInversePredicate_emitsResolvedRoleInstantiation_issue136() throws Exception {
+        // A pubinfo pin <pred> a gen:InverseRoleProperty lets the extractor resolve direction
+        // from the assigning nanopub alone: <space> hasHelper <agent> is space-centric.
+        IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
+        Nanopub np = creator()
+                .type(GEN.ROLE_INSTANTIATION)
+                .assertion(SPACE_IRI_1, hasHelper, MEMBER_AGENT)
+                .pubinfo(hasHelper, RDF.TYPE, GEN.INVERSE_ROLE_PROPERTY)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forRoleInstantiation(ARTIFACT_CODE,
+                Utils.createHash(hasHelper.stringValue() + "\n" + SPACE_IRI_1.stringValue()));
+
+        assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
+        assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, INVERSE_PROPERTY, hasHelper);
+        assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);
+        // Resolved directly — not left as a neutral binding.
+        assertDoesNotContain(out, subject, ROLE_PREDICATE, hasHelper);
+        assertDoesNotContain(out, subject, REGULAR_PROPERTY, hasHelper);
+    }
+
+    @Test
+    void extract_pinnedRegularPredicate_swapsSpaceAndAgent() throws Exception {
+        // <pred> a gen:RegularRoleProperty → agent-centric source <agent> hasHelper <space>.
+        IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
+        Nanopub np = creator()
+                .type(GEN.ROLE_INSTANTIATION)
+                .assertion(MEMBER_AGENT, hasHelper, SPACE_IRI_1)
+                .pubinfo(hasHelper, RDF.TYPE, GEN.REGULAR_ROLE_PROPERTY)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forRoleInstantiation(ARTIFACT_CODE,
+                Utils.createHash(hasHelper.stringValue() + "\n" + SPACE_IRI_1.stringValue()));
+
+        assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);   // object side
+        assertContains(out, subject, REGULAR_PROPERTY, hasHelper);
+        assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);  // subject side
+        assertDoesNotContain(out, subject, INVERSE_PROPERTY, hasHelper);
+    }
+
+    @Test
+    void extract_pinnedPredicate_multiSpace_emitsSeparateAssignments() throws Exception {
+        // One nanopub may assign the same predicate across several spaces; each becomes its
+        // own (predicate, space)-keyed RoleInstantiation (multi-space batching).
+        IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
+        IRI spaceTwo = vf.createIRI("https://example.org/spaces/beta");
+        Nanopub np = creator()
+                .type(GEN.ROLE_INSTANTIATION)
+                .assertion(SPACE_IRI_1, hasHelper, MEMBER_AGENT)
+                .assertion(spaceTwo, hasHelper, ADMIN_AGENT_1)
+                .pubinfo(hasHelper, RDF.TYPE, GEN.INVERSE_ROLE_PROPERTY)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject1 = forRoleInstantiation(ARTIFACT_CODE,
+                Utils.createHash(hasHelper.stringValue() + "\n" + SPACE_IRI_1.stringValue()));
+        IRI subject2 = forRoleInstantiation(ARTIFACT_CODE,
+                Utils.createHash(hasHelper.stringValue() + "\n" + spaceTwo.stringValue()));
+
+        assertNotEquals(subject1, subject2);
+        assertContains(out, subject1, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, subject1, FOR_AGENT, MEMBER_AGENT);
+        assertContains(out, subject1, INVERSE_PROPERTY, hasHelper);
+        assertContains(out, subject2, FOR_SPACE, spaceTwo);
+        assertContains(out, subject2, FOR_AGENT, ADMIN_AGENT_1);
+        assertContains(out, subject2, INVERSE_PROPERTY, hasHelper);
+    }
+
+    @Test
+    void extract_spaceWithInlinePinnedPredicate_emitsResolvedRoleInstantiation() throws Exception {
+        // A gen:Space nanopub may declare a pinned user-defined role inline; the inline path
+        // honors the pubinfo pin too (issue #136 Part B). Inline entries key on the predicate
+        // hash (single space).
+        IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
+        Nanopub np = creator()
+                .type(GEN.SPACE)
+                .assertion(SPACE_IRI_1, RDF.TYPE, GEN.SPACE)
+                .assertion(SPACE_IRI_1, GEN.HAS_ROOT_DEFINITION, NP_URI)
+                .assertion(SPACE_IRI_1, GEN.HAS_ADMIN, ADMIN_AGENT_1)
+                .assertion(SPACE_IRI_1, hasHelper, MEMBER_AGENT)
+                .pubinfo(hasHelper, RDF.TYPE, GEN.INVERSE_ROLE_PROPERTY)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forRoleInstantiation(ARTIFACT_CODE, Utils.createHash(hasHelper.stringValue()));
+
+        assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
+        assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, INVERSE_PROPERTY, hasHelper);
+        assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);
     }
 
     @Test
@@ -1136,6 +1217,11 @@ class SpacesExtractorTest {
 
         NanopubBuilder assertion(IRI s, IRI p, org.eclipse.rdf4j.model.Value o) throws Exception {
             nc.addAssertionStatement(s, p, o);
+            return this;
+        }
+
+        NanopubBuilder pubinfo(IRI s, IRI p, org.eclipse.rdf4j.model.Value o) throws Exception {
+            nc.addPubinfoStatement(s, p, o);
             return this;
         }
 
