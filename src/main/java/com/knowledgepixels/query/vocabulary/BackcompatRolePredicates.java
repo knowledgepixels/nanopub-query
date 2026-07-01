@@ -14,9 +14,14 @@ import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
  * (via the registry's single-triple-assertion type-propagation trick) are
  * treated as role-instantiation nanopubs by the extractor.
  *
- * <p>Temporary — these should be dropped once existing deployments have moved
- * to publishing with {@link GEN#ROLE_INSTANTIATION}. See
- * {@code doc/design-space-repositories.md} for the current list.
+ * <p>This is the set of role predicates whose direction is known statically, so
+ * the extractor can resolve them without a per-nanopub direction pin. It is still
+ * intended to be <em>drained</em>: once role-assigning nanopubs pin their predicate
+ * direction in pubinfo (see {@code doc/design-role-direction-pinning.md}), the few
+ * remaining old relations here either break or get converted, and the list can go.
+ * {@code gen:hasHelper} is deliberately kept <em>out</em> of this list as the pilot
+ * predicate for the pinning mechanism. See {@code doc/design-space-repositories.md}
+ * for the reference list.
  *
  * <p>Direction: each predicate is classified as either {@link Direction#REGULAR}
  * (agent &rarr; space — the natural direction of a role from its bearer) or
@@ -64,6 +69,7 @@ public final class BackcompatRolePredicates {
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasAdmin"),       Direction.INVERSE),
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasGuest"),       Direction.INVERSE),
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasHost"),        Direction.INVERSE),
+            Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasMaintainer"),  Direction.INVERSE),   // issue #136
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasObserver"),    Direction.INVERSE),
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasProjectLead"), Direction.INVERSE),
             Map.entry(iri("https://w3id.org/kpxl/gen/terms/hasTeamMember"),  Direction.INVERSE),

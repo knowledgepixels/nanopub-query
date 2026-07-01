@@ -364,48 +364,73 @@ class SpacesExtractorTest {
 
     @Test
     void extract_customPredicateExplicitlyTyped_emitsNeutralBinding() throws Exception {
-        // gen:hasMaintainer is a user-defined role predicate (declared via a
-        // gen:SpaceMemberRole nanopub's gen:hasInverseProperty); it is neither
-        // gen:hasAdmin nor in BackcompatRolePredicates, so the extractor can't classify
-        // its direction. For a nanopub explicitly typed gen:RoleInstantiation we emit a
-        // neutral binding carrying the raw (subject, predicate, object); the materializer
-        // resolves direction + tier from the role declaration.
-        IRI hasMaintainer = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasMaintainer");
+        // gen:hasHelper is a user-defined role predicate (declared via a
+        // gen:SpaceMemberRole nanopub's gen:hasInverseProperty); it is deliberately kept
+        // out of BackcompatRolePredicates as the pinning pilot (issue #136), so the
+        // extractor can't classify its direction. For a nanopub explicitly typed
+        // gen:RoleInstantiation we emit a neutral binding carrying the raw
+        // (subject, predicate, object); the materializer resolves direction + tier from
+        // the role declaration.
+        IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
         Nanopub np = creator()
                 .type(GEN.ROLE_INSTANTIATION)
-                .assertion(SPACE_IRI_1, hasMaintainer, MEMBER_AGENT)
+                .assertion(SPACE_IRI_1, hasHelper, MEMBER_AGENT)
                 .finalizeNanopub();
 
         List<Statement> out = SpacesExtractor.extract(np, defaultContext());
-        IRI subject = forRoleInstantiation(ARTIFACT_CODE, Utils.createHash(hasMaintainer.stringValue()));
+        IRI subject = forRoleInstantiation(ARTIFACT_CODE, Utils.createHash(hasHelper.stringValue()));
 
         assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
-        assertContains(out, subject, ROLE_PREDICATE, hasMaintainer);
+        assertContains(out, subject, ROLE_PREDICATE, hasHelper);
         assertContains(out, subject, BINDING_SUBJECT, SPACE_IRI_1);
         assertContains(out, subject, BINDING_OBJECT, MEMBER_AGENT);
         assertContains(out, subject, VIA_NANOPUB, NP_URI);
         // No direction was committed: neither the classified split nor regular/inverse.
         assertDoesNotContain(out, subject, FOR_SPACE, SPACE_IRI_1);
         assertDoesNotContain(out, subject, FOR_AGENT, MEMBER_AGENT);
-        assertDoesNotContain(out, subject, INVERSE_PROPERTY, hasMaintainer);
-        assertDoesNotContain(out, subject, REGULAR_PROPERTY, hasMaintainer);
+        assertDoesNotContain(out, subject, INVERSE_PROPERTY, hasHelper);
+        assertDoesNotContain(out, subject, REGULAR_PROPERTY, hasHelper);
     }
 
     @Test
     void extract_customPredicateNotExplicitlyTyped_emitsNothing() throws Exception {
         // Without an explicit gen:RoleInstantiation type, a single-triple
-        // <space> hasMaintainer <agent> only auto-types as hasMaintainer, which is not a
+        // <space> hasHelper <agent> only auto-types as hasHelper, which is not a
         // trigger type — so the nanopub isn't space-relevant and nothing is emitted. (The
         // neutral path is gated on the explicit type to avoid minting inert entries for
         // incidental IRI-valued triples in nanopubs matched only via a backcompat predicate.)
-        IRI hasMaintainer = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasMaintainer");
+        IRI hasHelper = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasHelper");
         Nanopub np = creator()
-                .assertion(SPACE_IRI_1, hasMaintainer, MEMBER_AGENT)
+                .assertion(SPACE_IRI_1, hasHelper, MEMBER_AGENT)
                 .finalizeNanopub();
 
         List<Statement> out = SpacesExtractor.extract(np, defaultContext());
 
         assertTrue(out.isEmpty(), "Untyped custom-predicate binding must not be space-relevant");
+    }
+
+    @Test
+    void extract_backcompatHasMaintainer_emitsRoleInstantiation_issue136() throws Exception {
+        // gen:hasMaintainer is space-centric (INVERSE), like hasObserver/hasAdmin. It was
+        // missing from BackcompatRolePredicates, so the extractor left its instantiations
+        // as neutral bindings that get-space-members (which reads the raw spacesGraph)
+        // never surfaced (issue #136). Now classified INVERSE, it resolves at extraction.
+        IRI hasMaintainer = vf.createIRI("https://w3id.org/kpxl/gen/terms/hasMaintainer");
+        // Single-triple assertion → auto-typed by the predicate via NanopubUtils.getTypes.
+        Nanopub np = creator()
+                .assertion(SPACE_IRI_1, hasMaintainer, MEMBER_AGENT)
+                .finalizeNanopub();
+
+        List<Statement> out = SpacesExtractor.extract(np, defaultContext());
+        IRI subject = forRoleInstantiation(ARTIFACT_CODE);
+
+        assertContains(out, subject, RDF.TYPE, GEN.ROLE_INSTANTIATION);
+        assertContains(out, subject, FOR_SPACE, SPACE_IRI_1);
+        assertContains(out, subject, INVERSE_PROPERTY, hasMaintainer);
+        assertContains(out, subject, FOR_AGENT, MEMBER_AGENT);
+        assertDoesNotContain(out, subject, REGULAR_PROPERTY, hasMaintainer);
+        // Not left as a neutral binding.
+        assertDoesNotContain(out, subject, ROLE_PREDICATE, hasMaintainer);
     }
 
     // ---------------- gen:isSubSpaceOf ----------------
