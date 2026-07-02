@@ -1,3 +1,22 @@
+## [1.20.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.19.1...nanopub-query-1.20.0) (2026-07-02)
+
+### Features
+
+* **spaces:** resolve role-predicate direction from pubinfo pins ([#136](https://github.com/knowledgepixels/nanopub-query/issues/136) Part B) ([5116bfa](https://github.com/knowledgepixels/nanopub-query/commit/5116bfac83e1fdeafac5fc3f87fdeef66735e0f2))
+
+### Bug Fixes
+
+* **spaces:** classify gen:hasMaintainer as INVERSE role predicate ([#136](https://github.com/knowledgepixels/nanopub-query/issues/136)) ([e3ffd81](https://github.com/knowledgepixels/nanopub-query/commit/e3ffd815201b257f5051c0f816f702336e74a4b7))
+
+### Documentation
+
+* design for pinning role-predicate direction in role-assigning nanopubs ([6539015](https://github.com/knowledgepixels/nanopub-query/commit/6539015c0bd1f738eb1f21701f5784c366149006)), closes [#136](https://github.com/knowledgepixels/nanopub-query/issues/136)
+* lock in decisions for role-direction-pinning design ([267973d](https://github.com/knowledgepixels/nanopub-query/commit/267973dacd7648edc9e10e9b3f4012db2f2d3e2d))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([94a26f6](https://github.com/knowledgepixels/nanopub-query/commit/94a26f6ccc1ad40f8e90a5282dadb91f24265eb5))
+
 ## [1.19.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.19.0...nanopub-query-1.19.1) (2026-06-30)
 
 ### Bug Fixes
