@@ -41,7 +41,7 @@
     <junit-jupiter.version>6.1.0</junit-jupiter.version>
     <rdf4j.version>5.3.1</rdf4j.version>
 
-    <nanopub.version>1.90.0</nanopub.version>
+    <nanopub.version>1.91.0</nanopub.version>
     <nanopub-testsuite-connector.version>1.0.0</nanopub-testsuite-connector.version>
     <commons-exec.version>1.6.0</commons-exec.version>
     <jcl-over-slf4j.version>2.0.7</jcl-over-slf4j.version>
