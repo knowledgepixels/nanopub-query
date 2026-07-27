@@ -59,6 +59,19 @@ public final class MetricsCollector {
                 .description("Seconds since the last non-exceptional loadUpdates return (idle or loading)")
                 .register(meterRegistry);
 
+        // Shard-reconciliation observability (issue #139). Both read volatile
+        // counters kept by ShardReconciler — no SPARQL on the scrape path. Any
+        // non-zero repaired value means the backend acknowledged a shard write
+        // that was not durable, and deserves an alert.
+        Gauge.builder("registry.reconciler.nanopubs_checked_total",
+                        () -> (double) ShardReconciler.checkedNanopubCount)
+                .description("Nanopubs whose shard fan-out was verified by the reconciliation sweep since process start")
+                .register(meterRegistry);
+        Gauge.builder("registry.reconciler.shards_repaired_total",
+                        () -> (double) ShardReconciler.repairedShardCount)
+                .description("Missing shard repos detected and re-loaded by the reconciliation sweep since process start")
+                .register(meterRegistry);
+
         // Status label metrics
         for (final var status : StatusController.State.values()) {
             AtomicInteger stateGauge = new AtomicInteger(0);

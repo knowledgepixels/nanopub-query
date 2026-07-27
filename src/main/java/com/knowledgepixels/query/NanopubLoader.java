@@ -587,7 +587,11 @@ public class NanopubLoader {
                 conn.begin(IsolationLevels.SERIALIZABLE);
                 var repoStatus = fetchRepoStatus(conn, npId);
                 if (repoStatus.isLoaded) {
-                    logger.debug("Skipping already-loaded nanopub <{}> in repo '{}'", npId, repoName);
+                    // INFO, not DEBUG: this skip decides that a shard write is unnecessary
+                    // based on a single store read. When the backend misbehaves (issue #139:
+                    // a shard "successfully" written yet not durable), this line is the only
+                    // trace distinguishing a false skip from a lost commit.
+                    logger.info("Skipping already-loaded nanopub <{}> in repo '{}'", npId, repoName);
                 } else {
                     String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
                     conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, null, NPA.GRAPH);
@@ -663,7 +667,8 @@ public class NanopubLoader {
                 conn.begin(IsolationLevels.SERIALIZABLE);
                 // Idempotency: skip if this nanopub is already stamped in this repo.
                 if (Utils.getObjectForPattern(conn, NPA.GRAPH, npId, NPA.HAS_LOAD_NUMBER) != null) {
-                    logger.debug("Skipping already-loaded nanopub <{}> in spaces repo", npId);
+                    // INFO for the same reason as the loadNanopubToRepo skip (issue #139).
+                    logger.info("Skipping already-loaded nanopub <{}> in spaces repo", npId);
                     conn.commit();
                     success = true;
                     continue;
