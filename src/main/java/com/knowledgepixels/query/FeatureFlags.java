@@ -107,6 +107,21 @@ public final class FeatureFlags {
                 Utils.getEnvString("NANOPUB_QUERY_ENABLE_LAST30D_REPO", "true"));
     }
 
+    /**
+     * When {@code false}, the periodic shard-consistency sweep
+     * ({@link ShardReconciler#tick()}) is disabled: no reconciliation checkpoint
+     * is established and missing shards are never detected or re-loaded.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_ENABLE_RECONCILIATION} environment
+     * variable. Default: {@code true}.
+     *
+     * @return {@code true} if the shard-consistency sweep is enabled
+     */
+    public static boolean reconciliationEnabled() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_ENABLE_RECONCILIATION", "true"));
+    }
+
     private FeatureFlags() {
     }
 

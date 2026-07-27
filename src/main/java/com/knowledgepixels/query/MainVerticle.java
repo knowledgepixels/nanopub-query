@@ -68,6 +68,10 @@ public class MainVerticle extends AbstractVerticle {
             logger.warn("Writes to the 'last30d' repo disabled via NANOPUB_QUERY_ENABLE_LAST30D_REPO=false — "
                     + "the /repo/last30d endpoint will be empty; rewrite queries against /repo/full with a date filter.");
         }
+        if (!FeatureFlags.reconciliationEnabled()) {
+            logger.warn("Shard reconciliation disabled via NANOPUB_QUERY_ENABLE_RECONCILIATION=false — "
+                    + "nanopubs silently missing from individual shard repos (issue #139) will not be detected or repaired.");
+        }
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
                         .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))
@@ -560,6 +564,22 @@ public class MainVerticle extends AbstractVerticle {
                     JellyNanopubLoader.UPDATES_POLL_INTERVAL,
                     JellyNanopubLoader.UPDATES_POLL_INTERVAL,
                     TimeUnit.MILLISECONDS
+            );
+
+            // Periodic shard-consistency sweep (issue #139): verifies that recently
+            // loaded nanopubs actually landed in every shard repo their metadata
+            // implies, and re-loads any that are missing. Own single-threaded
+            // executor; scheduleWithFixedDelay serialises ticks. The tick itself
+            // no-ops unless the reconciliation flag is on and the state is READY.
+            Executors.newSingleThreadScheduledExecutor().scheduleWithFixedDelay(
+                    () -> {
+                        try {
+                            ShardReconciler.tick();
+                        } catch (Exception ex) {
+                            logger.warn("Shard reconciliation tick failed", ex);
+                        }
+                    },
+                    15, 15, TimeUnit.MINUTES
             );
 
             // Periodic authority-resolver tick: detects trust-state flips and
