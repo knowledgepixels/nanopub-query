@@ -38,7 +38,14 @@ services:
     # the tomcat user before launching the JVM.
     user: "0"
     environment:
-      - JAVA_OPTS=-Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000
+      # maxConnPerRoute/maxConnTotal: all SERVICE clauses in /api queries are
+      # rewritten to this instance's own public URL, so the whole federation
+      # load shares a single HttpClient route inside this container. The RDF4J
+      # defaults (25 per route, 50 total) saturate under concurrent federated
+      # queries, starving every /api call with "Timeout waiting for connection
+      # from pool" (incident 2026-07-28). Keep the sum of concurrent outer
+      # queries and federated self-calls below Tomcat's worker pool (200).
+      - JAVA_OPTS=-Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=100 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
