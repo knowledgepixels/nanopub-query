@@ -46,6 +46,8 @@ services:
       # from pool" (incident 2026-07-28). Keep the sum of concurrent outer
       # queries and federated self-calls below Tomcat's worker pool (200).
       - JAVA_OPTS=-Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=100 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
+      # Used by the healthcheck's federation probe below (empty disables it).
+      - NANOPUB_QUERY_URL=${NANOPUB_QUERY_URL:-}
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
@@ -55,23 +57,43 @@ services:
       - "8081:8080"
     entrypoint: /var/entrypoint/init.sh
     healthcheck:
-        # If curl succeeds, mark the instance as "has been ready". Only force a
-        # restart (via pkill) when the probe fails AND we've previously seen it
-        # ready -- otherwise we'd kill Tomcat mid-deploy during the start_period
-        # (default start_interval is 5s, well below the war-deploy time).
+        # If the direct-query curl succeeds, mark the instance as "has been
+        # ready". Only force a restart (via pkill) when a probe fails AND we've
+        # previously seen it ready -- otherwise we'd kill Tomcat mid-deploy
+        # during the start_period (default start_interval is 5s, well below the
+        # war-deploy time).
+        #
+        # Second probe: SERVICE clauses in /api queries loop back through the
+        # instance's public URL, so RDF4J's federation HTTP pool can wedge
+        # (leaked connections; incident 2026-07-28) while direct queries stay
+        # healthy. Probe that exact route and restart when it no longer
+        # answers. Requires NANOPUB_QUERY_URL (with trailing slash); skipped
+        # when unset.
         test: |
-          if curl -fsS --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
-              "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" > /dev/null; then
-            touch /var/info/ready
-            exit 0
-          fi
-          if [ -f /var/info/ready ]; then
+          restart_tomcat() {
             date >> /var/info/restart
             pkill -15 java
             sleep 10
             pkill -9 java
+          }
+          if ! curl -fsS --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
+              "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" > /dev/null; then
+            if [ -f /var/info/ready ]; then
+              restart_tomcat
+            fi
+            exit 1
           fi
-          exit 1
+          touch /var/info/ready
+          if [ -n "$$NANOPUB_QUERY_URL" ]; then
+            if ! curl -fsS --retry 2 --max-time 12 --retry-delay 2 \
+                --data-urlencode "query=select ?s where { service <$${NANOPUB_QUERY_URL}repo/meta> { select ?s where { ?s ?p ?o } limit 1 } }" \
+                "http://localhost:8080/rdf4j-server/repositories/spaces" > /dev/null; then
+              date >> /var/info/federation-restart
+              restart_tomcat
+              exit 1
+            fi
+          fi
+          exit 0
         interval: 60s
         timeout: 60s
         start_period: 300s
