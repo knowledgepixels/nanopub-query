@@ -101,6 +101,19 @@ public class ShardReconciler {
     static final int MAX_NPS_PER_TICK = 1000;
 
     /**
+     * How far below the checkpoint the retro pass re-verifies. The forward sweep
+     * proves shard membership once and moves on — but the 2026-07-29 incident
+     * (issue #142) showed the backend can revoke a write <em>after</em> it was
+     * acknowledged and readable: a shard verified present at sweep time vanished
+     * when the store's wedged state was discarded by a later restart. The retro
+     * pass therefore re-verifies every nanopub whose driver-repo load timestamp
+     * is within this window, even though their load numbers are at or below the
+     * checkpoint. Losses older than this window can still be caught by manually
+     * lowering the checkpoint ({@code scripts/set-reconciliation-checkpoint.sh}).
+     */
+    static final long RETRO_WINDOW_MS = 24L * 60 * 60 * 1000;
+
+    /**
      * Cumulative count of nanopubs whose shard fan-out was verified (clean or
      * repaired) since process start. Read by {@link MetricsCollector}.
      */
@@ -113,13 +126,25 @@ public class ShardReconciler {
      */
     static volatile long repairedShardCount = 0;
 
+    /**
+     * Cumulative count of shard losses detected by the retro pass: shards that a
+     * previous sweep verified present and that have since vanished. Read by
+     * {@link MetricsCollector}. This is the direct "backend revoked durable
+     * state" incident counter (issue #142) — even sharper evidence than
+     * {@link #repairedShardCount}, which also counts never-landed writes.
+     */
+    static volatile long relostShardCount = 0;
+
     private ShardReconciler() {
     }
 
     /**
-     * Runs one bounded reconciliation pass. Never throws: any failure is logged
-     * and retried on the next tick (the checkpoint only advances past verified
-     * nanopubs). No-op unless the reconciliation feature is enabled and the
+     * Runs one bounded reconciliation pass: the forward sweep (nanopubs above
+     * the checkpoint) followed by the retro pass (re-verification of the
+     * trailing {@link #RETRO_WINDOW_MS} at or below the checkpoint). Never
+     * throws: any failure is logged and retried on the next tick (the
+     * checkpoint only advances past verified nanopubs; the retro pass is
+     * stateless). No-op unless the reconciliation feature is enabled and the
      * service is READY.
      */
     public static void tick() {
@@ -133,6 +158,11 @@ public class ShardReconciler {
             runTick();
         } catch (Exception ex) {
             logger.warn("Shard reconciliation tick failed; will retry on next tick: {}", ex.getMessage(), ex);
+        }
+        try {
+            runRetroTick();
+        } catch (Exception ex) {
+            logger.warn("Shard retro-verification tick failed; will retry on next tick: {}", ex.getMessage(), ex);
         }
     }
 
@@ -228,6 +258,105 @@ public class ShardReconciler {
         } else {
             logger.debug("Shard reconciliation verified {} nanopub(s) up to load number {} of repo '{}'", checked, newCheckpoint, driverRepo);
         }
+    }
+
+    /**
+     * Retro pass: re-verifies nanopubs the forward sweep already passed —
+     * everything with a driver-repo load timestamp inside {@link #RETRO_WINDOW_MS}
+     * and a load number at or below the checkpoint. A shard found missing here
+     * was present when the forward sweep verified it, i.e. the backend revoked
+     * previously readable state (issue #142) — counted separately in
+     * {@link #relostShardCount} and logged loudly with the nanopub IRI so the
+     * incident window is pinned for server-side log capture. Unlike the forward
+     * sweep, a failed repair does not halt anything: the pass is stateless and
+     * re-derives its window from time on every tick, so it retries automatically
+     * until the loss ages out of the window.
+     */
+    private static void runRetroTick() {
+        String driverRepo = FeatureFlags.fullRepoEnabled() ? "full" : "meta";
+        Long checkpoint = readCheckpoint(driverRepo);
+        if (checkpoint == null) {
+            return;
+        }
+        List<WindowEntry> window = fetchRetroWindow(driverRepo, checkpoint);
+        if (window.isEmpty()) {
+            return;
+        }
+        Map<IRI, NanopubShardInfo> shardInfos = fetchShardInfos(driverRepo, window);
+
+        Map<String, List<IRI>> npsByShard = new LinkedHashMap<>();
+        for (WindowEntry e : window) {
+            NanopubShardInfo info = shardInfos.get(e.npId());
+            if (info == null) {
+                continue;
+            }
+            for (String repo : expectedShardRepos(e.npId(), info.pubkeyHash(), info.types(), driverRepo)) {
+                npsByShard.computeIfAbsent(repo, k -> new ArrayList<>()).add(e.npId());
+            }
+        }
+        Map<String, Set<IRI>> presentByShard = new HashMap<>();
+        for (Map.Entry<String, List<IRI>> e : npsByShard.entrySet()) {
+            presentByShard.put(e.getKey(), fetchPresentNanopubs(e.getKey(), e.getValue()));
+        }
+
+        long relost = 0;
+        long repaired = 0;
+        for (WindowEntry e : window) {
+            NanopubShardInfo info = shardInfos.get(e.npId());
+            if (info == null) {
+                continue;
+            }
+            List<String> missing = new ArrayList<>();
+            for (String repo : expectedShardRepos(e.npId(), info.pubkeyHash(), info.types(), driverRepo)) {
+                if (!presentByShard.getOrDefault(repo, Set.of()).contains(e.npId())) {
+                    missing.add(repo);
+                }
+            }
+            if (missing.isEmpty()) {
+                continue;
+            }
+            logger.warn("Previously verified nanopub <{}> (load number {}) has LOST shard(s) {} — the backend revoked readable state (issue #142); capture the RDF4J server logs around now before restarting", e.npId(), e.loadNumber(), missing);
+            relost += missing.size();
+            if (repairNanopub(driverRepo, e.npId(), missing)) {
+                repaired += missing.size();
+            }
+        }
+        relostShardCount += relost;
+        repairedShardCount += repaired;
+        if (relost > 0) {
+            logger.warn("Shard retro-verification found {} lost shard(s) across the last {} h window; {} re-repaired", relost, RETRO_WINDOW_MS / 3_600_000, repaired);
+        } else {
+            logger.debug("Shard retro-verification: {} nanopub(s) in the trailing window still consistent", window.size());
+        }
+    }
+
+    /**
+     * Fetches the retro window: nanopubs at or below the checkpoint whose driver
+     * load timestamp falls inside {@link #RETRO_WINDOW_MS}. Ordered by
+     * descending load number so that, when the window exceeds
+     * {@link #MAX_NPS_PER_TICK} (e.g. during a resync), the newest — most
+     * loss-prone — nanopubs are always covered.
+     */
+    private static List<WindowEntry> fetchRetroWindow(String driverRepo, long checkpoint) {
+        List<WindowEntry> window = new ArrayList<>();
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(driverRepo)) {
+            TupleQuery q = conn.prepareTupleQuery(QueryLanguage.SPARQL,
+                    "SELECT ?np ?ln ?ts WHERE { graph <" + NPA.GRAPH + "> { "
+                    + "?np <" + NPA.HAS_LOAD_NUMBER + "> ?ln ; <" + NPA.HAS_LOAD_TIMESTAMP + "> ?ts . "
+                    + "FILTER (?ln <= " + checkpoint + ") FILTER (?ts >= ?cutoff) "
+                    + "} } ORDER BY DESC(?ln) LIMIT " + MAX_NPS_PER_TICK);
+            q.setBinding("cutoff", vf.createLiteral(new Date(System.currentTimeMillis() - RETRO_WINDOW_MS)));
+            try (TupleQueryResult r = q.evaluate()) {
+                while (r.hasNext()) {
+                    BindingSet b = r.next();
+                    if (b.getValue("np") instanceof IRI npId && b.getValue("ts") instanceof Literal tsLit) {
+                        window.add(new WindowEntry(npId, Long.parseLong(b.getValue("ln").stringValue()),
+                                tsLit.calendarValue().toGregorianCalendar().getTimeInMillis()));
+                    }
+                }
+            }
+        }
+        return window;
     }
 
     /**

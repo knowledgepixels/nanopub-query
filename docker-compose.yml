@@ -81,12 +81,32 @@ services:
         # healthy. Probe that exact route and restart when it no longer
         # answers. Uses NANOPUB_QUERY_INTERNAL_URL (with trailing slash);
         # skipped when explicitly set to empty.
+        # restart_tomcat gives Tomcat up to 60 s to stop gracefully before the
+        # kill -9: dozens of LMDB repos need to close cleanly, and the previous
+        # 10 s window meant effectively every restart was a hard kill — which
+        # the 2026-07-29 incident (issue #142) showed can discard acknowledged
+        # writes held in a wedged store. The 10-minute backoff prevents restart
+        # storms: a persistently wedged repo used to trigger a kill every probe
+        # interval, multiplying the data-loss windows; now the probe reports
+        # unhealthy without re-killing until the backoff elapses.
         test: |
           restart_tomcat() {
+            if [ -f /var/info/restart ]; then
+              last_s=$$(date -d "$$(tail -1 /var/info/restart)" +%s 2>/dev/null || echo 0)
+              if [ $$(( $$(date +%s) - last_s )) -lt 600 ]; then
+                return
+              fi
+            fi
             date >> /var/info/restart
             pkill -15 java
-            sleep 10
-            pkill -9 java
+            i=0
+            while [ $$i -lt 12 ] && pgrep java > /dev/null; do
+              sleep 5
+              i=$$((i + 1))
+            done
+            if pgrep java > /dev/null; then
+              pkill -9 java
+            fi
           }
           if ! curl -fsS --retry 2 --max-time 10 --retry-delay 2 --retry-max-time 10 --retry-connrefused \
               "http://localhost:8080/rdf4j-server/repositories/full?query=select%2Awhere%7B%3Fs%3Cx%3A%3E%3Fo%7Dlimit1" > /dev/null; then
