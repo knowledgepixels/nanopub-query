@@ -1,3 +1,23 @@
+## [1.21.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.20.0...nanopub-query-1.21.0) (2026-07-29)
+
+### Features
+
+* **loader:** periodic shard-consistency sweep to detect and repair missing shard writes ([#139](https://github.com/knowledgepixels/nanopub-query/issues/139)) ([be9478d](https://github.com/knowledgepixels/nanopub-query/commit/be9478d3d1ad7593d70a25b54b3e4ebbb0349087))
+* **reconciler:** meta-stamp completion gate and 5-minute sweep cadence ([1fa1045](https://github.com/knowledgepixels/nanopub-query/commit/1fa1045cf65774d96aeeecb8e4384f2bf84e4de3))
+
+### Dependency updates
+
+* **core-deps:** update org.nanopub:nanopub dependency to v1.91.0 ([674f8f5](https://github.com/knowledgepixels/nanopub-query/commit/674f8f593ac1cbd772093397b44cade461ade6c3))
+
+### Bug Fixes
+
+* **rdf4j:** healthcheck probe for wedged federation pool with auto-restart ([5b02dea](https://github.com/knowledgepixels/nanopub-query/commit/5b02deab86bf5138557028577f71f7bbbe0958c6))
+* **rdf4j:** raise federation HTTP pool limits to prevent /api starvation ([4375573](https://github.com/knowledgepixels/nanopub-query/commit/4375573847afed78111171d9957cd0ff3873eeda))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([f3e0ac6](https://github.com/knowledgepixels/nanopub-query/commit/f3e0ac6608503d43b0ccd48ef76c87bc8dee5573))
+
 ## [1.20.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.19.1...nanopub-query-1.20.0) (2026-07-02)
 
 ### Features
