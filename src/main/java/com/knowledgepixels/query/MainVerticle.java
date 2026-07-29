@@ -571,6 +571,11 @@ public class MainVerticle extends AbstractVerticle {
             // implies, and re-loads any that are missing. Own single-threaded
             // executor; scheduleWithFixedDelay serialises ticks. The tick itself
             // no-ops unless the reconciliation flag is on and the state is READY.
+            // 5-minute cadence: completed loads (meta stamp present) are verified
+            // on the first tick after they land, so this interval — not a grace
+            // window — is the repair latency for a dropped shard, and the damage
+            // window of a missing shard is exactly the post-publish minutes when
+            // its author is actively using it. An idle tick is one bounded query.
             Executors.newSingleThreadScheduledExecutor().scheduleWithFixedDelay(
                     () -> {
                         try {
@@ -579,7 +584,7 @@ public class MainVerticle extends AbstractVerticle {
                             logger.warn("Shard reconciliation tick failed", ex);
                         }
                     },
-                    15, 15, TimeUnit.MINUTES
+                    5, 5, TimeUnit.MINUTES
             );
 
             // Periodic authority-resolver tick: detects trust-state flips and
