@@ -37,7 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>the {@code _nanopub_trig} inline-nanopub parameter</li>
  *   <li>{@code api-version=latest} resolution against the local meta repo</li>
  *   <li>rewriting the canonical {@code https://w3id.org/np/l/nanopub-query-1.1/repo/}
- *       endpoint prefix to the in-cluster {@code NANOPUB_QUERY_URL/repo/}, plus
+ *       endpoint prefix to the in-cluster {@code NANOPUB_QUERY_INTERNAL_URL/repo/}, plus
  *       validation that the endpoint matches the canonical prefix</li>
  *   <li>{@link #getSpec()} YAML rendering for the legacy {@code /grlc-spec/} route</li>
  *   <li>{@link #getRepoName()} derived from the rewritten endpoint</li>
@@ -68,9 +68,29 @@ public class GrlcSpec {
     }
 
     /**
-     * URL for the given Nanopub Query instance, needed for internal coordination.
+     * Public base URL of this Nanopub Query instance, used only in generated
+     * documentation: the grlc spec's query listing here and the OpenAPI server
+     * URL in {@link OpenApiSpecPage}. Never used for query execution — that is
+     * {@link #nanopubQueryInternalUrl}'s job.
      */
     public static final String nanopubQueryUrl = Utils.getEnvString("NANOPUB_QUERY_URL", "http://query:9393/");
+
+    /**
+     * In-cluster base URL of this Nanopub Query instance, used to rewrite the
+     * canonical {@code https://w3id.org/np/l/nanopub-query-1.1/repo/} prefix in
+     * query endpoints and SPARQL {@code SERVICE} clauses. These URLs are
+     * resolved by the backend RDF4J server when it evaluates the federated
+     * query, so they must stay inside the cluster: the default resolves to this
+     * app's docker-compose service address, whose {@code /repo/*} proxy forwards
+     * to the RDF4J server directly. Routing this traffic through the public
+     * edge instead (as happened when it shared {@code NANOPUB_QUERY_URL}) makes
+     * every federated {@code /api} call compete with external clients for
+     * nginx's per-repo connection limits and adds TLS/proxy overhead on the
+     * hottest repos (issues #142, incident 2026-07-28). Only set
+     * {@code NANOPUB_QUERY_INTERNAL_URL} if your deployment reaches the app
+     * under a different in-cluster address.
+     */
+    public static final String nanopubQueryInternalUrl = Utils.getEnvString("NANOPUB_QUERY_INTERNAL_URL", "http://query:9393/");
 
     private static final String NANOPUB_QUERY_REPO_URL = "https://w3id.org/np/l/nanopub-query-1.1/repo/";
 
@@ -138,7 +158,7 @@ public class GrlcSpec {
                     "Query part doesn't match query name: " + queryPart + " / " + template.getQuerySuffix());
         }
 
-        queryContent = template.getSparql().replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
+        queryContent = template.getSparql().replace(NANOPUB_QUERY_REPO_URL, nanopubQueryInternalUrl + "repo/");
 
         IRI rawEndpoint = template.getEndpoint();
         if (rawEndpoint != null) {
@@ -146,7 +166,7 @@ public class GrlcSpec {
             if (!ep.startsWith(NANOPUB_QUERY_REPO_URL)) {
                 throw new InvalidGrlcSpecException("Invalid/non-recognized endpoint: " + ep);
             }
-            endpoint = ep.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
+            endpoint = ep.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryInternalUrl + "repo/");
         } else {
             endpoint = null;
         }
@@ -285,7 +305,7 @@ public class GrlcSpec {
 
     /**
      * Returns the query content (with the canonical repo URL rewritten to the
-     * in-cluster {@link #nanopubQueryUrl}{@code /repo/}).
+     * in-cluster {@link #nanopubQueryInternalUrl}{@code /repo/}).
      *
      * @return the query content
      */
@@ -312,7 +332,7 @@ public class GrlcSpec {
         logger.info("Expanding grlc query with parameters: {}", parameters);
         try {
             String expanded = template.expandQuery(params);
-            return expanded.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryUrl + "repo/");
+            return expanded.replace(NANOPUB_QUERY_REPO_URL, nanopubQueryInternalUrl + "repo/");
         } catch (IllegalArgumentException ex) {
             throw new InvalidGrlcSpecException(ex.getMessage(), ex);
         }

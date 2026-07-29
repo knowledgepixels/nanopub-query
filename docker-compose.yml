@@ -17,7 +17,16 @@ services:
       - REGISTRY_FIXED_URL=https://registry.knowledgepixels.com/
       - RDF4J_PROXY_HOST=rdf4j
     #     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
+    # Public base URL, used only in generated documentation (grlc spec listings,
+    # OpenAPI server URLs) — query execution never uses it:
     #     - NANOPUB_QUERY_URL=https://query.knowledgepixels.com/
+    # In-cluster base URL used for rewriting SERVICE clauses / query endpoints;
+    # defaults to http://query:9393/ (this service). Only set it if the app is
+    # reachable under a different in-cluster address. Do NOT point it at the
+    # public URL: federated /api traffic would then loop through the public
+    # edge and compete with external clients for nginx's per-repo connection
+    # limits (issue #142, incident 2026-07-28).
+    #     - NANOPUB_QUERY_INTERNAL_URL=http://query:9393/
     logging:
       options:
         max-size: "10m"
@@ -39,15 +48,18 @@ services:
     user: "0"
     environment:
       # maxConnPerRoute/maxConnTotal: all SERVICE clauses in /api queries are
-      # rewritten to this instance's own public URL, so the whole federation
-      # load shares a single HttpClient route inside this container. The RDF4J
-      # defaults (25 per route, 50 total) saturate under concurrent federated
-      # queries, starving every /api call with "Timeout waiting for connection
-      # from pool" (incident 2026-07-28). Keep the sum of concurrent outer
-      # queries and federated self-calls below Tomcat's worker pool (200).
+      # rewritten to this instance's in-cluster URL (NANOPUB_QUERY_INTERNAL_URL,
+      # default http://query:9393/), so the whole federation load shares a
+      # single HttpClient route inside this container. The RDF4J defaults
+      # (25 per route, 50 total) saturate under concurrent federated queries,
+      # starving every /api call with "Timeout waiting for connection from
+      # pool" (incident 2026-07-28). Keep the sum of concurrent outer queries
+      # and federated self-calls below Tomcat's worker pool (200).
       - JAVA_OPTS=-Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=100 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
-      # Used by the healthcheck's federation probe below (empty disables it).
-      - NANOPUB_QUERY_URL=${NANOPUB_QUERY_URL:-}
+      # Used by the healthcheck's federation probe below; defaults to the same
+      # in-cluster URL the SERVICE rewrite uses, so the probe tests the real
+      # federation route. Set explicitly empty to disable the probe.
+      - NANOPUB_QUERY_INTERNAL_URL=${NANOPUB_QUERY_INTERNAL_URL-http://query:9393/}
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
@@ -64,11 +76,11 @@ services:
         # war-deploy time).
         #
         # Second probe: SERVICE clauses in /api queries loop back through the
-        # instance's public URL, so RDF4J's federation HTTP pool can wedge
+        # instance's in-cluster URL, so RDF4J's federation HTTP pool can wedge
         # (leaked connections; incident 2026-07-28) while direct queries stay
         # healthy. Probe that exact route and restart when it no longer
-        # answers. Requires NANOPUB_QUERY_URL (with trailing slash); skipped
-        # when unset.
+        # answers. Uses NANOPUB_QUERY_INTERNAL_URL (with trailing slash);
+        # skipped when explicitly set to empty.
         test: |
           restart_tomcat() {
             date >> /var/info/restart
@@ -84,9 +96,9 @@ services:
             exit 1
           fi
           touch /var/info/ready
-          if [ -n "$$NANOPUB_QUERY_URL" ]; then
+          if [ -n "$$NANOPUB_QUERY_INTERNAL_URL" ]; then
             if ! curl -fsS --retry 2 --max-time 12 --retry-delay 2 \
-                --data-urlencode "query=select ?s where { service <$${NANOPUB_QUERY_URL}repo/meta> { select ?s where { ?s ?p ?o } limit 1 } }" \
+                --data-urlencode "query=select ?s where { service <$${NANOPUB_QUERY_INTERNAL_URL}repo/meta> { select ?s where { ?s ?p ?o } limit 1 } }" \
                 "http://localhost:8080/rdf4j-server/repositories/spaces" > /dev/null; then
               date >> /var/info/federation-restart
               restart_tomcat
