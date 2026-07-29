@@ -40,7 +40,7 @@ services:
     # Source branch: https://github.com/Ostrzyciel/rdf4j/tree/piotr/merged-fixes-2025-12-10
     # (Commented out because it seems it doesn't have curl installed, which is needed for the healthcheck.)
     #image: ostrzyciel/rdf4j-workbench-tomcat:5.2.2-SNAPSHOT-b
-    image: eclipse/rdf4j-workbench:5.3.1-tomcat
+    image: eclipse/rdf4j-workbench:5.3.2-tomcat
     restart: unless-stopped
     # Start as root so init.sh can apt-get install curl (missing from the
     # 5.3.1-tomcat image but required by the healthcheck). init.sh drops to
