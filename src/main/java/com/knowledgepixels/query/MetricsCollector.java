@@ -71,6 +71,10 @@ public final class MetricsCollector {
                         () -> (double) ShardReconciler.repairedShardCount)
                 .description("Missing shard repos detected and re-loaded by the reconciliation sweep since process start")
                 .register(meterRegistry);
+        Gauge.builder("registry.reconciler.shards_relost_total",
+                        () -> (double) ShardReconciler.relostShardCount)
+                .description("Shards that a previous sweep verified present and that later vanished (backend revoked readable state, issue #142)")
+                .register(meterRegistry);
 
         // Status label metrics
         for (final var status : StatusController.State.values()) {
