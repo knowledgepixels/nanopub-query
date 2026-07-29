@@ -2,6 +2,7 @@ package com.knowledgepixels.query;
 
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -38,8 +39,14 @@ import java.util.*;
  * <ol>
  *   <li>Enumerate nanopubs from the <em>driver</em> repo ({@code full}, or {@code meta}
  *       when the full repo is disabled) with a load number above the persisted
- *       checkpoint and a load timestamp older than {@link #GRACE_MS} (so in-flight
- *       loads are never flagged).</li>
+ *       checkpoint. In-flight loads are never flagged: the {@code meta} stamp is the
+ *       loader's completion marker ({@link NanopubLoader#executeLoading} commits it
+ *       only after every other shard task succeeded), so a nanopub present in
+ *       {@code meta} is verified immediately regardless of age, while a nanopub not
+ *       yet in {@code meta} halts the sweep until it either completes or exceeds the
+ *       {@link #GRACE_MS} patience (at which point the stalled/lost {@code meta}
+ *       write is itself the incident to repair). With {@code meta} as the driver,
+ *       driver membership already implies completion.</li>
  *   <li>Derive each nanopub's expected shard repos from its admin metadata
  *       ({@code npa:hasValidSignatureForPublicKeyHash}, {@code npx:hasNanopubType})
  *       using the same type filters as the loader.</li>
@@ -76,10 +83,14 @@ public class ShardReconciler {
     // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasReconciliationDriver, REPO_NAME, npa:graph, admin, repo the reconciliation checkpoint refers to
 
     /**
-     * Nanopubs whose driver-repo load timestamp is younger than this are skipped:
-     * their fan-out may still be in flight (the meta task is deferred behind the
-     * other shards, and per-shard retry chains can run for minutes), and flagging
-     * them would race the loader with spurious repairs.
+     * Patience for nanopubs that are in the driver repo but not yet stamped in
+     * {@code meta}: their fan-out is normally still in flight (the meta task is
+     * deferred behind the other shards, and per-shard retry chains can run for
+     * minutes), so the sweep halts in front of them instead of racing the loader
+     * with spurious repairs. Once a nanopub's driver-repo load timestamp is older
+     * than this, a missing {@code meta} stamp is no longer plausible in-flight
+     * state and is treated as a lost shard write to repair. Nanopubs already in
+     * {@code meta} are verified immediately — completion is proven, not timed.
      */
     static final long GRACE_MS = 30L * 60 * 1000;
 
@@ -167,6 +178,19 @@ public class ShardReconciler {
         long repaired = 0;
         try {
             for (WindowEntry e : window) {
+                // Completion gate: meta is written last, so a nanopub already in meta
+                // has finished its fan-out and can be verified immediately regardless
+                // of age. A nanopub not yet in meta is normally an in-flight load —
+                // halt the sweep in front of it (checkpoint stays put, next tick
+                // re-examines) until it either completes or exceeds the patience
+                // window, after which the missing meta stamp is itself the incident
+                // and falls through to the regular repair path.
+                boolean completed = "meta".equals(driverRepo)
+                        || presentByShard.getOrDefault("meta", Set.of()).contains(e.npId());
+                if (!completed && System.currentTimeMillis() - e.loadedAtMs() < GRACE_MS) {
+                    logger.debug("Halting shard sweep at <{}> (load number {}): not yet in meta, likely in flight", e.npId(), e.loadNumber());
+                    return;
+                }
                 NanopubShardInfo info = shardInfos.get(e.npId());
                 if (info == null) {
                     // No pubkey-hash admin triple in the driver repo; nothing we can
@@ -307,7 +331,7 @@ public class ShardReconciler {
         return new NanopubImpl(content);
     }
 
-    private record WindowEntry(IRI npId, long loadNumber) {
+    private record WindowEntry(IRI npId, long loadNumber, long loadedAtMs) {
     }
 
     private record NanopubShardInfo(String pubkeyHash, Set<IRI> types) {
@@ -315,23 +339,25 @@ public class ShardReconciler {
 
     /**
      * Fetches the next batch of nanopubs to verify: load number above the
-     * checkpoint, load timestamp older than the grace period, ordered by load
-     * number, capped at {@link #MAX_NPS_PER_TICK}.
+     * checkpoint, ordered by load number, capped at {@link #MAX_NPS_PER_TICK}.
+     * No age filter here — completion gating against {@code meta} (or the
+     * {@link #GRACE_MS} patience for meta-pending nanopubs) happens in the
+     * sweep loop, where it can halt the checkpoint precisely.
      */
     private static List<WindowEntry> fetchWindow(String driverRepo, long checkpoint) {
         List<WindowEntry> window = new ArrayList<>();
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(driverRepo)) {
             TupleQuery q = conn.prepareTupleQuery(QueryLanguage.SPARQL,
-                    "SELECT ?np ?ln WHERE { graph <" + NPA.GRAPH + "> { "
+                    "SELECT ?np ?ln ?ts WHERE { graph <" + NPA.GRAPH + "> { "
                     + "?np <" + NPA.HAS_LOAD_NUMBER + "> ?ln ; <" + NPA.HAS_LOAD_TIMESTAMP + "> ?ts . "
-                    + "FILTER (?ln > " + checkpoint + ") FILTER (?ts <= ?cutoff) "
+                    + "FILTER (?ln > " + checkpoint + ") "
                     + "} } ORDER BY ?ln LIMIT " + MAX_NPS_PER_TICK);
-            q.setBinding("cutoff", vf.createLiteral(new Date(System.currentTimeMillis() - GRACE_MS)));
             try (TupleQueryResult r = q.evaluate()) {
                 while (r.hasNext()) {
                     BindingSet b = r.next();
-                    if (b.getValue("np") instanceof IRI npId) {
-                        window.add(new WindowEntry(npId, Long.parseLong(b.getValue("ln").stringValue())));
+                    if (b.getValue("np") instanceof IRI npId && b.getValue("ts") instanceof Literal tsLit) {
+                        window.add(new WindowEntry(npId, Long.parseLong(b.getValue("ln").stringValue()),
+                                tsLit.calendarValue().toGregorianCalendar().getTimeInMillis()));
                     }
                 }
             }
