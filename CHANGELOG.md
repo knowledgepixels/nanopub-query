@@ -1,3 +1,14 @@
+## [1.22.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.21.0...nanopub-query-1.22.0) (2026-07-29)
+
+### Features
+
+* **api:** route federated SERVICE traffic in-cluster via NANOPUB_QUERY_INTERNAL_URL ([2f389e1](https://github.com/knowledgepixels/nanopub-query/commit/2f389e1850475a58e55f4126caed850ab6336a0c))
+
+### General maintenance
+
+* **scripts:** add set-reconciliation-checkpoint.sh ops script ([af09f31](https://github.com/knowledgepixels/nanopub-query/commit/af09f3167de3cf1cb259c0e719f7bde0d3efa20a)), closes [139/#142](https://github.com/139/nanopub-query/issues/142)
+* setting next snapshot version [skip ci] ([bebe00a](https://github.com/knowledgepixels/nanopub-query/commit/bebe00a9ceed018f2f70fc39683dbfb5abde09de))
+
 ## [1.21.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.20.0...nanopub-query-1.21.0) (2026-07-29)
 
 ### Features
