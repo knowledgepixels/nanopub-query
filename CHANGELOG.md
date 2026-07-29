@@ -1,3 +1,18 @@
+## [1.23.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.22.0...nanopub-query-1.23.0) (2026-07-29)
+
+### Features
+
+* **reconciler:** retro pass re-verifying the trailing 24h window ([#142](https://github.com/knowledgepixels/nanopub-query/issues/142)) ([47e32b1](https://github.com/knowledgepixels/nanopub-query/commit/47e32b14b5122fc6d9a94164db88d994c37d63d1))
+
+### Bug Fixes
+
+* **rdf4j:** graceful-stop window and restart backoff in healthcheck ([851ceb6](https://github.com/knowledgepixels/nanopub-query/commit/851ceb6895a2ac03b607a95391c0baf427e9073b))
+
+### General maintenance
+
+* **rdf4j:** bump rdf4j-workbench to 5.3.2 ([a436bec](https://github.com/knowledgepixels/nanopub-query/commit/a436bec7b88bb08e502b2ff0b231e3749a5f2ef7)), closes [rdf4j#5807](https://github.com/knowledgepixels/rdf4j/issues/5807) [#142](https://github.com/knowledgepixels/nanopub-query/issues/142)
+* setting next snapshot version [skip ci] ([21a711c](https://github.com/knowledgepixels/nanopub-query/commit/21a711c5dabfccbef618e4e852951b64b2147311))
+
 ## [1.22.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.21.0...nanopub-query-1.22.0) (2026-07-29)
 
 ### Features
