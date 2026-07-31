@@ -60,6 +60,9 @@ services:
       # in-cluster URL the SERVICE rewrite uses, so the probe tests the real
       # federation route. Set explicitly empty to disable the probe.
       - NANOPUB_QUERY_INTERNAL_URL=${NANOPUB_QUERY_INTERNAL_URL-http://query:9393/}
+      # Whether a failing healthcheck probe may kill Tomcat. Off by default —
+      # see the reasoning above the healthcheck test block.
+      - RDF4J_HEALTHCHECK_RESTART=${RDF4J_HEALTHCHECK_RESTART:-off}
     volumes:
       - ./data/rdf4j/data:/var/rdf4j
       - ./data/rdf4j/logs:/usr/local/tomcat/logs
@@ -89,8 +92,35 @@ services:
         # storms: a persistently wedged repo used to trigger a kill every probe
         # interval, multiplying the data-loss windows; now the probe reports
         # unhealthy without re-killing until the backoff elapses.
+        #
+        # Auto-restart is OFF by default since 2026-07-31. Both probes still run
+        # and still record failures, so a wedge is visible (container goes
+        # unhealthy, timestamps land in /var/info/), but nothing kills Tomcat.
+        #
+        # Why: on 2026-07-31 the healthcheck killed Tomcat 10 times, 7 of them
+        # between 12:00 and 13:55 — and it was not curing anything. Each cycle
+        # cost ~110 s of downtime (13:55:14 kill -> 13:57:04 back up) and the
+        # store re-wedged within 11-20 minutes, so the restart only reset a
+        # clock. Meanwhile every kill is a roll of the issue #142 dice:
+        # acknowledged, read-back-verified writes reverting. Trading a visible
+        # degradation for silent data loss is the wrong way round.
+        #
+        # Attribution, so the next reader does not repeat our mistake: 8 of the
+        # 10 kills came from the FIRST (direct-query) probe, only 2 from the
+        # federation probe. /var/info/restart is the kill log;
+        # /var/info/federation-restart is written *before* restart_tomcat, which
+        # often returns early on the backoff — the two files are not comparable
+        # counts. Disabling the federation probe alone would have prevented 2.
+        #
+        # Re-enable with RDF4J_HEALTHCHECK_RESTART=on once the underlying LMDB
+        # ValueStore$ReadTxn leak is resolved upstream (still present in 5.3.2,
+        # after #5807; see rdf4j-issue-draft.md).
         test: |
           restart_tomcat() {
+            if [ "$$RDF4J_HEALTHCHECK_RESTART" != "on" ]; then
+              date >> /var/info/restart-suppressed
+              return
+            fi
             if [ -f /var/info/restart ]; then
               last_s=$$(date -d "$$(tail -1 /var/info/restart)" +%s 2>/dev/null || echo 0)
               if [ $$(( $$(date +%s) - last_s )) -lt 600 ]; then
