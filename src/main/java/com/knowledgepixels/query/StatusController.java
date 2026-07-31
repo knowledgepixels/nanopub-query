@@ -3,6 +3,7 @@ package com.knowledgepixels.query;
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Literal;
+import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.vocabulary.NPA;
@@ -54,11 +55,55 @@ public class StatusController {
     static final IRI HAS_REGISTRY_SETUP_ID =
             SimpleValueFactory.getInstance().createIRI(NPA.NAMESPACE, "hasRegistrySetupId");
 
+    private static final ValueFactory vf = SimpleValueFactory.getInstance();
+
     private boolean initialized = false;
     private volatile State state = null;
     private volatile long lastCommittedCounter = -1;
     private volatile Long registrySetupId = null;
-    private RepositoryConnection adminRepoConn;
+
+    /**
+     * Opens a fresh admin-repo connection for a single transaction.
+     *
+     * <p>This class used to hold one connection for the lifetime of the process,
+     * assigned once in {@link #initialize()} and never re-acquired. An RDF4J restart
+     * — which the {@code rdf4j} healthcheck performs by design when its probes fail —
+     * orphaned that connection permanently: every subsequent admin-repo write threw,
+     * so {@code setLoadingUpdates} failed before {@code loadBatch} could run and the
+     * instance ingested nothing until the query container itself was restarted.
+     * RDF4J recovering on its own was not enough. Acquiring per transaction means a
+     * restart costs one failed tick instead of wedging the loader (incident
+     * 2026-07-31, query.knowledgepixels.com).
+     *
+     * <p>Cheap enough to do per call: {@code getConnection()} on an
+     * {@code HTTPRepository} is local and does no HTTP, as
+     * {@link TripleStore#getRepoConnection(String)} notes. Every other admin-repo
+     * caller in the codebase already works this way.
+     *
+     * @return a new connection the caller must close
+     */
+    private static RepositoryConnection openAdminConnection() {
+        return TripleStore.get().getAdminRepoConnection();
+    }
+
+    /**
+     * Rolls back an active transaction, suppressing any failure to do so.
+     *
+     * <p>The transaction may no longer exist server-side (already committed, timed
+     * out, or lost to a restart), and that secondary failure must not mask the
+     * original one.
+     *
+     * @param conn the connection whose transaction should be rolled back
+     */
+    private static void rollbackQuietly(RepositoryConnection conn) {
+        try {
+            if (conn.isActive()) {
+                conn.rollback();
+            }
+        } catch (Exception rollbackException) {
+            // Deliberately ignored; the caller rethrows the original cause.
+        }
+    }
 
     /**
      * Represents the current status of the service, including the load counter.
@@ -119,45 +164,41 @@ public class StatusController {
                 throw new IllegalStateException("Already initialized");
             }
             state = State.LAUNCHING;
-            adminRepoConn = TripleStore.get().getAdminRepoConnection();
-            // Serializable, as the service state needs to be strictly consistent
-            adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
-            // Fetch the state from the DB
-            try (var statements = adminRepoConn.getStatements(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH)) {
-                if (!statements.hasNext()) {
-                    adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_STATUS, stateAsLiteral(state), NPA.GRAPH);
-                } else {
-                    var stateStatement = statements.next();
-                    state = State.valueOf(stateStatement.getObject().stringValue());
-                }
-            }
-            // Fetch the load counter from the DB
-            try (var statements = adminRepoConn.getStatements(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH)) {
-                if (!statements.hasNext()) {
-                    adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(-1L), NPA.GRAPH);
-                } else {
-                    var counterStatement = statements.next();
-                    var stringVal = counterStatement.getObject().stringValue();
-                    lastCommittedCounter = Long.parseLong(stringVal);
-                }
-            }
-            // Fetch the registry setup ID from the DB
-            try (var statements = adminRepoConn.getStatements(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, null, NPA.GRAPH)) {
-                if (statements.hasNext()) {
-                    var setupIdStatement = statements.next();
-                    registrySetupId = Long.parseLong(setupIdStatement.getObject().stringValue());
-                }
-                adminRepoConn.commit();
-            } catch (Exception e) {
-                if (adminRepoConn.isActive()) {
-                    try {
-                        adminRepoConn.rollback();
-                    } catch (Exception rollbackException) {
-                        // Transaction may not be registered on server (e.g., already committed, timed out, or connection reset)
-                        // Log the rollback failure but don't mask the original exception
+            try (RepositoryConnection conn = openAdminConnection()) {
+                try {
+                    // Serializable, as the service state needs to be strictly consistent
+                    conn.begin(IsolationLevels.SERIALIZABLE);
+                    // Fetch the state from the DB
+                    try (var statements = conn.getStatements(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH)) {
+                        if (!statements.hasNext()) {
+                            conn.add(NPA.THIS_REPO, NPA.HAS_STATUS, stateAsLiteral(state), NPA.GRAPH);
+                        } else {
+                            var stateStatement = statements.next();
+                            state = State.valueOf(stateStatement.getObject().stringValue());
+                        }
                     }
+                    // Fetch the load counter from the DB
+                    try (var statements = conn.getStatements(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH)) {
+                        if (!statements.hasNext()) {
+                            conn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, vf.createLiteral(-1L), NPA.GRAPH);
+                        } else {
+                            var counterStatement = statements.next();
+                            var stringVal = counterStatement.getObject().stringValue();
+                            lastCommittedCounter = Long.parseLong(stringVal);
+                        }
+                    }
+                    // Fetch the registry setup ID from the DB
+                    try (var statements = conn.getStatements(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, null, NPA.GRAPH)) {
+                        if (statements.hasNext()) {
+                            var setupIdStatement = statements.next();
+                            registrySetupId = Long.parseLong(setupIdStatement.getObject().stringValue());
+                        }
+                    }
+                    conn.commit();
+                } catch (Exception e) {
+                    rollbackQuietly(conn);
+                    throw new RuntimeException(e);
                 }
-                throw new RuntimeException(e);
             }
             initialized = true;
             return getState();
@@ -271,21 +312,17 @@ public class StatusController {
      */
     public void setRegistrySetupId(long setupId) {
         synchronized (this) {
-            try {
-                adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
-                adminRepoConn.remove(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, null, NPA.GRAPH);
-                adminRepoConn.add(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, adminRepoConn.getValueFactory().createLiteral(setupId), NPA.GRAPH);
-                adminRepoConn.commit();
-                registrySetupId = setupId;
-            } catch (Exception e) {
-                if (adminRepoConn.isActive()) {
-                    try {
-                        adminRepoConn.rollback();
-                    } catch (Exception rollbackException) {
-                        // Log the rollback failure but don't mask the original exception
-                    }
+            try (RepositoryConnection conn = openAdminConnection()) {
+                try {
+                    conn.begin(IsolationLevels.SERIALIZABLE);
+                    conn.remove(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, null, NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, vf.createLiteral(setupId), NPA.GRAPH);
+                    conn.commit();
+                    registrySetupId = setupId;
+                } catch (Exception e) {
+                    rollbackQuietly(conn);
+                    throw new RuntimeException(e);
                 }
-                throw new RuntimeException(e);
             }
         }
     }
@@ -313,32 +350,27 @@ public class StatusController {
      */
     void updateState(State newState, long loadCounter) {
         synchronized (this) {
-            try {
-                // Serializable, as the service state needs to be strictly consistent
-                adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
-                adminRepoConn.remove(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH);
-                adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_STATUS, stateAsLiteral(newState), NPA.GRAPH);
-                adminRepoConn.remove(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH);
-                adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(loadCounter), NPA.GRAPH);
-                adminRepoConn.commit();
-                state = newState;
-                lastCommittedCounter = loadCounter;
-            } catch (Exception e) {
-                if (adminRepoConn.isActive()) {
-                    try {
-                        adminRepoConn.rollback();
-                    } catch (Exception rollbackException) {
-                        // Transaction may not be registered on server (e.g., already committed, timed out, or connection reset)
-                        // Log the rollback failure but don't mask the original exception
-                    }
+            try (RepositoryConnection conn = openAdminConnection()) {
+                try {
+                    // Serializable, as the service state needs to be strictly consistent
+                    conn.begin(IsolationLevels.SERIALIZABLE);
+                    conn.remove(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_STATUS, stateAsLiteral(newState), NPA.GRAPH);
+                    conn.remove(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, vf.createLiteral(loadCounter), NPA.GRAPH);
+                    conn.commit();
+                    state = newState;
+                    lastCommittedCounter = loadCounter;
+                } catch (Exception e) {
+                    rollbackQuietly(conn);
+                    throw new RuntimeException(e);
                 }
-                throw new RuntimeException(e);
             }
         }
     }
 
     private Literal stateAsLiteral(State s) {
-        return adminRepoConn.getValueFactory().createLiteral(s.toString());
+        return vf.createLiteral(s.toString());
     }
 
     /**
@@ -351,7 +383,6 @@ public class StatusController {
             state = null;
             lastCommittedCounter = -1;
             registrySetupId = null;
-            adminRepoConn = null;
         }
     }
 
