@@ -1,3 +1,20 @@
+## [1.24.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.23.0...nanopub-query-1.24.0) (2026-07-31)
+
+### Features
+
+* **headers:** expose loader liveness as a response header ([08576ca](https://github.com/knowledgepixels/nanopub-query/commit/08576ca4ea5b3c6c5aec0877b3de919e004addd2))
+* **metrics:** add loader sync-lag gauge and ship alerting rules ([9fdd5fe](https://github.com/knowledgepixels/nanopub-query/commit/9fdd5fed9178505ba3c4e113de58c18e060b1f71))
+
+### Bug Fixes
+
+* **logging:** default to info and silence HTTP wire logging ([8e6c733](https://github.com/knowledgepixels/nanopub-query/commit/8e6c7332c227cf0ae1572a549f8cb50c6d767b01))
+* **status:** open a fresh admin-repo connection per transaction ([be03732](https://github.com/knowledgepixels/nanopub-query/commit/be03732b0294606fb3a561341e9a8507852fe610))
+* **status:** persist state before adopting it in memory ([1217e52](https://github.com/knowledgepixels/nanopub-query/commit/1217e529f36106849f74d5a3a84865f53796198a))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([426ffcd](https://github.com/knowledgepixels/nanopub-query/commit/426ffcdd2291cea480f6e4cf07ded9ec03097f45))
+
 ## [1.23.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.22.0...nanopub-query-1.23.0) (2026-07-29)
 
 ### Features
