@@ -330,6 +330,66 @@ class StatusControllerTest {
     }
 
     @Test
+    void recoversOnceANewConnectionWorks() {
+        // The controller used to hold one admin-repo connection for the lifetime of the
+        // process. An RDF4J restart orphaned it permanently: every later write threw, so
+        // setLoadingUpdates failed before loadBatch could run and the instance ingested
+        // nothing until the query container was restarted. A fresh connection per
+        // transaction must let the very next tick succeed.
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            TripleStore tripleStore = mock(TripleStore.class);
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(tripleStore);
+
+            RepositoryConnection good = mock(RepositoryConnection.class);
+            when(good.getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+
+            RepositoryConnection orphaned = mock(RepositoryConnection.class);
+            when(orphaned.getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+            doThrow(new RuntimeException("connection orphaned by RDF4J restart")).when(orphaned).commit();
+
+            when(tripleStore.getAdminRepoConnection()).thenReturn(good);
+            controller.initialize();
+            controller.updateState(StatusController.State.READY, 100);
+
+            // RDF4J restarts: the connection handed out now is dead.
+            when(tripleStore.getAdminRepoConnection()).thenReturn(orphaned);
+            assertThrows(RuntimeException.class,
+                    () -> controller.updateState(StatusController.State.LOADING_UPDATES, 200));
+            assertEquals(StatusController.LoadingStatus.of(StatusController.State.READY, 100),
+                    controller.getState());
+
+            // RDF4J is back; the next transaction gets a healthy connection and must work.
+            when(tripleStore.getAdminRepoConnection()).thenReturn(good);
+            controller.updateState(StatusController.State.LOADING_UPDATES, 200);
+            assertEquals(StatusController.LoadingStatus.of(StatusController.State.LOADING_UPDATES, 200),
+                    controller.getState());
+        }
+    }
+
+    @Test
+    void everyTransactionClosesItsConnection() {
+        // Connections are counted by TripleStore; leaking one per state transition would
+        // exhaust the pool over a long run.
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            TripleStore tripleStore = mock(TripleStore.class);
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(tripleStore);
+
+            RepositoryConnection conn = mock(RepositoryConnection.class);
+            when(conn.getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+            when(tripleStore.getAdminRepoConnection()).thenReturn(conn);
+
+            controller.initialize();
+            controller.updateState(StatusController.State.READY, 10);
+            controller.setRegistrySetupId(999L);
+
+            // initialize + updateState + setRegistrySetupId
+            verify(conn, times(3)).close();
+        }
+    }
+
+    @Test
     void registrySetupIdPersistence() {
         try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
             StatusController controller = StatusController.get();
