@@ -696,5 +696,19 @@ public class MainVerticle extends AbstractVerticle {
         if (loadedChecksum != null) {
             response.putHeader("Nanopub-Query-Loaded-Nanopub-Checksum", loadedChecksum);
         }
+        // Loader liveness over HTTP. The same value backs
+        // registry.loader.last_successful_batch_age_seconds, but the metrics port is
+        // bound to loopback, so anything off-host — nanopub-monitor in particular —
+        // cannot read it. Without this, a stalled instance looks identical to a healthy
+        // one from outside: it keeps answering queries and keeps reporting READY, which
+        // is how the 2026-07-31 stall stayed invisible for hours.
+        //
+        // Omitted rather than sent as 0 before the first tick completes, so consumers can
+        // tell "not started yet" from "just ticked".
+        long lastBatchAt = JellyNanopubLoader.lastSuccessfulBatchAtMs;
+        if (lastBatchAt != 0L) {
+            long ageSeconds = Math.max(0L, (System.currentTimeMillis() - lastBatchAt) / 1000L);
+            response.putHeader("Nanopub-Query-Loader-Last-Success-Age-Seconds", String.valueOf(ageSeconds));
+        }
     }
 }

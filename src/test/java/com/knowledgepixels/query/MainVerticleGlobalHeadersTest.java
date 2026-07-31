@@ -41,6 +41,49 @@ class MainVerticleGlobalHeadersTest {
     }
 
     @Test
+    void setsLoaderAgeHeaderOnceTheLoaderHasTicked() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            long saved = JellyNanopubLoader.lastSuccessfulBatchAtMs;
+            try {
+                JellyNanopubLoader.lastSuccessfulBatchAtMs = System.currentTimeMillis() - 7_440_000L;
+
+                HttpServerResponse response = mock(HttpServerResponse.class);
+                when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+                MainVerticle.applyGlobalHeaders(response);
+
+                // 7440 s — the age the loader had reached when the 2026-07-31 stall was noticed.
+                verify(response).putHeader("Nanopub-Query-Loader-Last-Success-Age-Seconds", "7440");
+            } finally {
+                JellyNanopubLoader.lastSuccessfulBatchAtMs = saved;
+            }
+        }
+    }
+
+    @Test
+    void omitsLoaderAgeHeaderBeforeTheFirstTick() {
+        // Sending 0 here would be indistinguishable from "just ticked", which is the one
+        // reading a consumer must not confuse with a freshly started instance.
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            long saved = JellyNanopubLoader.lastSuccessfulBatchAtMs;
+            try {
+                JellyNanopubLoader.lastSuccessfulBatchAtMs = 0L;
+
+                HttpServerResponse response = mock(HttpServerResponse.class);
+                when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+                MainVerticle.applyGlobalHeaders(response);
+
+                verify(response, never()).putHeader(eq("Nanopub-Query-Loader-Last-Success-Age-Seconds"), anyString());
+            } finally {
+                JellyNanopubLoader.lastSuccessfulBatchAtMs = saved;
+            }
+        }
+    }
+
+    @Test
     void setsRegistryUrlHeader() {
         try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
             initializeStatusController(mockedTripleStore);
