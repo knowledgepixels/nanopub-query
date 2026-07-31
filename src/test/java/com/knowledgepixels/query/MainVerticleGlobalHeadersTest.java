@@ -26,6 +26,63 @@ class MainVerticleGlobalHeadersTest {
     }
 
     @Test
+    void neverReadsTheStoreWhenTheLoadedCountCacheIsCold() {
+        // applyGlobalHeaders runs on the Vert.x event loop for every inbound request.
+        // The non-cached accessors fall back to a blocking store read on a cold cache,
+        // which stalled the loop after the 1.24.0 rollout (BlockedThreadChecker fired
+        // five times). A cold cache must mean "omit the header", never "go and fetch".
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            TripleStore store = TripleStore.get();
+            clearInvocations(store);
+
+            Long savedCount = NanopubLoader.loadedNanopubCount;
+            String savedChecksum = NanopubLoader.loadedNanopubChecksum;
+            try {
+                NanopubLoader.loadedNanopubCount = null;
+                NanopubLoader.loadedNanopubChecksum = null;
+
+                HttpServerResponse response = mock(HttpServerResponse.class);
+                when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+                MainVerticle.applyGlobalHeaders(response);
+
+                verify(response, never()).putHeader(eq("Nanopub-Query-Loaded-Nanopub-Count"), anyString());
+                verify(response, never()).putHeader(eq("Nanopub-Query-Loaded-Nanopub-Checksum"), anyString());
+                // The load-bearing assertion: no connection was opened to satisfy them.
+                verify(store, never()).getRepoConnection(anyString());
+            } finally {
+                NanopubLoader.loadedNanopubCount = savedCount;
+                NanopubLoader.loadedNanopubChecksum = savedChecksum;
+            }
+        }
+    }
+
+    @Test
+    void servesLoadedCountAndChecksumOnceTheCacheIsWarm() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
+            initializeStatusController(mockedTripleStore);
+            Long savedCount = NanopubLoader.loadedNanopubCount;
+            String savedChecksum = NanopubLoader.loadedNanopubChecksum;
+            try {
+                NanopubLoader.loadedNanopubCount = 86636L;
+                NanopubLoader.loadedNanopubChecksum = "GrBjnnFQ2ahO";
+
+                HttpServerResponse response = mock(HttpServerResponse.class);
+                when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+                MainVerticle.applyGlobalHeaders(response);
+
+                verify(response).putHeader("Nanopub-Query-Loaded-Nanopub-Count", "86636");
+                verify(response).putHeader("Nanopub-Query-Loaded-Nanopub-Checksum", "GrBjnnFQ2ahO");
+            } finally {
+                NanopubLoader.loadedNanopubCount = savedCount;
+                NanopubLoader.loadedNanopubChecksum = savedChecksum;
+            }
+        }
+    }
+
+    @Test
     void setsStatusHeader() {
         try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class)) {
             initializeStatusController(mockedTripleStore);

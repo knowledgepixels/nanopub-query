@@ -688,11 +688,20 @@ public class MainVerticle extends AbstractVerticle {
         if (nanopubCount != null) {
             response.putHeader("Nanopub-Query-Registry-Nanopub-Count", nanopubCount);
         }
-        Long loadedCount = NanopubLoader.getLoadedNanopubCount();
+        // Cached reads only. This method runs on the Vert.x event loop for every
+        // inbound request, and the non-cached accessors fall back to a blocking store
+        // read whenever the cache is cold — which it is after every restart. That
+        // stalled the event loop on 2026-07-31 (BlockedThreadChecker fired five times
+        // right after the 1.24.0 rollout), and with the store unreachable it would
+        // block every request for the full 10 s connect timeout, taking the HTTP layer
+        // down with RDF4J. NanopubLoader.primeHeaderCaches() keeps these warm from the
+        // metrics tick; until it has run, the headers are simply omitted, exactly as
+        // they already are before the first load.
+        Long loadedCount = NanopubLoader.getCachedLoadedNanopubCount();
         if (loadedCount != null) {
             response.putHeader("Nanopub-Query-Loaded-Nanopub-Count", loadedCount.toString());
         }
-        String loadedChecksum = NanopubLoader.getLoadedNanopubChecksum();
+        String loadedChecksum = NanopubLoader.getCachedLoadedNanopubChecksum();
         if (loadedChecksum != null) {
             response.putHeader("Nanopub-Query-Loaded-Nanopub-Checksum", loadedChecksum);
         }
