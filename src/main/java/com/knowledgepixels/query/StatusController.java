@@ -290,11 +290,29 @@ public class StatusController {
         }
     }
 
+    /**
+     * Persist a state transition, then adopt it in memory.
+     *
+     * <p>The in-memory fields are assigned only after the admin-repo commit succeeds,
+     * mirroring {@link #setRegistrySetupId(long)}. The earlier order (assign first,
+     * commit second) left the two permanently divergent whenever the commit threw,
+     * because nothing rolled the fields back: the loader would then read a
+     * {@code lastCommittedCounter} ahead of the persisted one, conclude from
+     * {@code lastCommittedCounter >= targetCounter} that it was caught up, and skip
+     * those nanopubs forever while still reporting READY.
+     *
+     * <p>Readers may observe the previous state for the few ms of the commit — the
+     * same window {@link #getRegistrySetupId()} already documents, and no caller
+     * depends on stronger consistency. If a commit lands server-side but the response
+     * is lost, the fields stay behind the DB instead of ahead of it; the next
+     * transition re-writes the same triples (the remove/add pair is idempotent), so
+     * that direction costs at most some re-processing rather than silent data loss.
+     *
+     * @param newState    the state to transition to
+     * @param loadCounter the load counter to persist alongside it
+     */
     void updateState(State newState, long loadCounter) {
         synchronized (this) {
-            // Update in-memory state first so getState() (called from the event loop) never blocks
-            state = newState;
-            lastCommittedCounter = loadCounter;
             try {
                 // Serializable, as the service state needs to be strictly consistent
                 adminRepoConn.begin(IsolationLevels.SERIALIZABLE);
@@ -303,6 +321,8 @@ public class StatusController {
                 adminRepoConn.remove(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH);
                 adminRepoConn.add(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, adminRepoConn.getValueFactory().createLiteral(loadCounter), NPA.GRAPH);
                 adminRepoConn.commit();
+                state = newState;
+                lastCommittedCounter = loadCounter;
             } catch (Exception e) {
                 if (adminRepoConn.isActive()) {
                     try {

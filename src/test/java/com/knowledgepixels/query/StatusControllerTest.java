@@ -303,6 +303,33 @@ class StatusControllerTest {
     }
 
     @Test
+    void updateStateKeepsInMemoryStateWhenCommitFails() {
+        // A failed admin-repo commit must leave the in-memory state untouched. When it
+        // advanced anyway, the loader read a lastCommittedCounter ahead of the persisted
+        // one, took the "caught up, nothing to do" branch on every subsequent poll, and
+        // skipped those nanopubs permanently while still reporting READY.
+        try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
+            StatusController controller = StatusController.get();
+            mockedTripleStoreStatic.when(TripleStore::get).thenReturn(mock(TripleStore.class));
+            when(TripleStore.get().getAdminRepoConnection()).thenReturn(mock(RepositoryConnection.class));
+            when(TripleStore.get().getAdminRepoConnection().getValueFactory()).thenReturn(SimpleValueFactory.getInstance());
+            when(TripleStore.get().getAdminRepoConnection().getStatements(any(), any(), any(), any())).thenReturn(mock(RepositoryResult.class));
+
+            controller.initialize();
+            controller.updateState(StatusController.State.READY, 100);
+
+            RepositoryConnection conn = TripleStore.get().getAdminRepoConnection();
+            doThrow(new RuntimeException("admin-repo commit failed")).when(conn).commit();
+
+            assertThrows(RuntimeException.class,
+                    () -> controller.updateState(StatusController.State.LOADING_UPDATES, 200));
+
+            assertEquals(StatusController.LoadingStatus.of(StatusController.State.READY, 100),
+                    controller.getState());
+        }
+    }
+
+    @Test
     void registrySetupIdPersistence() {
         try (MockedStatic<TripleStore> mockedTripleStoreStatic = mockStatic(TripleStore.class)) {
             StatusController controller = StatusController.get();
