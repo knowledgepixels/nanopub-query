@@ -1,0 +1,97 @@
+# Alerting rules for nanopub-query.
+#
+# See monitoring/README.md for scrape setup and a walk-through of why these
+# thresholds are what they are. Metric names are pinned by
+# MetricsCollectorTest.exportsTheMetricNamesTheAlertRulesReferenceOn — a rename
+# in MetricsCollector would otherwise stop these firing silently.
+
+groups:
+  - name: nanopub-query-loader
+    interval: 30s
+    rules:
+
+      # The primary signal. loadUpdates stamps its timestamp on every
+      # non-exceptional return, including idle "caught up, nothing to do" ticks,
+      # so on a healthy instance this stays near the 2 s poll interval no matter
+      # how quiet the registry is. It only climbs when ticks are throwing.
+      - alert: NanopubQueryLoaderStalled
+        expr: registry_loader_last_successful_batch_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} loader has not completed a tick in {{ $value | humanizeDuration }}"
+          description: >
+            Every loadUpdates tick is throwing. The instance keeps serving queries
+            and still reports Nanopub-Query-Status: READY, so nothing else will
+            surface this. Check `docker compose logs query | grep -A30 "Failed to
+            load updates"` for the cause, and `data/info/restart` for a recent
+            RDF4J restart.
+
+      # Redundant with the above by design: the breaker trips within seconds of
+      # the third consecutive failure, so it is the faster of the two, while the
+      # staleness gauge still catches failure modes that never reach the batch.
+      - alert: NanopubQueryLoaderBreakerTripped
+        expr: registry_loader_breaker_active == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} loader circuit breaker has been tripped for 5m"
+          description: >
+            Three or more consecutive loadUpdates batches failed. Transient
+            breaker trips during RDF4J pressure are expected and clear on their
+            own; sustained means stuck.
+
+      # Absolute rather than relative: unlike the monitor's cross-instance
+      # checksum comparison, this still fires when every instance stalls at once.
+      # Reads -1 while either count is unknown, which never satisfies `> 0`.
+      #
+      # Deliberately slack at 15m. The registry side is only as fresh as the last
+      # successful poll, so a healthy instance can show a small lag between the
+      # poll and the batch landing.
+      - alert: NanopubQueryBehindRegistry
+        expr: registry_loader_sync_lag_nanopubs > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} is {{ $value }} nanopubs behind its registry"
+          description: >
+            Sustained lag against its own registry. Note this cannot detect a
+            failure of the registry poll itself — both counts freeze together and
+            the lag reads 0 — which is why NanopubQueryLoaderStalled exists
+            alongside it. Neither covers the other's blind spot.
+
+      # Per MetricsCollector: any non-zero repaired value means the backend
+      # acknowledged a shard write that was not durable.
+      - alert: NanopubQueryShardRepaired
+        expr: registry_reconciler_shards_repaired_total > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} reconciler repaired {{ $value }} missing shard(s)"
+          description: >
+            A shard write was acknowledged but not durable (issue #139). The
+            sweep re-loaded it; investigate the backend if this recurs.
+
+      - alert: NanopubQueryShardRelost
+        expr: registry_reconciler_shards_relost_total > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} lost {{ $value }} shard(s) that were previously verified present"
+          description: >
+            The backend revoked readable state it had already served (issue
+            #142). Usually follows a hard RDF4J kill; check data/info/restart.
+
+      - alert: NanopubQueryMetricsUnreachable
+        expr: up{job="nanopub-query"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} metrics endpoint is unreachable"
+          description: >
+            Without this, every other rule in this group goes quiet rather than
+            firing — absence of alerts is not evidence of health.

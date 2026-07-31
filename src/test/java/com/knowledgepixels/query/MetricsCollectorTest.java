@@ -2,6 +2,8 @@ package com.knowledgepixels.query;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheus.PrometheusConfig;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
@@ -42,6 +44,56 @@ class MetricsCollectorTest {
         // Pre-cycle, all spaces gauges read 0.
         assertEquals(0.0, registry.find("registry.spaces.subjects.admin_ris").gauge().value());
         assertEquals(0.0, registry.find("registry.spaces.processed_up_to_lag").gauge().value());
+    }
+
+    @Test
+    void exportsTheMetricNamesTheAlertRulesReferenceOn() {
+        // monitoring/prometheus-alerts.yml matches on these exact strings. Micrometer
+        // maps dots to underscores on export, so a rename here silently stops the
+        // alerts firing rather than breaking anything loudly — hence pinning them.
+        var registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        new MetricsCollector(registry);
+        String scrape = registry.scrape();
+        for (String metric : new String[]{
+                "registry_loader_breaker_active",
+                "registry_loader_consecutive_batch_failures",
+                "registry_loader_last_successful_batch_age_seconds",
+                "registry_loader_sync_lag_nanopubs",
+                "registry_reconciler_shards_repaired_total",
+                "registry_reconciler_shards_relost_total",
+        }) {
+            assertTrue(scrape.contains(metric), "alert rules reference missing metric: " + metric);
+        }
+    }
+
+    @Test
+    void syncLagIsUnknownUntilBothCountsAreAvailable() {
+        String savedRegistryCount = JellyNanopubLoader.lastNanopubCount;
+        Long savedLoaded = NanopubLoader.loadedNanopubCount;
+        try {
+            // No registry poll yet: must report the sentinel, not a fabricated 0 —
+            // "unknown" and "in sync" have to stay distinguishable to an alert.
+            JellyNanopubLoader.lastNanopubCount = null;
+            NanopubLoader.loadedNanopubCount = 100L;
+            assertEquals(-1L, MetricsCollector.computeSyncLag());
+
+            JellyNanopubLoader.lastNanopubCount = "not a number";
+            assertEquals(-1L, MetricsCollector.computeSyncLag());
+
+            JellyNanopubLoader.lastNanopubCount = "107";
+            assertEquals(7L, MetricsCollector.computeSyncLag());
+
+            JellyNanopubLoader.lastNanopubCount = "100";
+            assertEquals(0L, MetricsCollector.computeSyncLag());
+
+            // Loaded count runs ahead between registry polls; clamped so it can never
+            // be mistaken for the -1 sentinel.
+            JellyNanopubLoader.lastNanopubCount = "98";
+            assertEquals(0L, MetricsCollector.computeSyncLag());
+        } finally {
+            JellyNanopubLoader.lastNanopubCount = savedRegistryCount;
+            NanopubLoader.loadedNanopubCount = savedLoaded;
+        }
     }
 
     @Test
