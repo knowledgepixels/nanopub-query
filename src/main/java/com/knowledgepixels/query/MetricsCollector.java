@@ -177,6 +177,11 @@ public final class MetricsCollector {
                         .count()
         );
         fullRepositoriesCounter.set(repoNames.size());
+        // Keeps the loaded-count/checksum caches warm for applyGlobalHeaders, which
+        // runs on the event loop and therefore reads them without a store fallback.
+        // This tick is the right host: it already runs unconditionally on its own
+        // executor at a fixed cadence, and computeSyncLag below needs the count anyway.
+        NanopubLoader.primeHeaderCaches();
         syncLagNanopubs.set(computeSyncLag());
 
         // Update status gauge

@@ -713,6 +713,9 @@ public class NanopubLoader {
      * hasn't been initialised yet). Reads the persisted {@code npa:hasNanopubCount}
      * triple on first call and caches it in {@link #loadedNanopubCount};
      * subsequent fresh loads update the cache in-place.
+     *
+     * <p><b>Blocks</b> on a cold cache — use {@link #getCachedLoadedNanopubCount()}
+     * from the event loop.
      */
     public static Long getLoadedNanopubCount() {
         Long v = loadedNanopubCount;
@@ -735,12 +738,65 @@ public class NanopubLoader {
     }
 
     /**
+     * The cached loaded-nanopub count, without the store read that
+     * {@link #getLoadedNanopubCount()} falls back to, or {@code null} if nothing has
+     * populated it yet.
+     *
+     * <p>For callers that must not block — specifically
+     * {@link MainVerticle#applyGlobalHeaders}, which runs on the Vert.x event loop
+     * for every inbound request. The lazy fallback does blocking HTTP, and on a cold
+     * cache (i.e. after every restart) that stalled the event loop until the store
+     * answered; Vert.x's BlockedThreadChecker fired repeatedly on 2026-07-31. Worse,
+     * with the store unreachable it would have blocked every request for the full
+     * 10 s connect timeout, turning an RDF4J outage into a total outage of the HTTP
+     * layer — including the status headers used to diagnose it.
+     *
+     * <p>Kept warm off the event loop by {@link #primeHeaderCaches()}.
+     *
+     * @return the cached count, or null if not yet known
+     */
+    public static Long getCachedLoadedNanopubCount() {
+        return loadedNanopubCount;
+    }
+
+    /**
+     * The cached loaded-nanopub checksum, without the store read that
+     * {@link #getLoadedNanopubChecksum()} falls back to, or {@code null} if nothing
+     * has populated it yet. Same event-loop rationale as
+     * {@link #getCachedLoadedNanopubCount()}.
+     *
+     * @return the cached checksum, or null if not yet known
+     */
+    public static String getCachedLoadedNanopubChecksum() {
+        return loadedNanopubChecksum;
+    }
+
+    /**
+     * Populates the caches read by {@link #getCachedLoadedNanopubCount()} and
+     * {@link #getCachedLoadedNanopubChecksum()}, going to the store if they are cold.
+     *
+     * <p>Both values are otherwise only refreshed when a nanopub is actually loaded,
+     * so an instance that starts up already caught up would never populate them and
+     * would serve those headers empty forever. Something off the event loop has to
+     * prime them; {@link MetricsCollector#updateMetrics()} does, on its own executor.
+     *
+     * <p><b>Blocks.</b> Never call from the Vert.x event loop.
+     */
+    public static void primeHeaderCaches() {
+        getLoadedNanopubCount();
+        getLoadedNanopubChecksum();
+    }
+
+    /**
      * Returns the order-independent XOR checksum (Base64-encoded) of trusty URIs
      * of all nanopubs ever loaded into the {@code meta} repo, or {@code null} if
      * the value cannot be determined (e.g. the store hasn't been initialised
      * yet). Reads the persisted {@code npa:hasNanopubChecksum} triple on first
      * call and caches it in {@link #loadedNanopubChecksum}; subsequent fresh
      * loads update the cache in-place alongside {@link #loadedNanopubCount}.
+     *
+     * <p><b>Blocks</b> on a cold cache — use {@link #getCachedLoadedNanopubChecksum()}
+     * from the event loop.
      */
     public static String getLoadedNanopubChecksum() {
         String v = loadedNanopubChecksum;
