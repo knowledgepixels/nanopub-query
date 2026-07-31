@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Class to collect metrics for performance analysis.
@@ -17,6 +18,25 @@ public final class MetricsCollector {
     private final AtomicInteger typeRepositoriesCounter = new AtomicInteger(0);
     private final AtomicInteger pubkeyRepositoriesCounter = new AtomicInteger(0);
     private final AtomicInteger fullRepositoriesCounter = new AtomicInteger(0);
+
+    /**
+     * Value behind {@code registry.loader.sync_lag_nanopubs}. Refreshed on the
+     * {@code updateMetrics} tick rather than inside the gauge lambda: the gauge is
+     * evaluated on the scrape path, which runs on a Vert.x event loop, and
+     * {@link NanopubLoader#getLoadedNanopubCount()} can fall through to a SPARQL
+     * query on a cold cache. The repo-name counters above are populated the same
+     * way and for the same reason.
+     */
+    private final AtomicLong syncLagNanopubs = new AtomicLong(UNKNOWN_LAG);
+
+    /**
+     * Sentinel for {@code registry.loader.sync_lag_nanopubs} when either side of the
+     * subtraction is unavailable — before the first registry poll, or if the
+     * forwarded count is unparseable. Distinct from {@code 0}, which asserts the
+     * instance is genuinely in sync. Real lags are clamped at zero so this value
+     * can never arise from arithmetic.
+     */
+    private static final long UNKNOWN_LAG = -1L;
 
     private final Map<StatusController.State, AtomicInteger> statusStates = new ConcurrentHashMap<>();
 
@@ -57,6 +77,19 @@ public final class MetricsCollector {
                             return (System.currentTimeMillis() - t) / 1000.0;
                         })
                 .description("Seconds since the last non-exceptional loadUpdates return (idle or loading)")
+                .register(meterRegistry);
+        // How far behind its own registry this instance is. The gauges above all
+        // describe the loader's *internal* health; this one is the outcome an
+        // operator actually cares about, and it is absolute rather than relative —
+        // unlike the monitor's cross-instance checksum comparison, it still fires
+        // when every instance stalls at once (incident 2026-07-31).
+        //
+        // Pair it with last_successful_batch_age_seconds when alerting. The registry
+        // side of the subtraction is the count forwarded by the most recent poll, so
+        // if polling itself is what broke, both counts freeze together and the lag
+        // reads a falsely reassuring 0. Neither signal covers the other's blind spot.
+        Gauge.builder("registry.loader.sync_lag_nanopubs", syncLagNanopubs, AtomicLong::get)
+                .description("Nanopubs this instance is behind its registry; -1 when either count is unknown")
                 .register(meterRegistry);
 
         // Shard-reconciliation observability (issue #139). Both read volatile
@@ -144,11 +177,36 @@ public final class MetricsCollector {
                         .count()
         );
         fullRepositoriesCounter.set(repoNames.size());
+        syncLagNanopubs.set(computeSyncLag());
 
         // Update status gauge
         final var currentStatus = StatusController.get().getState().state;
         for (final var status : StatusController.State.values()) {
             statusStates.get(status).set(status.equals(currentStatus) ? 1 : 0);
+        }
+    }
+
+    /**
+     * Nanopubs this instance is behind its registry, or {@link #UNKNOWN_LAG} if either
+     * count is unavailable.
+     *
+     * <p>Clamped at zero: the loaded count is bumped as each nanopub lands while the
+     * registry count only refreshes once per poll, so the loaded side can legitimately
+     * run ahead for a tick. Reporting that as negative would collide with the
+     * unknown sentinel.
+     *
+     * @return the lag in nanopubs, clamped to zero, or {@link #UNKNOWN_LAG}
+     */
+    static long computeSyncLag() {
+        String registryCount = JellyNanopubLoader.lastNanopubCount;
+        Long loaded = NanopubLoader.getLoadedNanopubCount();
+        if (registryCount == null || loaded == null) {
+            return UNKNOWN_LAG;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(registryCount.trim()) - loaded);
+        } catch (NumberFormatException ex) {
+            return UNKNOWN_LAG;
         }
     }
 }
