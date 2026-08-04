@@ -272,4 +272,154 @@ class TrustStateSnapshotTest {
         assertEquals(Instant.parse("2026-04-15T14:16:16.112094241Z"), s.createdAt());
     }
 
+    // ---------------- extended-JSON unwrapping ----------------
+    //
+    // Which of these shapes the registry emits depends on its BSON serializer
+    // configuration, so the parser accepts all of them. These cases lock in that
+    // tolerance (and the failure mode for shapes it cannot make sense of).
+
+    /** Builds a one-account envelope with the given raw JSON for a single field. */
+    private static String withAccountField(String field, String rawJsonValue) {
+        return """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": {"$numberLong": "1"},
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": [
+                    {
+                      "pubkey": "x",
+                      "agent": "https://example.org/agent",
+                      "status": "loaded",
+                      "%s": %s
+                    }
+                  ]
+                }
+                """.formatted(field, rawJsonValue);
+    }
+
+    @Test
+    void parse_unwrapsNameCreatedAtFromNestedNumberLongDate() {
+        // {"$date": {"$numberLong": "..."}} — the shape Mongo uses for dates
+        // outside the signed-32-bit-seconds range in canonical extended JSON.
+        TrustStateSnapshot s = TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "{\"$date\": {\"$numberLong\": \"1750000000000\"}}"));
+        assertEquals(Instant.ofEpochMilli(1750000000000L),
+                s.accounts().getFirst().nameCreatedAt());
+    }
+
+    @Test
+    void parse_unwrapsNameCreatedAtFromNumericDate() {
+        // {"$date": 1750000000000} — relaxed extended JSON.
+        TrustStateSnapshot s = TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "{\"$date\": 1750000000000}"));
+        assertEquals(Instant.ofEpochMilli(1750000000000L),
+                s.accounts().getFirst().nameCreatedAt());
+    }
+
+    @Test
+    void parse_unwrapsNameCreatedAtFromWrappedIsoString() {
+        // {"$date": "2025-06-15T09:00:00Z"} — the common wrapped-string form.
+        TrustStateSnapshot s = TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "{\"$date\": \"2025-06-15T09:00:00Z\"}"));
+        assertEquals(Instant.parse("2025-06-15T09:00:00Z"),
+                s.accounts().getFirst().nameCreatedAt());
+    }
+
+    @Test
+    void parse_acceptsBareEpochMillisForNameCreatedAt() {
+        TrustStateSnapshot s = TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "1750000000000"));
+        assertEquals(Instant.ofEpochMilli(1750000000000L),
+                s.accounts().getFirst().nameCreatedAt());
+    }
+
+    @Test
+    void parse_treatsExplicitNullNameCreatedAtAsAbsent() {
+        TrustStateSnapshot s = TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "null"));
+        assertNull(s.accounts().getFirst().nameCreatedAt());
+    }
+
+    @Test
+    void parse_throwsOnUnparseableNameCreatedAtString() {
+        // A malformed timestamp is a real data problem — better to fail the whole
+        // snapshot loudly than to silently drop the field and mis-resolve names.
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "\"15 June 2025\"")));
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "{\"$date\": \"15 June 2025\"}")));
+    }
+
+    @Test
+    void parse_throwsOnUnrecognisedNameCreatedAtShape() {
+        // An object that isn't a $date wrapper at all, and a JSON type that can
+        // never be a date.
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "{\"unexpected\": 1}")));
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "{\"$date\": true}")));
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(
+                withAccountField("nameCreatedAt", "true")));
+    }
+
+    @Test
+    void parse_acceptsQuotaAsAStringAndAsExtendedJson() {
+        assertEquals(4200L, TrustStateSnapshot.parse(withAccountField("quota", "\"4200\""))
+                .accounts().getFirst().quota());
+        assertEquals(4200L, TrustStateSnapshot.parse(withAccountField("quota", "{\"$numberLong\": \"4200\"}"))
+                .accounts().getFirst().quota());
+        assertEquals(4200L, TrustStateSnapshot.parse(withAccountField("quota", "4200"))
+                .accounts().getFirst().quota());
+        assertNull(TrustStateSnapshot.parse(withAccountField("quota", "null"))
+                .accounts().getFirst().quota());
+    }
+
+    @Test
+    void parse_throwsOnUnrecognisedQuotaShape() {
+        // A JSON object that carries no $numberLong falls through to the error —
+        // it must not be silently read as null, which would erase a real quota.
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(
+                withAccountField("quota", "{\"unexpected\": 1}")));
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(
+                withAccountField("quota", "true")));
+    }
+
+    @Test
+    void parse_throwsOnMissingTrustStateCounter() {
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": []
+                }
+                """;
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(json));
+    }
+
+    @Test
+    void parse_acceptsTrustStateCounterAsAString() {
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": "77",
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": []
+                }
+                """;
+        assertEquals(77L, TrustStateSnapshot.parse(json).trustStateCounter());
+    }
+
+    @Test
+    void parse_throwsWhenAnAccountEntryIsNotAnObject() {
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": 1,
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": ["not-an-object"]
+                }
+                """;
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(json));
+    }
+
 }
