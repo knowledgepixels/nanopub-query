@@ -31,8 +31,6 @@ public class LocalNanopubLoader {
      */
     public final static File loadNanopubsFile = new File("load/nanopubs.trig.gz");
 
-    private static final int DEFAULT_WAIT_SECONDS = 120;
-
     /**
      * Load nanopubs from local files.
      *
@@ -43,16 +41,9 @@ public class LocalNanopubLoader {
             logger.info("No local nanopub files for loading found. Moving on to loading via Jelly...");
             return false;
         }
-        logger.info("Waiting {} seconds to make sure the triple store is up...", getWaitSeconds());
-        try {
-            for (int w = 0; w < getWaitSeconds(); w++) {
-                logger.info("Waited {} seconds...", w);
-                Thread.sleep(1000);
-            }
-        } catch (InterruptedException ex) {
-            // ignore
-        }
-
+        // The triple store's availability is guaranteed by the Docker Compose service
+        // dependency (query depends_on rdf4j with condition: service_healthy), so no
+        // fixed startup wait is needed here anymore (see issue #45).
         logger.info("Loading the local list of nanopubs...");
         load();
         return true;
@@ -81,10 +72,6 @@ public class LocalNanopubLoader {
                 logger.info("Loading nanopubs failed.", ex);
             }
         }
-    }
-
-    static int getWaitSeconds() {
-        return Utils.getEnvInt("INIT_WAIT_SECONDS", DEFAULT_WAIT_SECONDS);
     }
 
 }
