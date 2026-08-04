@@ -12,7 +12,9 @@ import org.nanopub.extra.server.GetNanopub;
 import org.nanopub.testsuite.NanopubTestSuite;
 import org.nanopub.testsuite.TestSuiteEntry;
 
+import java.io.File;
 import java.io.IOException;
+import java.net.URISyntaxException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -110,6 +112,43 @@ class OpenApiSpecPageTest {
 
             assertEquals(expectedSpec, page.getSpec());
         }
+    }
+
+    /**
+     * Regression test for issue #50: a query with two or more parameters that share the same
+     * schema must not be serialized with YAML anchors/aliases ({@code &id001} / {@code *id001}).
+     * Reusing a single schema map instance across parameters made SnakeYAML emit aliases, which
+     * some OpenAPI validators fail to resolve, producing "instance failed to match exactly one
+     * schema (matched 0 out of 2)".
+     */
+    @Test
+    void multiParamSpecHasNoYamlAnchors() throws InvalidGrlcSpecException, MalformedNanopubException, IOException, URISyntaxException {
+        File ferSearch = new File(getClass().getResource("/openapi/fer_search.trig").toURI());
+        Nanopub multiParamNanopub = new NanopubImpl(ferSearch);
+        String ferArtifactCode = "RALYGDDqaxlCSDqvtX2QCNnO59f7_haWraFz0rFfZdYtc";
+        try (MockedStatic<GetNanopub> mockedGetNanopub = mockStatic(GetNanopub.class)) {
+            mockedGetNanopub.when(() -> GetNanopub.get(any())).thenReturn(multiParamNanopub);
+            OpenApiSpecPage page = new OpenApiSpecPage(baseUri + ferArtifactCode + "/fer_search",
+                    MultiMap.caseInsensitiveMultiMap());
+            String spec = page.getSpec();
+
+            // Both parameters must be rendered, each with its own inline schema.
+            assertEquals(2, spec.split("(?m)^\\s*- in: query$").length - 1,
+                    "expected two query parameters in the spec");
+            assertFalse(spec.contains("&id"), "spec must not contain YAML anchors: " + spec);
+            assertFalse(spec.contains("*id"), "spec must not contain YAML aliases: " + spec);
+            assertEquals(2, countOccurrences(spec, "type: string"),
+                    "each parameter's schema must be inlined, not aliased");
+        }
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0, idx = 0;
+        while ((idx = haystack.indexOf(needle, idx)) != -1) {
+            count++;
+            idx += needle.length();
+        }
+        return count;
     }
 
 }
