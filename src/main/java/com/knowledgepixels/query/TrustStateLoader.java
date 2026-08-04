@@ -3,6 +3,7 @@ package com.knowledgepixels.query;
 import com.google.common.hash.Hashing;
 import com.knowledgepixels.query.vocabulary.NPAA;
 import com.knowledgepixels.query.vocabulary.NPAT;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -181,6 +182,24 @@ public class TrustStateLoader {
     }
 
     /**
+     * Executes the snapshot GET against the registry.
+     *
+     * <p>Extracted as a package-private seam for the same reason as
+     * {@link Utils#getRawEnv(String)}: both the client and
+     * {@link JellyNanopubLoader#registryUrl} are {@code static final}, so without
+     * this indirection {@link #fetchSnapshot}'s response handling (404, non-2xx,
+     * I/O failure, malformed body) can only be exercised against a live registry.
+     * Behaviourally identical to calling the client inline.
+     *
+     * @param url the fully-qualified snapshot URL
+     * @return the raw HTTP response, which the caller must close
+     * @throws IOException if the request cannot be executed
+     */
+    static CloseableHttpResponse executeGet(String url) throws IOException {
+        return httpClient.execute(new HttpGet(url));
+    }
+
+    /**
      * Fetches and parses the snapshot for the given trust state hash from the
      * registry. Returns {@link Optional#empty()} on 404 (the registry has
      * pruned this hash) or on any I/O / parse error (logged at INFO).
@@ -191,7 +210,7 @@ public class TrustStateLoader {
     static Optional<TrustStateSnapshot> fetchSnapshot(String trustStateHash) {
         String url = JellyNanopubLoader.registryUrl
                      + "trust-state/" + URLEncoder.encode(trustStateHash, StandardCharsets.UTF_8) + ".json";
-        try (var response = httpClient.execute(new HttpGet(url))) {
+        try (var response = executeGet(url)) {
             int status = response.getStatusLine().getStatusCode();
             if (status == 404) {
                 logger.info("Trust state snapshot {} returned 404 (pruned by registry); skipping",
