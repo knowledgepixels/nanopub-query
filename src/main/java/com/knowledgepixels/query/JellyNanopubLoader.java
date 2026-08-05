@@ -6,6 +6,8 @@ import org.apache.http.client.methods.HttpHead;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
+import org.eclipse.rdf4j.query.QueryLanguage;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.nanopub.NanopubUtils;
 import org.nanopub.jelly.NanopubStream;
 import org.slf4j.Logger;
@@ -54,15 +56,44 @@ public class JellyNanopubLoader {
     static final long BREAKER_PAUSE_MS = 30_000L;
 
     /**
-     * Epoch-millis of the last successful {@code loadUpdates} invocation (whether it
-     * actually loaded a batch or was a "caught up, nothing to do" tick). Read by
-     * {@link MetricsCollector} to expose {@code registry.loader.last_successful_batch_age_seconds}
-     * so an operator can tell at a glance from Grafana whether an instance is still
-     * making progress. Updated on every non-exceptional return from loadUpdates,
-     * including idle returns — an instance that is caught up and correctly polling
-     * still counts as alive.
+     * Epoch-millis of the last {@code loadUpdates} invocation that demonstrably reached
+     * the triple store — either by committing a batch, or, on an idle tick, by passing
+     * {@link #probeStoreReachable()}. Read by {@link MetricsCollector} to expose
+     * {@code registry.loader.last_successful_batch_age_seconds} and served as the
+     * {@code Nanopub-Query-Loader-Last-Success-Age-Seconds} header, so an operator can
+     * tell from outside whether an instance is still able to serve.
+     *
+     * <p><strong>Must only be stamped after RDF4J has actually answered.</strong> Until
+     * 2026-08-05 the idle branch stamped it unconditionally, but an idle tick reads the
+     * counter from in-memory {@link StatusController} state and otherwise talks only to
+     * the registry — it never touched RDF4J. A caught-up instance therefore reported
+     * age 0 and READY throughout an 11-hour total RDF4J outage on kpxl (Tomcat's acceptor
+     * thread had died of {@code OutOfMemoryError}, so every connect timed out), which is
+     * precisely the failure this signal exists to surface. A caught-up instance could
+     * never fail the check, which made the check worthless exactly when it mattered.
+     *
+     * <p>On a healthy idle instance the age now oscillates between 0 and
+     * {@link #STORE_PROBE_INTERVAL_MS}, rather than sitting at 0.
      */
     static volatile long lastSuccessfulBatchAtMs = 0L;
+
+    /**
+     * Minimum interval between idle-path store-reachability probes, and hence the
+     * granularity of {@link #lastSuccessfulBatchAtMs} on a caught-up instance. The idle
+     * path runs every {@link #UPDATES_POLL_INTERVAL} ms; probing on every poll would add
+     * 30 round trips a minute without sharpening the signal, since any alert on this
+     * value is measured in minutes.
+     */
+    static final long STORE_PROBE_INTERVAL_MS = 30_000L;
+
+    /**
+     * Epoch-millis of the last store-reachability probe, whether it was a dedicated
+     * {@link #probeStoreReachable()} call or a batch commit (which proves the same thing
+     * more strongly). Confined to the single-threaded loader executor in
+     * {@link MainVerticle}, so a plain field is enough. Package-private only so tests
+     * can reset it between cases.
+     */
+    static long lastStoreProbeAtMs = 0L;
 
     /**
      * Heartbeat counter for loadUpdates invocations. A summary log line is emitted
@@ -226,9 +257,18 @@ public class JellyNanopubLoader {
                 // that the old flow did on every idle poll. Also reset the breaker
                 // counter — a successful "nothing to do" is still a successful tick
                 // and should clear stale failure state from earlier transient errors.
+                //
+                // Probe the store *before* recording liveness: nothing else on this
+                // path touches RDF4J, so without it "caught up" would keep passing
+                // for liveness while the store was unreachable. A failing probe
+                // throws into the catch below, which increments the breaker and
+                // leaves lastSuccessfulBatchAtMs to go stale — the intended signal.
+                boolean probed = probeStoreReachable();
                 StatusController.get().setReady();
                 consecutiveBatchFailures = 0;
-                lastSuccessfulBatchAtMs = System.currentTimeMillis();
+                if (probed) {
+                    lastSuccessfulBatchAtMs = System.currentTimeMillis();
+                }
                 maybeLogHeartbeat(targetCounter, true);
                 return;
             }
@@ -237,6 +277,9 @@ public class JellyNanopubLoader {
             // Batch completed without an exception — reset the breaker counter.
             consecutiveBatchFailures = 0;
             lastSuccessfulBatchAtMs = System.currentTimeMillis();
+            // A committed batch is a stronger reachability proof than the ASK probe,
+            // so it also defers the next one.
+            lastStoreProbeAtMs = lastSuccessfulBatchAtMs;
             maybeLogHeartbeat(targetCounter, false);
             logger.info("Loaded {} update(s). Counter: {}, target was: {}",
                     lastCommittedCounter - status.loadCounter, lastCommittedCounter, targetCounter);
@@ -255,6 +298,35 @@ public class JellyNanopubLoader {
                 logger.info("Failure Reason: ", e);
             }
         }
+    }
+
+    /**
+     * Verify that the triple store is reachable and answering, so that
+     * {@link #lastSuccessfulBatchAtMs} means "this instance can still serve" rather than
+     * merely "the loader loop is still running".
+     *
+     * <p>Uses {@code ASK {}} against the admin repo: it matches the empty group pattern
+     * without touching any index, so the cost is one HTTP round trip and essentially no
+     * query work — while still exercising the exact client, connection pool and endpoint
+     * that a real query would use.
+     *
+     * <p>Throttled to one probe per {@link #STORE_PROBE_INTERVAL_MS}. Callers must treat
+     * a {@code false} return as "not verified now" and leave the liveness timestamp
+     * alone, so the stamp always refers to a round trip that actually happened.
+     *
+     * @return true if a probe ran and succeeded; false if one ran too recently to repeat
+     * @throws RuntimeException (from RDF4J) if the store did not answer
+     */
+    private static boolean probeStoreReachable() {
+        long now = System.currentTimeMillis();
+        if (now - lastStoreProbeAtMs < STORE_PROBE_INTERVAL_MS) {
+            return false;
+        }
+        try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {
+            conn.prepareBooleanQuery(QueryLanguage.SPARQL, "ASK {}").evaluate();
+        }
+        lastStoreProbeAtMs = now;
+        return true;
     }
 
     /**
