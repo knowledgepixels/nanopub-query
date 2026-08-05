@@ -65,18 +65,19 @@ public final class MetricsCollector {
                         () -> JellyNanopubLoader.consecutiveBatchFailures >= JellyNanopubLoader.BREAKER_THRESHOLD ? 1.0 : 0.0)
                 .description("1 if the loader circuit breaker is tripped (consecutive failures >= threshold), 0 otherwise")
                 .register(meterRegistry);
-        // Liveness signal that works without log access: seconds since the last
-        // non-exceptional loadUpdates return. Counts both "loaded a batch" and
-        // "caught up, nothing to do" as progress. An instance whose value climbs
-        // unbounded while peers stay low is stuck on something the other
-        // gauges don't capture.
+        // Liveness signal that works without log access: seconds since the loader last
+        // demonstrably reached the triple store — a committed load counter, a completed
+        // batch (initial or update), or a verified idle-tick probe. An instance whose
+        // value climbs unbounded while peers stay low is stuck on something the other
+        // gauges don't capture, including during an initial load or resync, which this
+        // gauge could not distinguish from a stall until those paths were stamped too.
         Gauge.builder("registry.loader.last_successful_batch_age_seconds",
                         () -> {
                             long t = JellyNanopubLoader.lastSuccessfulBatchAtMs;
                             if (t == 0L) return 0.0;    // not started yet
                             return (System.currentTimeMillis() - t) / 1000.0;
                         })
-                .description("Seconds since the last non-exceptional loadUpdates return (idle or loading)")
+                .description("Seconds since the loader last reached the store (initial load, update batch, or idle probe)")
                 .register(meterRegistry);
         // How far behind its own registry this instance is. The gauges above all
         // describe the loader's *internal* health; this one is the outcome an
@@ -85,9 +86,10 @@ public final class MetricsCollector {
         // when every instance stalls at once (incident 2026-07-31).
         //
         // Pair it with last_successful_batch_age_seconds when alerting. The registry
-        // side of the subtraction is the count forwarded by the most recent poll, so
-        // if polling itself is what broke, both counts freeze together and the lag
-        // reads a falsely reassuring 0. Neither signal covers the other's blind spot.
+        // side of the subtraction is the count from the last metadata fetch — an update
+        // poll, or a mid-load refresh during a long initial load — so if fetching itself
+        // is what broke, both counts freeze together and the lag reads a falsely
+        // reassuring 0. Neither signal covers the other's blind spot.
         Gauge.builder("registry.loader.sync_lag_nanopubs", syncLagNanopubs, AtomicLong::get)
                 .description("Nanopubs this instance is behind its registry; -1 when either count is unknown")
                 .register(meterRegistry);

@@ -8,12 +8,18 @@ import org.eclipse.rdf4j.repository.RepositoryException;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
@@ -133,5 +139,62 @@ class JellyNanopubLoaderLivenessTest {
 
             verify(store, times(1)).getAdminRepoConnection();
         }
+    }
+
+    /**
+     * A counter committed during an <em>initial</em> load records liveness.
+     *
+     * <p>Second half of the same problem: a resync runs entirely inside
+     * {@code loadInitial}, and {@code loadUpdates} — the only thing that used to stamp
+     * the timestamp — does not run again until it returns. The age therefore climbed for
+     * the whole of any legitimate resync, so a healthy re-stream and a wedged one looked
+     * identical from outside (incident 2026-08-05, query.nanodash.net: a resync stalled
+     * with the load counter pinned at -1).
+     */
+    @Test
+    void initialLoadCommitRecordsLiveness() throws Exception {
+        try (MockedStatic<StatusController> statusStatic = mockStatic(StatusController.class)) {
+            StatusController status = mockedStatusController(statusStatic);
+
+            resetLoaderState();
+            long before = System.currentTimeMillis();
+
+            saveCommittedCounter(JellyNanopubLoader.LoadingType.INITIAL);
+
+            verify(status).setLoadingInitial(anyLong());
+            assertTrue(JellyNanopubLoader.lastSuccessfulBatchAtMs >= before,
+                    "a counter committed during an initial load must record liveness");
+            assertEquals(JellyNanopubLoader.lastSuccessfulBatchAtMs, JellyNanopubLoader.lastStoreProbeAtMs,
+                    "an acknowledged admin-repo write also defers the next ASK probe");
+        }
+    }
+
+    /**
+     * A commit that throws must not record liveness. Failing admin-repo writes are how
+     * the loader wedges in the first place, so stamping before the call would make the
+     * stall signal report health for the duration of the stall.
+     */
+    @Test
+    void failedCommitDoesNotRecordLiveness() {
+        try (MockedStatic<StatusController> statusStatic = mockStatic(StatusController.class)) {
+            StatusController status = mockedStatusController(statusStatic);
+            doThrow(new RepositoryException("Connect to rdf4j:8080 failed: Connect timed out"))
+                    .when(status).setLoadingUpdates(anyLong());
+
+            resetLoaderState();
+
+            assertThrows(InvocationTargetException.class,
+                    () -> saveCommittedCounter(JellyNanopubLoader.LoadingType.UPDATE));
+
+            assertEquals(0L, JellyNanopubLoader.lastSuccessfulBatchAtMs,
+                    "a failed commit must leave the liveness stamp untouched");
+        }
+    }
+
+    private static void saveCommittedCounter(JellyNanopubLoader.LoadingType type) throws Exception {
+        Method m = JellyNanopubLoader.class
+                .getDeclaredMethod("saveCommittedCounter", JellyNanopubLoader.LoadingType.class);
+        m.setAccessible(true);
+        m.invoke(null, type);
     }
 }

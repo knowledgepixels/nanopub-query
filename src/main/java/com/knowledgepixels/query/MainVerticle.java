@@ -719,6 +719,11 @@ public class MainVerticle extends AbstractVerticle {
         // JellyNanopubLoader#lastSuccessfulBatchAtMs), so on a caught-up instance it
         // cycles 0..JellyNanopubLoader.STORE_PROBE_INTERVAL_MS rather than sitting at 0.
         // Alert thresholds must therefore exceed that interval; minutes, not seconds.
+        //
+        // Initial loads and resyncs stamp it as well, so this reads as "seconds since
+        // the loader last moved" in every state rather than only while polling for
+        // updates. Interpret it alongside Nanopub-Query-Status: a climbing age under
+        // LOADING_INITIAL is a resync that has stopped progressing, not a long one.
         long lastBatchAt = JellyNanopubLoader.lastSuccessfulBatchAtMs;
         if (lastBatchAt != 0L) {
             long ageSeconds = Math.max(0L, (System.currentTimeMillis() - lastBatchAt) / 1000L);

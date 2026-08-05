@@ -56,9 +56,9 @@ public class JellyNanopubLoader {
     static final long BREAKER_PAUSE_MS = 30_000L;
 
     /**
-     * Epoch-millis of the last {@code loadUpdates} invocation that demonstrably reached
-     * the triple store — either by committing a batch, or, on an idle tick, by passing
-     * {@link #probeStoreReachable()}. Read by {@link MetricsCollector} to expose
+     * Epoch-millis of the last time the loader demonstrably reached the triple store —
+     * by committing a load counter, by completing a batch, or, on an idle tick, by
+     * passing {@link #probeStoreReachable()}. Read by {@link MetricsCollector} to expose
      * {@code registry.loader.last_successful_batch_age_seconds} and served as the
      * {@code Nanopub-Query-Loader-Last-Success-Age-Seconds} header, so an operator can
      * tell from outside whether an instance is still able to serve.
@@ -71,8 +71,21 @@ public class JellyNanopubLoader {
      * thread had died of {@code OutOfMemoryError}, so every connect timed out), which is
      * precisely the failure this signal exists to surface. A caught-up instance could
      * never fail the check, which made the check worthless exactly when it mattered.
+     * Every stamp site below therefore follows a completed round trip: a committed
+     * counter and a completed batch are both stronger proof than the ASK probe.
      *
-     * <p>On a healthy idle instance the age now oscillates between 0 and
+     * <p><strong>The initial-load paths stamp it too.</strong> They did not until
+     * 2026-08-05, and because a resync runs entirely inside {@link #loadInitial} —
+     * {@code loadUpdates} does not run again until {@code performResync} returns, which
+     * for a full re-stream is tens of minutes — the age climbed unbounded for the whole
+     * of any legitimate resync. A healthy resync was indistinguishable from a wedged one
+     * both here and in Grafana (incident 2026-08-05, query.nanodash.net: a resync stalled
+     * with the load counter pinned at -1, and the climbing age looked exactly like the
+     * resync itself). Read this together with {@code Nanopub-Query-Status}: a climbing
+     * age under {@code LOADING_INITIAL} now means a resync that has stopped making
+     * progress, not merely a long one.
+     *
+     * <p>On a healthy idle instance the age oscillates between 0 and
      * {@link #STORE_PROBE_INTERVAL_MS}, rather than sitting at 0.
      */
     static volatile long lastSuccessfulBatchAtMs = 0L;
@@ -94,6 +107,25 @@ public class JellyNanopubLoader {
      * can reset it between cases.
      */
     static long lastStoreProbeAtMs = 0L;
+
+    /**
+     * Epoch-millis of the last {@link #updateForwardingMetadata} call, i.e. of the last
+     * time the registry-derived headers we forward to clients were refreshed. Used by
+     * {@link #maybeRefreshForwardingMetadata} to rate-limit mid-load refreshes.
+     */
+    private static volatile long lastForwardingMetadataAtMs = 0L;
+
+    /**
+     * Minimum interval between opportunistic refreshes of the forwarded registry
+     * metadata during a long-running load.
+     *
+     * <p>{@link #loadUpdates} refreshes on every poll (~{@value #UPDATES_POLL_INTERVAL} ms)
+     * so this limiter never engages there; it exists for {@link #loadInitial}, which
+     * used to fetch metadata exactly once and then stream for as long as the batch
+     * took. Thirty seconds is far below the resolution anyone reads these values at
+     * while costing one HEAD request per interval.
+     */
+    private static final long METADATA_REFRESH_INTERVAL_MS = 30_000L;
 
     /**
      * Heartbeat counter for loadUpdates invocations. A summary log line is emitted
@@ -157,6 +189,13 @@ public class JellyNanopubLoader {
         }
         lastCommittedCounter = afterCounter;
         while (lastCommittedCounter < targetCounter) {
+            // Keep the forwarded registry headers moving even across a batch that
+            // fails and retries without loading anything. Rate-limited, so the first
+            // iteration (right after the fetch above) is a no-op. Note this refreshes
+            // only what we forward to clients — targetCounter stays as sampled at
+            // entry, and anything the registry gained since is picked up by
+            // loadUpdates once this initial load returns.
+            maybeRefreshForwardingMetadata();
             // Same circuit-breaker logic as loadUpdates: after BREAKER_THRESHOLD
             // consecutive failed batches, pause before retrying so a saturated RDF4J
             // (e.g. during a restart storm) can drain instead of being hammered on the
@@ -174,6 +213,11 @@ public class JellyNanopubLoader {
             try {
                 loadBatch(lastCommittedCounter, LoadingType.INITIAL);
                 consecutiveBatchFailures = 0;
+                // A completed batch wrote to RDF4J, so it satisfies the "only stamp
+                // after the store answered" rule and, like an update batch, is a
+                // stronger reachability proof than the ASK probe.
+                lastSuccessfulBatchAtMs = System.currentTimeMillis();
+                lastStoreProbeAtMs = lastSuccessfulBatchAtMs;
                 logger.info("Initial load: loaded batch up to counter {}", lastCommittedCounter);
             } catch (Exception e) {
                 consecutiveBatchFailures++;
@@ -429,6 +473,11 @@ public class JellyNanopubLoader {
                     logger.info("Loading speed: {} np/s. Counter: {}", String.format("%.2f", speed), lastCommittedCounter);
                     checkpointTime.set(currTime);
                     checkpointCounter.set(lastCommittedCounter);
+                    // A full re-stream is a single loadBatch call lasting tens of
+                    // minutes; without this the forwarded registry count would hold
+                    // its entry-time value for the whole of it, and the sync-lag
+                    // gauge derived from it would drift with it.
+                    maybeRefreshForwardingMetadata();
                 }
             });
             // Make sure to save the last committed counter at the end of the batch
@@ -459,6 +508,13 @@ public class JellyNanopubLoader {
             } else {
                 StatusController.get().setLoadingUpdates(lastCommittedCounter);
             }
+            // A committed counter is an admin-repo write that RDF4J acknowledged, so it
+            // is the finest-grained evidence of liveness there is — and the only one
+            // that ticks inside a batch rather than at its end, which is what makes a
+            // long initial load legible. Stamped after the call, never before: a failed
+            // commit is exactly how the loader wedges, and must not read as progress.
+            lastSuccessfulBatchAtMs = System.currentTimeMillis();
+            lastStoreProbeAtMs = lastSuccessfulBatchAtMs;
         } catch (Exception e) {
             throw new RuntimeException("Could not update the nanopub counter in DB", e);
         }
@@ -481,6 +537,39 @@ public class JellyNanopubLoader {
         lastCoverageAgents = metadata.coverageAgents();
         lastTestInstance = metadata.testInstance();
         lastNanopubCount = metadata.nanopubCount();
+        lastForwardingMetadataAtMs = System.currentTimeMillis();
+    }
+
+    /**
+     * Re-read the registry's metadata headers mid-load so the values forwarded to
+     * clients don't freeze for the duration of a long batch.
+     *
+     * <p>Rate-limited to one fetch per {@link #METADATA_REFRESH_INTERVAL_MS} and
+     * best-effort: on failure the previous values stay in place and the caller
+     * continues. Deliberately calls {@link #fetchRegistryMetadataInner} rather than
+     * {@link #fetchRegistryMetadata} — the latter retries {@value #MAX_RETRIES_METADATA}
+     * times with {@value #RETRY_DELAY_METADATA} ms between attempts, which against an
+     * unhealthy registry would park the nanopub stream for half a minute to refresh a
+     * header. One attempt, bounded by the client's socket timeout, is the right trade
+     * for a value that is only ever advisory.
+     *
+     * <p>Refreshes only the forwarded fields. It must not touch the load counter the
+     * caller is driving its loop from: re-targeting mid-load would let a busy registry
+     * keep {@code loadInitial} running indefinitely instead of handing over to
+     * {@code loadUpdates}.
+     */
+    private static void maybeRefreshForwardingMetadata() {
+        if (System.currentTimeMillis() - lastForwardingMetadataAtMs < METADATA_REFRESH_INTERVAL_MS) {
+            return;
+        }
+        try {
+            updateForwardingMetadata(fetchRegistryMetadataInner());
+        } catch (Exception e) {
+            // Stamp anyway so a persistently failing registry is retried on the same
+            // interval rather than on every single call.
+            lastForwardingMetadataAtMs = System.currentTimeMillis();
+            logger.info("Mid-load registry metadata refresh failed; keeping previous values: {}", e.toString());
+        }
     }
 
     /**
