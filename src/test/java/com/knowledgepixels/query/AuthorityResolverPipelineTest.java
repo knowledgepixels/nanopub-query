@@ -229,14 +229,16 @@ class AuthorityResolverPipelineTest {
     }
 
     @Test
-    void getCurrentLoadCounter_returnsZeroForANonNumericValue() {
-        // A corrupt counter must degrade to 0 (rebuild from scratch), not throw and
-        // wedge every subsequent tick.
+    void getCurrentLoadCounter_throwsOnANonNumericValue() {
+        // A corrupt counter must stop the build, not degrade to 0. Reading it as 0
+        // names the new graph <hash>_0, which differs from the real current graph, so
+        // the build proceeds and then drops the good one.
         try (InMemoryTripleStore store = new InMemoryTripleStore()) {
             store.update(SPACES, """
                     INSERT DATA { GRAPH <%s> { <%s> <%s> "not-a-number" } }"""
                     .formatted(NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.CURRENT_LOAD_COUNTER));
-            assertEquals(0L, resolver().getCurrentLoadCounter());
+            assertThrows(AuthorityResolver.SpaceStateUnavailableException.class,
+                    () -> resolver().getCurrentLoadCounter());
         }
     }
 
@@ -774,10 +776,12 @@ class AuthorityResolverPipelineTest {
     // ---------------- degraded-store fallbacks ----------------
 
     @Test
-    void readHelpers_returnSafeDefaultsWhenTheStoreIsUnavailable() {
-        // Every one of these reads is on a scheduled tick. A store blip must produce
-        // a benign default (and a warning) rather than an exception that kills the
-        // periodic worker.
+    void bookkeepingReads_throwWhenTheStoreIsUnavailable() {
+        // These three reads decide what the next build does, and each has a sentinel
+        // that also means something legitimate: null pointer = fresh install, counter
+        // 0 = nothing loaded yet, processedUpTo -1 = graph never finished. Collapsing
+        // a failed read onto the sentinel makes a degraded store look like one of
+        // those and drives a destructive rebuild, so they must throw instead.
         try (MockedStatic<TripleStore> ts = Mockito.mockStatic(TripleStore.class)) {
             TripleStore broken = Mockito.mock(TripleStore.class);
             Mockito.when(broken.getRepoConnection(Mockito.anyString()))
@@ -787,22 +791,41 @@ class AuthorityResolverPipelineTest {
             AuthorityResolver ar = resolver();
             IRI g = SpacesVocab.forSpaceState(HASH, 1L);
 
-            assertNull(ar.getCurrentSpaceStateGraph(), "no pointer readable");
-            assertEquals(0L, ar.getCurrentLoadCounter(), "counter falls back to 0");
-            assertEquals(-1L, ar.readProcessedUpTo(g), "unknown horizon reads as -1");
+            assertThrows(AuthorityResolver.SpaceStateUnavailableException.class,
+                    () -> ar.getCurrentSpaceStateGraph(), "pointer read must not report 'no pointer'");
+            assertThrows(AuthorityResolver.SpaceStateUnavailableException.class,
+                    () -> ar.getCurrentLoadCounter(), "counter read must not report 0");
+            assertThrows(AuthorityResolver.SpaceStateUnavailableException.class,
+                    () -> ar.readProcessedUpTo(g), "horizon read must not report -1");
+        }
+    }
+
+    @Test
+    void advisoryReads_returnSafeDefaultsWhenTheStoreIsUnavailable() {
+        // These two only gate optional work — a rebuild the flag would have scheduled
+        // anyway, and a diagnostic pointer lookup. Neither can destroy state on a
+        // wrong answer, so a store blip stays a warning rather than an exception that
+        // kills the periodic worker.
+        try (MockedStatic<TripleStore> ts = Mockito.mockStatic(TripleStore.class)) {
+            TripleStore broken = Mockito.mock(TripleStore.class);
+            Mockito.when(broken.getRepoConnection(Mockito.anyString()))
+                    .thenThrow(new RuntimeException("store down"));
+            ts.when(TripleStore::get).thenReturn(broken);
+
+            AuthorityResolver ar = resolver();
+
             assertFalse(ar.readNeedsFullRebuild(), "flag defaults to false");
             assertTrue(ar.readTrustRepoCurrentHash().isEmpty());
         }
     }
 
     @Test
-    void tick_propagatesAHardStoreOutageFromTheBuildItself() {
-        // Documents current behaviour rather than prescribing it. The *read* helpers
-        // swallow failures, so a store outage makes getCurrentSpaceStateGraph report
-        // "no graph", which routes tick() into a full build — and the build's write
-        // path does not swallow, so the exception reaches the scheduler. Worth
-        // pinning: if this is ever made resilient, this test should be the one that
-        // says so.
+    void tick_abortsOnAHardStoreOutageInsteadOfRebuilding() {
+        // The outage has to stop the tick at the very first read. If it ever gets
+        // past getCurrentSpaceStateGraph, tick() reads the null pointer as "no
+        // current graph" and runs a full build against the same broken store, which
+        // publishes an empty graph and drops the live one. Doing nothing this tick
+        // and retrying on the next is always safe.
         try (MockedStatic<TripleStore> ts = Mockito.mockStatic(TripleStore.class)) {
             TripleStore broken = Mockito.mock(TripleStore.class);
             Mockito.when(broken.getRepoConnection(Mockito.anyString()))
@@ -810,7 +833,8 @@ class AuthorityResolverPipelineTest {
             ts.when(TripleStore::get).thenReturn(broken);
             TrustStateRegistry.get().setCurrentHash(HASH);
 
-            assertThrows(RuntimeException.class, () -> resolver().tick());
+            assertThrows(AuthorityResolver.SpaceStateUnavailableException.class,
+                    () -> resolver().tick());
         }
     }
 
