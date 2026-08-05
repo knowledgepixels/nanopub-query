@@ -292,22 +292,36 @@ public final class AuthorityResolver {
         //    delta filter FILTER(?ln > ?lastProcessed) includes everything).
         TierInsertedTriples counts = runAllTierLoops(newGraph, -1);
 
-        // 2b. Refuse to publish an empty build over a state we already have.
+        // 2b. Refuse to publish an empty build over a state we already have — but only
+        // when the emptiness cannot be true.
         //
-        // On 2026-08-05 every source read inside this method timed out, so mirrored
-        // and all twelve tier counts came back 0. The build then flipped the pointer
-        // to that empty graph and dropped the previous one, which held 2730 triples
-        // of live space state. Steps 4 and 5 are destructive and must not run on a
-        // result that carries no data.
+        // Steps 4 and 5 below are destructive, so a build that read nothing must not
+        // reach them. The trap is that "produced nothing" has two causes: every source
+        // read failed, or the sources really are empty. Refusing in the second case
+        // would pin a stale space state forever, and stale trust data is
+        // over-permissive — revocations would stop propagating. That is the wrong way
+        // to fail for a trust-derived state.
+        //
+        // So the condition is: nothing was produced *while the trust state still has
+        // content to mirror*. That is the shape of a read failure. A genuinely empty
+        // trust state yields an empty build and is published normally.
         //
         // Only guarded when a previous state exists: a genuinely empty first build on
         // a fresh instance has nothing to lose and must still be allowed to publish.
+        //
+        // Note this would NOT have fired on 2026-08-05: that build reported
+        // subspace-prefix=2478, so it was not empty. The wipe there came from the
+        // registry's trust state collapsing (correctly reflected) plus 2478 triples
+        // that were reported inserted and then measured as zero. This guard is for the
+        // total-read-failure case, which the same outage came close to several times.
         long insertedTotal = totalInserted(counts);
-        if (mirrored == 0 && insertedTotal == 0 && oldGraph != null) {
+        if (mirrored == 0 && insertedTotal == 0 && oldGraph != null
+                && trustStateHasContent(trustStateHash)) {
             logger.error("AuthorityResolver.runFullBuild: build produced an empty state graph "
-                    + "(mirrored=0, inserted=0) while {} holds the current state — refusing to "
-                    + "flip the pointer or drop it. Almost always means the source reads failed; "
-                    + "the next tick will retry.", oldGraph);
+                    + "(mirrored=0, inserted=0) while trust state {} still has content and {} "
+                    + "holds the current state — refusing to flip the pointer or drop it. "
+                    + "This is the shape of a total read failure; the next tick will retry.",
+                    abbrev(trustStateHash), oldGraph);
             if (!rebuildInPlace) {
                 dropGraph(newGraph);
             }
@@ -3208,6 +3222,31 @@ public final class AuthorityResolver {
      *
      * @return number of rows mirrored (useful for metrics / logging)
      */
+    /**
+     * Whether the given trust state's graph holds anything at all.
+     *
+     * <p>Used by {@link #runFullBuild} to tell a build that read nothing because the store
+     * would not answer from a build that read nothing because there is nothing to read. Only
+     * the first is a reason to withhold the result; withholding the second would freeze a
+     * stale space state in place, and stale trust data is over-permissive.
+     *
+     * <p>Throws rather than guessing if the trust repo cannot be read — {@link #runFullBuild}
+     * then aborts without publishing or dropping anything, which is the safe direction.
+     *
+     * @param trustStateHash the trust state hash
+     * @return true if the trust state graph contains at least one triple
+     */
+    boolean trustStateHasContent(String trustStateHash) {
+        IRI trustStateIri = NPAT.forHash(trustStateHash);
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TRUST_REPO)) {
+            String query = String.format("ASK { GRAPH <%s> { ?s ?p ?o } }", trustStateIri);
+            return conn.prepareBooleanQuery(QueryLanguage.SPARQL, query).evaluate();
+        } catch (Exception ex) {
+            throw new SpaceStateUnavailableException(
+                    "failed to read trust state graph " + trustStateIri, ex);
+        }
+    }
+
     int mirrorTrustState(String trustStateHash, IRI newGraph) {
         IRI trustStateIri = NPAT.forHash(trustStateHash);
         int count = 0;

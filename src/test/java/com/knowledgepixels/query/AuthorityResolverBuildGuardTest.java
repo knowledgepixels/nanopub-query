@@ -31,20 +31,27 @@ import static org.mockito.Mockito.when;
 /**
  * Guards on the destructive half of {@link AuthorityResolver#runFullBuild}.
  *
- * <p>Regression cover for the space-state wipe of 2026-08-05. RDF4J was answering
- * reads with {@code Read timed out}. Each reader collapsed that onto its
- * "legitimately absent" value, so:
- * <ol>
- *   <li>{@code getCurrentSpaceStateGraph()} returned {@code null}, and {@code tick()}
- *       logged a trust-state flip that had not happened;</li>
- *   <li>the resulting full build read nothing — {@code mirrored=0}, all twelve tier
- *       counts {@code 0};</li>
- *   <li>it published that empty graph anyway and dropped the previous one, which held
- *       2730 triples of live space state;</li>
- *   <li>{@code processedUpTo} was never stamped, so every later build hit the
- *       "already current" early return and the instance could not repair itself.</li>
- * </ol>
- * Every state-backed query returned zero rows until an operator intervened.
+ * <p>From the space-state incident of 2026-08-05, where RDF4J was answering reads with
+ * {@code Read timed out} and each reader collapsed that onto its "legitimately absent"
+ * value. What that demonstrably caused, and what these tests cover:
+ * <ul>
+ *   <li>{@code getCurrentLoadCounter()} returned {@code 0} from a failed read, so a graph
+ *       was built and dropped under the bogus name {@code …_0} — visible in the log as
+ *       {@code dropped old space-state graph …/c96bfc42…_0} while the counter was 2570;</li>
+ *   <li>{@code getCurrentSpaceStateGraph()} returned {@code null} from a failed read, so
+ *       {@code tick()} logged a trust-state flip that had not happened and rebuilt;</li>
+ *   <li>{@code processedUpTo} was never stamped, so {@code runIncrementalCycle} logged
+ *       "missing processedUpTo; skipping" every 2 s while {@code runFullBuild} returned
+ *       "already current" — 25 minutes of that, ended only by an operator deleting the
+ *       pointer by hand.</li>
+ * </ul>
+ *
+ * <p>Deliberately <em>not</em> claimed here: that this code emptied the space state. The
+ * shape it ended up with (sub-space rows only) was the correct reflection of a trust state
+ * that had collapsed in the <em>registry</em> — see nanopub-registry#60. The empty-build
+ * guard below would not have fired that day either, since that build inserted 2478
+ * sub-space-prefix triples. It is cover for the total-read-failure case, which the same
+ * outage came close to repeatedly.
  */
 class AuthorityResolverBuildGuardTest {
 
@@ -85,6 +92,7 @@ class AuthorityResolverBuildGuardTest {
         doReturn(mirrored).when(ar).mirrorTrustState(anyString(), any(IRI.class));
         doReturn(tierCounts).when(ar).runAllTierLoops(any(IRI.class), anyLong());
         doReturn(new TierSubjectTotals(0L, 0L, 0L)).when(ar).computeTierSubjectTotals(any(IRI.class));
+        doReturn(true).when(ar).trustStateHasContent(anyString());
         doNothing().when(ar).writeProcessedUpTo(any(IRI.class), anyLong());
         doNothing().when(ar).flipPointer(any(IRI.class));
         doNothing().when(ar).dropGraph(any(IRI.class));
@@ -92,9 +100,9 @@ class AuthorityResolverBuildGuardTest {
     }
 
     @Test
-    void emptyBuildIsNotPublishedOverAnExistingState() {
-        // Exactly the 2026-08-05 shape: every source read failed, so the build carries
-        // no rows, while a good graph is still current.
+    void emptyBuildIsNotPublishedWhenTheTrustStateStillHasContent() {
+        // Total read failure: nothing came back, yet the trust state still holds rows to
+        // mirror. The emptiness cannot be true, so it must not be published.
         AuthorityResolver ar = buildSpy(OLD_GRAPH, 0, counts(0));
 
         ar.runFullBuild(HASH);
@@ -103,6 +111,20 @@ class AuthorityResolverBuildGuardTest {
         verify(ar, never()).dropGraph(OLD_GRAPH);
         // The empty graph it just created is cleaned up instead.
         verify(ar).dropGraph(NEW_GRAPH);
+    }
+
+    @Test
+    void emptyBuildIsPublishedWhenTheTrustStateIsGenuinelyEmpty() {
+        // The other half of the guard. If the trust state really is empty, an empty space
+        // state is the correct answer and withholding it would pin stale trust data in
+        // place — over-permissive, and revocations would stop propagating.
+        AuthorityResolver ar = buildSpy(OLD_GRAPH, 0, counts(0));
+        doReturn(false).when(ar).trustStateHasContent(anyString());
+
+        ar.runFullBuild(HASH);
+
+        verify(ar).flipPointer(NEW_GRAPH);
+        verify(ar).dropGraph(OLD_GRAPH);
     }
 
     @Test
