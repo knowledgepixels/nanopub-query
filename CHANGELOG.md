@@ -1,3 +1,26 @@
+## [1.24.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.24.0...nanopub-query-1.24.1) (2026-08-05)
+
+### Bug Fixes
+
+* **headers:** stop blocking the event loop on a cold header cache ([e7106b1](https://github.com/knowledgepixels/nanopub-query/commit/e7106b1db6990cca87eedbc63fcc393616b759d9))
+* **loader:** keep the liveness and registry-count headers honest during a resync ([6c69d5c](https://github.com/knowledgepixels/nanopub-query/commit/6c69d5ca1591f12c68474866e7c6349fe84c3feb)), closes [#158](https://github.com/knowledgepixels/nanopub-query/issues/158)
+* **loader:** only report liveness after RDF4J has actually answered ([b52165c](https://github.com/knowledgepixels/nanopub-query/commit/b52165c8c6b1727554374acf410737efd269e30c))
+* **rdf4j:** clear the ready marker at container start ([7f27c52](https://github.com/knowledgepixels/nanopub-query/commit/7f27c52dedcf5df6fbe8910da742417d6a24abb4))
+* **rdf4j:** exit the JVM on OOM instead of wedging forever ([e7dafb6](https://github.com/knowledgepixels/nanopub-query/commit/e7dafb6bc12c9ad6e323afed4ed19cf4eb12cc90)), closes [#142](https://github.com/knowledgepixels/nanopub-query/issues/142)
+* **rdf4j:** forward SIGTERM to the JVM so shutdowns are graceful ([29cd93d](https://github.com/knowledgepixels/nanopub-query/commit/29cd93d6b89dc60dd65dd6d3cd3cf7ac89a4414c))
+* **rdf4j:** print lock owners in thread dumps ([80608a8](https://github.com/knowledgepixels/nanopub-query/commit/80608a8faed226fa5986aed9d9428218a452b719))
+* **rdf4j:** stop the healthcheck from killing Tomcat by default ([1f53a6b](https://github.com/knowledgepixels/nanopub-query/commit/1f53a6bd9bd645a826c395ad61d85d78db01dc81)), closes [#142](https://github.com/knowledgepixels/nanopub-query/issues/142) [#5807](https://github.com/knowledgepixels/nanopub-query/issues/5807)
+* **spaces:** never publish a space-state build made from failed reads ([d6fbc66](https://github.com/knowledgepixels/nanopub-query/commit/d6fbc66f210de614fe9b0a25ea53bd907daed2ec))
+* **spaces:** only withhold an empty build when the emptiness cannot be true ([9b6c821](https://github.com/knowledgepixels/nanopub-query/commit/9b6c821249aabdcc3936ac05bc6e0785ed3bf44e)), closes [nanopub-registry#60](https://github.com/knowledgepixels/nanopub-registry/issues/60)
+
+### Performance improvements
+
+* **loader:** serialise repo writes with a lock instead of SERIALIZABLE ([f82ea88](https://github.com/knowledgepixels/nanopub-query/commit/f82ea88bc0e27c8b0a0364529fa4436930614238)), closes [#139](https://github.com/knowledgepixels/nanopub-query/issues/139)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([8d028f8](https://github.com/knowledgepixels/nanopub-query/commit/8d028f848c34baa2006f652bea5f0261af379b3e))
+
 ## [1.24.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.23.0...nanopub-query-1.24.0) (2026-07-31)
 
 ### Features
