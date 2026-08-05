@@ -1,8 +1,16 @@
 package com.knowledgepixels.query;
 
-import com.google.common.hash.Hashing;
-import com.knowledgepixels.query.vocabulary.NPAA;
-import com.knowledgepixels.query.vocabulary.NPAT;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -21,22 +29,23 @@ import org.nanopub.vocabulary.NPA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
+import com.google.common.hash.Hashing;
+import com.knowledgepixels.query.vocabulary.NPAA;
+import com.knowledgepixels.query.vocabulary.NPAT;
 
 /**
  * Materializes a registry trust state into the local {@code trust} repository
  * when a hash change is detected.
  *
- * <p>Detection happens in {@link JellyNanopubLoader} (which polls the registry
+ * <p>
+ * Detection happens in {@link JellyNanopubLoader} (which polls the registry
  * every ~2 s anyway and reads {@code Nanopub-Registry-Trust-State-Hash}). This
  * class does the rest: fetch {@code /trust-state/<hash>.json}, parse the
  * envelope, materialize the snapshot into a named graph, and swap the current
  * pointer — all in one serializable transaction.
  *
- * <p>See {@code doc/design-trust-state-repos.md} for the full design.
+ * <p>
+ * See {@code doc/design-trust-state-repos.md} for the full design.
  */
 public class TrustStateLoader {
 
@@ -48,7 +57,8 @@ public class TrustStateLoader {
     static final String TRUST_REPO = "trust";
 
     /**
-     * Default number of historical trust states retained locally. Matches the registry's own snapshot retention.
+     * Default number of historical trust states retained locally. Matches the
+     * registry's own snapshot retention.
      */
     static final int DEFAULT_LOCAL_RETENTION = 100;
 
@@ -72,8 +82,8 @@ public class TrustStateLoader {
     private static final IRI NPA_QUOTA = vf.createIRI(NPA.NAMESPACE, "quota");
     private static final IRI NPA_VIA_NANOPUB = vf.createIRI(NPA.NAMESPACE, "viaNanopub");
 
-    private static final CloseableHttpClient httpClient =
-            HttpClientBuilder.create().setDefaultRequestConfig(Utils.getHttpRequestConfig()).build();
+    private static final CloseableHttpClient httpClient
+            = HttpClientBuilder.create().setDefaultRequestConfig(Utils.getHttpRequestConfig()).build();
 
     private TrustStateLoader() {
     }  // no instances
@@ -85,9 +95,10 @@ public class TrustStateLoader {
      * advertised hash, the first poll is a no-op rather than a redundant
      * re-materialization.
      *
-     * <p>Safe to call on a fresh deployment (the trust repo may not even exist
-     * yet — auto-created, found empty, seeded nothing). Any failure is logged
-     * at INFO; bootstrap falls through and the first poll materializes from
+     * <p>
+     * Safe to call on a fresh deployment (the trust repo may not even exist yet
+     * — auto-created, found empty, seeded nothing). Any failure is logged at
+     * INFO; bootstrap falls through and the first poll materializes from
      * scratch.
      */
     public static void bootstrap() {
@@ -103,8 +114,8 @@ public class TrustStateLoader {
                             } LIMIT 1
                             """,
                     NPA.GRAPH, NPA.THIS_REPO, NPA_HAS_CURRENT_TRUST_STATE);
-            try (TupleQueryResult result =
-                         conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+            try (TupleQueryResult result
+                    = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
                 if (!result.hasNext()) {
                     logger.info("Trust state bootstrap: no current-state pointer yet");
                     return;
@@ -133,12 +144,12 @@ public class TrustStateLoader {
      * locally-tracked one and, if different, fetches the snapshot and
      * materializes it into the {@code trust} repo.
      *
-     * <p>Safe to call with a null/empty hash (older registries don't expose
-     * trust state) — silently no-op in that case.
+     * <p>
+     * Safe to call with a null/empty hash (older registries don't expose trust
+     * state) — silently no-op in that case.
      *
      * @param newTrustStateHash the {@code trustStateHash} reported by the
-     *                          registry, or null if the registry doesn't
-     *                          expose one
+     * registry, or null if the registry doesn't expose one
      */
     public static void maybeUpdate(String newTrustStateHash) {
         if (!FeatureFlags.trustStateEnabled()) {
@@ -181,6 +192,25 @@ public class TrustStateLoader {
     }
 
     /**
+     * Executes the snapshot GET against the registry.
+     *
+     * <p>
+     * Extracted as a package-private seam for the same reason as
+     * {@link Utils#getRawEnv(String)}: both the client and
+     * {@link JellyNanopubLoader#registryUrl} are {@code static final}, so
+     * without this indirection {@link #fetchSnapshot}'s response handling (404,
+     * non-2xx, I/O failure, malformed body) can only be exercised against a
+     * live registry. Behaviourally identical to calling the client inline.
+     *
+     * @param url the fully-qualified snapshot URL
+     * @return the raw HTTP response, which the caller must close
+     * @throws IOException if the request cannot be executed
+     */
+    static CloseableHttpResponse executeGet(String url) throws IOException {
+        return httpClient.execute(new HttpGet(url));
+    }
+
+    /**
      * Fetches and parses the snapshot for the given trust state hash from the
      * registry. Returns {@link Optional#empty()} on 404 (the registry has
      * pruned this hash) or on any I/O / parse error (logged at INFO).
@@ -190,8 +220,8 @@ public class TrustStateLoader {
      */
     static Optional<TrustStateSnapshot> fetchSnapshot(String trustStateHash) {
         String url = JellyNanopubLoader.registryUrl
-                     + "trust-state/" + URLEncoder.encode(trustStateHash, StandardCharsets.UTF_8) + ".json";
-        try (var response = httpClient.execute(new HttpGet(url))) {
+                + "trust-state/" + URLEncoder.encode(trustStateHash, StandardCharsets.UTF_8) + ".json";
+        try (var response = executeGet(url)) {
             int status = response.getStatusLine().getStatusCode();
             if (status == 404) {
                 logger.info("Trust state snapshot {} returned 404 (pruned by registry); skipping",
@@ -227,8 +257,8 @@ public class TrustStateLoader {
     static void materialize(TrustStateSnapshot snapshot) {
         IRI trustStateIri = NPAT.forHash(snapshot.trustStateHash());
 
-        try (RepositoryConnection conn =
-                     TripleStore.get().getRepoConnection(TRUST_REPO)) {
+        try (RepositoryConnection conn
+                = TripleStore.get().getRepoConnection(TRUST_REPO)) {
             conn.begin(IsolationLevels.SERIALIZABLE);
 
             // 1. Account-state triples in the trust state's named graph.
@@ -236,8 +266,8 @@ public class TrustStateLoader {
             // accounts, which were rejected by trust calculation and so don't carry
             // these stats). Only emit a triple when the field is present.
             for (TrustStateSnapshot.AccountEntry a : snapshot.accounts()) {
-                IRI accountStateIri =
-                        NPAA.forHash(accountStateHash(snapshot.trustStateHash(), a));
+                IRI accountStateIri
+                        = NPAA.forHash(accountStateHash(snapshot.trustStateHash(), a));
                 conn.add(accountStateIri, RDF.TYPE, NPA_ACCOUNT_STATE, trustStateIri);
                 conn.add(accountStateIri, NPA_AGENT,
                         vf.createIRI(a.agent()), trustStateIri);
@@ -308,9 +338,9 @@ public class TrustStateLoader {
 
     /**
      * Removes trust states beyond the retention window: their named-graph
-     * contents are dropped and their metadata triples in {@code npa:graph}
-     * are removed. Must be called inside an open transaction on the
-     * {@code trust} repo. Returns the number of states pruned.
+     * contents are dropped and their metadata triples in {@code npa:graph} are
+     * removed. Must be called inside an open transaction on the {@code trust}
+     * repo. Returns the number of states pruned.
      */
     private static int pruneOldStates(RepositoryConnection conn) {
         int retention = effectiveRetention();
@@ -340,8 +370,8 @@ public class TrustStateLoader {
 
     /**
      * Reads {@code TRUST_STATE_LOCAL_RETENTION} from the environment, falling
-     * back to {@link #DEFAULT_LOCAL_RETENTION}. Values below 1 are coerced
-     * back to the default with a warning (the plan rejects retention=0).
+     * back to {@link #DEFAULT_LOCAL_RETENTION}. Values below 1 are coerced back
+     * to the default with a warning (the plan rejects retention=0).
      */
     static int effectiveRetention() {
         int n = Utils.getEnvInt("TRUST_STATE_LOCAL_RETENTION", DEFAULT_LOCAL_RETENTION);
@@ -365,24 +395,27 @@ public class TrustStateLoader {
     }
 
     /**
-     * Trust-approved status set: rows with one of these {@code npa:trustStatus} values
-     * are eligible to contribute the canonical agent name. Matches the set used by
-     * {@code AuthorityResolver.mirrorTrustState}.
+     * Trust-approved status set: rows with one of these {@code npa:trustStatus}
+     * values are eligible to contribute the canonical agent name. Matches the
+     * set used by {@code AuthorityResolver.mirrorTrustState}.
      */
     private static final Set<String> APPROVED_STATUSES = Set.of("loaded", "toLoad");
 
     /**
      * Per-agent canonical name resolution. Returns a map from agent IRI to its
-     * canonical {@code foaf:name} literal, derived from the snapshot's per-account
-     * {@code name} field.
+     * canonical {@code foaf:name} literal, derived from the snapshot's
+     * per-account {@code name} field.
      *
-     * <p>Policy: among an agent's account rows whose {@code status} is approved
-     * ({@code loaded} or {@code toLoad}) and whose {@code ratio} and {@code name}
-     * are both non-null, pick the row with the highest {@code ratio}. Ties break
-     * on lex-min {@code name} for determinism across rebuilds. Agents with no
-     * qualifying row are simply absent from the result map (no name emitted).
+     * <p>
+     * Policy: among an agent's account rows whose {@code status} is approved
+     * ({@code loaded} or {@code toLoad}) and whose {@code ratio} and
+     * {@code name} are both non-null, pick the row with the highest
+     * {@code ratio}. Ties break on lex-min {@code name} for determinism across
+     * rebuilds. Agents with no qualifying row are simply absent from the result
+     * map (no name emitted).
      *
-     * <p>Per-{@code (agent, pubkey)} resolution (the latest declaring intro
+     * <p>
+     * Per-{@code (agent, pubkey)} resolution (the latest declaring intro
      * supplies that row's {@code name}) lives in the registry; this layer only
      * folds across keys.
      */
@@ -397,8 +430,8 @@ public class TrustStateLoader {
             }
             TrustStateSnapshot.AccountEntry incumbent = chosen.get(a.agent());
             if (incumbent == null
-                || a.ratio() > incumbent.ratio()
-                || (a.ratio().equals(incumbent.ratio())
+                    || a.ratio() > incumbent.ratio()
+                    || (a.ratio().equals(incumbent.ratio())
                     && a.name().compareTo(incumbent.name()) < 0)) {
                 chosen.put(a.agent(), a);
             }
