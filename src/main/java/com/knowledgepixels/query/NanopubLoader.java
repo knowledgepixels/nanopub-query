@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import java.security.GeneralSecurityException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 /**
@@ -44,6 +45,42 @@ public class NanopubLoader {
 
     private static HttpClient httpClient;
     private static final ThreadPoolExecutor loadingPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
+
+    /**
+     * One write lock per repo, held for the whole read-modify-write of that repo's
+     * nanopub count / XOR checksum chain.
+     *
+     * <p>This replaces {@code IsolationLevels.SERIALIZABLE} as the mechanism protecting the
+     * chain, and it is a strictly local substitution: this process is the only writer of
+     * those triples, so in-process mutual exclusion gives exactly what the serializable
+     * transaction was buying. The chain invariant is unchanged.
+     *
+     * <p>Why bother: in RDF4J 5.3.x, {@code SailSourceBranch.derivedFromSerializable} sets a
+     * branch-level {@code serializable} sink the first time <em>any</em> transaction on that
+     * branch asks for a SERIALIZABLE-compatible level, and clears it only when the branch
+     * closes. While it is set, every dataset opened on that branch — including ordinary read
+     * queries at any isolation — is wrapped in an {@code ObservingSailDataset}, which on close
+     * runs {@code compressChanges -> prepare -> sinkObserved -> Changeset.observeAll} while
+     * holding the branch semaphore. Hashing observed {@code SimpleStatementPattern}s there is
+     * expensive ({@code LmdbIRI.hashCode} goes to a synchronized {@code ValueStore} map), so
+     * one writer can stall every reader of the repo.
+     *
+     * <p>Measured on kpxl 2026-08-05: a thread dump showed 171 threads parked on a single
+     * {@code ReentrantLock} in {@code derivedFromSerializable} for the {@code full} repo, one
+     * thread inside {@code observeAll}, and the whole servlet container unable to answer even
+     * a 404 for a nonexistent repo. Dropping to SNAPSHOT leaves {@code serializable} null, so
+     * no {@code ObservingSailDataset} is created, {@code observed} stays null and
+     * {@code sinkObserved} early-returns.
+     *
+     * <p>Keyed by repo name, so writers to different repos never contend. Calls are never
+     * nested across repos — the invalidator paths loop and call one repo at a time — so there
+     * is no lock-ordering hazard.
+     */
+    private static final ConcurrentHashMap<String, ReentrantLock> repoWriteLocks = new ConcurrentHashMap<>();
+
+    static ReentrantLock repoWriteLock(String repoName) {
+        return repoWriteLocks.computeIfAbsent(repoName, k -> new ReentrantLock());
+    }
 
     /**
      * Cached count of nanopubs ever loaded into the {@code meta} repo. Maintained
@@ -578,53 +615,62 @@ public class NanopubLoader {
         boolean success = false;
         int retries = 0;
         while (!success) {
-            RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
-            long newCountForCache = -1;
-            String newChecksumForCache = null;
-            try (conn) {
-                // Serializable, because write skew would cause the chain of hashes to be broken.
-                // The inserts must be done serially.
-                conn.begin(IsolationLevels.SERIALIZABLE);
-                var repoStatus = fetchRepoStatus(conn, npId);
-                if (repoStatus.isLoaded) {
-                    // INFO, not DEBUG: this skip decides that a shard write is unnecessary
-                    // based on a single store read. When the backend misbehaves (issue #139:
-                    // a shard "successfully" written yet not durable), this line is the only
-                    // trace distinguishing a false skip from a lost commit.
-                    logger.info("Skipping already-loaded nanopub <{}> in repo '{}'", npId, repoName);
-                } else {
-                    String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
-                    conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, null, NPA.GRAPH);
-                    conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, null, NPA.GRAPH);
-                    conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(repoStatus.count + 1), NPA.GRAPH);
-                    // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded
-                    conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
-                    // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
-                    conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(repoStatus.count), NPA.GRAPH);
-                    // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadNumber, LOAD_NUMBER, npa:graph, admin, the sequential number at which this NANOPUB was loaded
-                    conn.add(npId, NPA.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
-                    // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
-                    conn.add(npId, NPA.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), NPA.GRAPH);
-                    // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
-                    conn.add(statements);
-                    if ("meta".equals(repoName)) {
-                        newCountForCache = repoStatus.count + 1;
-                        newChecksumForCache = newChecksum;
+            // The count/checksum chain must not suffer write skew, so this read-modify-write
+            // is serialised — by repoWriteLock rather than by a SERIALIZABLE transaction. This
+            // process is the only writer of those triples, so the guarantee is the same; see
+            // repoWriteLocks for why the isolation level is the expensive way to buy it.
+            // Held across the whole transaction, released before any retry back-off.
+            ReentrantLock repoLock = repoWriteLock(repoName);
+            repoLock.lock();
+            try {
+                RepositoryConnection conn = TripleStore.get().getRepoConnection(repoName);
+                long newCountForCache = -1;
+                String newChecksumForCache = null;
+                try (conn) {
+                    conn.begin(IsolationLevels.SNAPSHOT);
+                    var repoStatus = fetchRepoStatus(conn, npId);
+                    if (repoStatus.isLoaded) {
+                        // INFO, not DEBUG: this skip decides that a shard write is unnecessary
+                        // based on a single store read. When the backend misbehaves (issue #139:
+                        // a shard "successfully" written yet not durable), this line is the only
+                        // trace distinguishing a false skip from a lost commit.
+                        logger.info("Skipping already-loaded nanopub <{}> in repo '{}'", npId, repoName);
+                    } else {
+                        String newChecksum = NanopubUtils.updateXorChecksum(npId, repoStatus.checksum);
+                        conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, null, NPA.GRAPH);
+                        conn.remove(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, null, NPA.GRAPH);
+                        conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(repoStatus.count + 1), NPA.GRAPH);
+                        // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubCount, NANOPUB_COUNT, npa:graph, admin, number of nanopubs loaded
+                        conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
+                        // @ADMIN-TRIPLE-TABLE@ REPO, npa:hasNanopubChecksum, NANOPUB_CHECKSUM, npa:graph, admin, checksum of all loaded nanopubs (order-independent XOR checksum on trusty URIs in Base64 notation)
+                        conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(repoStatus.count), NPA.GRAPH);
+                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadNumber, LOAD_NUMBER, npa:graph, admin, the sequential number at which this NANOPUB was loaded
+                        conn.add(npId, NPA.HAS_LOAD_CHECKSUM, vf.createLiteral(newChecksum), NPA.GRAPH);
+                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadChecksum, LOAD_CHECKSUM, npa:graph, admin, the checksum of all loaded nanopubs after loading the given NANOPUB
+                        conn.add(npId, NPA.HAS_LOAD_TIMESTAMP, vf.createLiteral(new Date()), NPA.GRAPH);
+                        // @ADMIN-TRIPLE-TABLE@ NANOPUB, npa:hasLoadTimestamp, LOAD_TIMESTAMP, npa:graph, admin, the time point at which this NANOPUB was loaded
+                        conn.add(statements);
+                        if ("meta".equals(repoName)) {
+                            newCountForCache = repoStatus.count + 1;
+                            newChecksumForCache = newChecksum;
+                        }
+                    }
+                    conn.commit();
+                    if (newCountForCache >= 0) {
+                        loadedNanopubCount = newCountForCache;
+                    }
+                    if (newChecksumForCache != null) {
+                        loadedNanopubChecksum = newChecksumForCache;
+                    }
+                    success = true;
+                } catch (Exception ex) {
+                    logger.warn("Failed to load nanopub <{}> to repo '{}': {}", npId, repoName, ex.getMessage(), ex);
+                    if (conn.isActive()) {
+                        conn.rollback();
                     }
                 }
-                conn.commit();
-                if (newCountForCache >= 0) {
-                    loadedNanopubCount = newCountForCache;
-                }
-                if (newChecksumForCache != null) {
-                    loadedNanopubChecksum = newChecksumForCache;
-                }
-                success = true;
-            } catch (Exception ex) {
-                logger.warn("Failed to load nanopub <{}> to repo '{}': {}", npId, repoName, ex.getMessage(), ex);
-                if (conn.isActive()) {
-                    conn.rollback();
-                }
+            } finally {
+                repoLock.unlock();
             }
             if (!success) {
                 retries++;
@@ -662,34 +708,46 @@ public class NanopubLoader {
         boolean success = false;
         int retries = 0;
         while (!success) {
-            RepositoryConnection conn = TripleStore.get().getRepoConnection("spaces");
-            try (conn) {
-                conn.begin(IsolationLevels.SERIALIZABLE);
-                // Idempotency: skip if this nanopub is already stamped in this repo.
-                if (Utils.getObjectForPattern(conn, NPA.GRAPH, npId, NPA.HAS_LOAD_NUMBER) != null) {
-                    // INFO for the same reason as the loadNanopubToRepo skip (issue #139).
-                    logger.info("Skipping already-loaded nanopub <{}> in spaces repo", npId);
+            // Same substitution as loadNanopubToRepo: the spaces load counter is a
+            // read-modify-write, serialised by repoWriteLock instead of by the isolation
+            // level. NOTE: the spaces branch is also written by AuthorityResolver, which
+            // still uses SERIALIZABLE — so the ObservingSailDataset cost described on
+            // repoWriteLocks is not yet gone for this repo. Changing that is a separate
+            // step; this keeps the two loader paths consistent in the meantime.
+            ReentrantLock repoLock = repoWriteLock("spaces");
+            repoLock.lock();
+            try {
+                RepositoryConnection conn = TripleStore.get().getRepoConnection("spaces");
+                try (conn) {
+                    conn.begin(IsolationLevels.SNAPSHOT);
+                    // Idempotency: skip if this nanopub is already stamped in this repo.
+                    if (Utils.getObjectForPattern(conn, NPA.GRAPH, npId, NPA.HAS_LOAD_NUMBER) != null) {
+                        // INFO for the same reason as the loadNanopubToRepo skip (issue #139).
+                        logger.info("Skipping already-loaded nanopub <{}> in spaces repo", npId);
+                        conn.commit();
+                        success = true;
+                        continue;
+                    }
+                    long newCounter = fetchSpacesLoadCounter(conn) + 1;
+                    conn.remove(NPA.THIS_REPO,
+                            com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER,
+                            null, NPA.GRAPH);
+                    conn.add(NPA.THIS_REPO,
+                            com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER,
+                            vf.createLiteral(newCounter), NPA.GRAPH);
+                    conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(newCounter), NPA.GRAPH);
+                    conn.add(nanopubTriples);
+                    conn.add(spaceExtraction);
                     conn.commit();
                     success = true;
-                    continue;
+                } catch (Exception ex) {
+                    logger.warn("Failed to load nanopub <{}> to spaces repo: {}", npId, ex.getMessage(), ex);
+                    if (conn.isActive()) {
+                        conn.rollback();
+                    }
                 }
-                long newCounter = fetchSpacesLoadCounter(conn) + 1;
-                conn.remove(NPA.THIS_REPO,
-                        com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER,
-                        null, NPA.GRAPH);
-                conn.add(NPA.THIS_REPO,
-                        com.knowledgepixels.query.vocabulary.SpacesVocab.CURRENT_LOAD_COUNTER,
-                        vf.createLiteral(newCounter), NPA.GRAPH);
-                conn.add(npId, NPA.HAS_LOAD_NUMBER, vf.createLiteral(newCounter), NPA.GRAPH);
-                conn.add(nanopubTriples);
-                conn.add(spaceExtraction);
-                conn.commit();
-                success = true;
-            } catch (Exception ex) {
-                logger.warn("Failed to load nanopub <{}> to spaces repo: {}", npId, ex.getMessage(), ex);
-                if (conn.isActive()) {
-                    conn.rollback();
-                }
+            } finally {
+                repoLock.unlock();
             }
             if (!success) {
                 retries++;
