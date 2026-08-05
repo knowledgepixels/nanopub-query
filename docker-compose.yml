@@ -55,7 +55,36 @@ services:
       # starving every /api call with "Timeout waiting for connection from
       # pool" (incident 2026-07-28). Keep the sum of concurrent outer queries
       # and federated self-calls below Tomcat's worker pool (200).
-      - JAVA_OPTS=-Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=100 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
+      #
+      # ExitOnOutOfMemoryError: without it, a heap OOM is survivable in the worst
+      # possible way. On kpxl 2026-08-05 the OOM killed the "http-nio-8080-Acceptor"
+      # thread (04:17:08) and then the Poller (04:17:30) while the JVM stayed alive
+      # spinning in GC. With no acceptor, the socket stays bound but nothing ever
+      # accepts: the backlog fills, the kernel drops SYNs, and every client sees a
+      # 10 s connect timeout. The process never exits, so `restart: unless-stopped`
+      # never fires, and with RDF4J_HEALTHCHECK_RESTART=off nothing else intervenes
+      # — the instance sat wedged for 11 hours while still reporting READY.
+      # Exiting on the first OOM turns that permanent outage into a ~2 min restart.
+      # It also composes with the healthcheck decision rather than fighting it: the
+      # JVM only dies when it is already unrecoverable, so this does not reintroduce
+      # the mid-write kill risk of issue #142 that turning restarts off avoided.
+      #
+      # MaxRAMPercentage: the container has no mem_limit, so the JVM default of 25%
+      # of *host* RAM applied. Pinning it makes the ceiling explicit and independent
+      # of the host the stack lands on.
+      #
+      # HeapDumpOnOutOfMemoryError: /var/info is host-mounted (./data/info), so the
+      # dump survives the exit above and can be opened after the fact. Sized in GB —
+      # check free space there before enabling on a small host.
+      #
+      # PrintConcurrentLocks: makes a SIGQUIT (`kill -3`) thread dump include the
+      # "Locked ownable synchronizers" block, i.e. which thread *owns* each
+      # java.util.concurrent lock. Without it a plain kill -3 shows waiters but not
+      # holders. On 2026-08-05 a dump showed 171 threads parked on one
+      # SailSourceBranch ReentrantLock with no way to tell who held it, and the
+      # image ships a JRE (no jcmd/jstack), so there was no second way to ask.
+      # Zero runtime cost until a dump is requested.
+      - JAVA_OPTS=-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/info/ -XX:MaxRAMPercentage=${RDF4J_MAX_RAM_PERCENTAGE:-50} -XX:+PrintConcurrentLocks -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=100 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
       # Used by the healthcheck's federation probe below; defaults to the same
       # in-cluster URL the SERVICE rewrite uses, so the probe tests the real
       # federation route. Set explicitly empty to disable the probe.
@@ -71,6 +100,12 @@ services:
     ports:
       - "8081:8080"
     entrypoint: /var/entrypoint/init.sh
+    # Docker's default grace period is 10 s, but a clean Tomcat shutdown here has to
+    # close thousands of LMDB repos and measured ~100 s on kpxl (2026-07-31: kill at
+    # 13:55:14, port closed 13:56:54). At 10 s every stop became a SIGKILL, which is
+    # the hard-kill-mid-write condition implicated in issue #142. Forwarding SIGTERM
+    # from init.sh is pointless without giving the shutdown room to finish.
+    stop_grace_period: 120s
     healthcheck:
         # If the direct-query curl succeeds, mark the instance as "has been
         # ready". Only force a restart (via pkill) when a probe fails AND we've

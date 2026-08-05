@@ -29,4 +29,49 @@ fi
 rm -f /var/info/ready
 
 # Drop privileges back to the image's default tomcat user for the JVM itself.
-runuser -u tomcat -- catalina.sh run
+#
+# Run it in the background and wait, with SIGTERM/SIGINT forwarded to the JVM.
+# Without this, `docker stop` / `docker compose restart` / a container exit hands
+# SIGTERM to *this* script (PID 1); bash sitting in a foreground child does not
+# pass it on, the JVM never runs its shutdown hook, and 10 s later Docker sends
+# SIGKILL. Every Docker-initiated restart was therefore a hard kill — and a hard
+# kill of a store mid-write is the condition implicated in the acknowledged-write
+# loss of issue #142. kpxl restarted this container 97 times in the four days to
+# 2026-08-05, so this was the normal case, not an edge case.
+#
+# Deliberately still not `exec`: the JVM must stay a child rather than become PID 1,
+# both because signals to PID 1 are ignored unless explicitly handled and because
+# the healthcheck's restart_tomcat reaches it with pkill (see docker-compose.yml).
+#
+# The JVM is signalled directly rather than via $! (which is runuser's PID, not
+# the JVM's). Verified 2026-08-05: `kill -TERM` on the runuser PID does NOT reach
+# the JVM, so forwarding via $! would silently do nothing. `pkill java` is the
+# mechanism the healthcheck's restart_tomcat already relies on in this image.
+#
+# The wait is bounded rather than a bare `wait`: if pkill is ever missing or
+# matches nothing, blocking here would swallow the signal and sit until Docker's
+# SIGKILL — guaranteeing the hard kill this handler exists to prevent. Bounded at
+# just under the stop_grace_period set in docker-compose.yml.
+term_handler() {
+    if command -v pkill > /dev/null 2>&1; then
+        pkill -TERM java 2>/dev/null
+    else
+        kill -TERM "$child_pid" 2>/dev/null
+    fi
+    i=0
+    while [ "$i" -lt 110 ] && kill -0 "$child_pid" 2>/dev/null; do
+        sleep 1
+        i=$((i + 1))
+    done
+    exit 143
+}
+trap term_handler TERM INT
+
+runuser -u tomcat -- catalina.sh run &
+child_pid=$!
+# A trapped signal interrupts `wait`, but term_handler exits from inside the trap,
+# so control only reaches the next line when the JVM exited on its own — e.g. via
+# -XX:+ExitOnOutOfMemoryError. Propagating that status exits the container, which
+# is what lets `restart: unless-stopped` recover it.
+wait "$child_pid"
+exit $?
