@@ -116,6 +116,30 @@ public final class AuthorityResolver {
     public long getLastIncrementalCycleDurationMs() { return lastIncrementalCycleDurationMs; }
     public long getLastProcessedUpToLag() { return lastProcessedUpToLag; }
 
+    /**
+     * Raised when the space-state bookkeeping in the {@code spaces} repo cannot be
+     * <em>read</em>, as opposed to being legitimately absent.
+     *
+     * <p>The distinction is the whole point. Before 2026-08-05 every reader here
+     * collapsed both cases onto the same value — {@code null} pointer, load counter
+     * {@code 0}, {@code processedUpTo} {@code -1} — so a degraded RDF4J looked
+     * identical to a fresh install. On that day RDF4J was answering reads with
+     * {@code Read timed out}; {@link #tick()} saw a {@code null} pointer, logged a
+     * "trust-state flip" that had not happened, and ran a full build whose every
+     * source read also failed. The build inserted nothing, published the resulting
+     * empty graph, and dropped the previous good one — 2730 triples of live space
+     * state, on a query server that then served zero rows to every state query for
+     * hours. A sibling instance that stayed healthy still had all of it.
+     *
+     * <p>Throwing instead lets the caller abort. Doing nothing this tick is always
+     * safe; acting on a failed read is not.
+     */
+    static class SpaceStateUnavailableException extends RuntimeException {
+        SpaceStateUnavailableException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     // ---------------- Public entry points ----------------
 
     /**
@@ -135,12 +159,30 @@ public final class AuthorityResolver {
             logger.debug("AuthorityResolver.tick: no current trust state yet — skipping");
             return;
         }
+        // Any of the reads below may throw SpaceStateUnavailableException. Let it
+        // propagate: the caller logs "AuthorityResolver tick failed" and we retry on
+        // the next tick with the state untouched.
         IRI currentGraph = getCurrentSpaceStateGraph();
         String currentGraphName = (currentGraph == null) ? null
                 : currentGraph.stringValue().substring(SpacesVocab.NPASS_NAMESPACE.length());
-        if (currentGraphName == null || !currentGraphName.startsWith(trustStateHash + "_")) {
+        if (currentGraphName == null) {
+            logger.info("AuthorityResolver.tick: no current space-state graph; running full build");
+            runFullBuild(trustStateHash);
+            return;
+        }
+        if (!currentGraphName.startsWith(trustStateHash + "_")) {
             logger.info("AuthorityResolver.tick: trust-state flip detected (now {}); running full build",
                     abbrev(trustStateHash));
+            runFullBuild(trustStateHash);
+            return;
+        }
+        // A pointer at a graph that never got its processedUpTo stamp means the build
+        // that published it did not finish. runIncrementalCycle used to log "missing
+        // processedUpTo; skipping" and return — every 2 s, forever, with every
+        // state-backed query answering empty in the meantime. Rebuild instead.
+        if (readProcessedUpTo(currentGraph) < 0) {
+            logger.warn("AuthorityResolver.tick: current space-state graph {} has no processedUpTo "
+                    + "stamp (incomplete or damaged build); running full build", currentGraph);
             runFullBuild(trustStateHash);
             return;
         }
@@ -173,9 +215,20 @@ public final class AuthorityResolver {
      * {@code npa:hasCurrentSpaceState} pointer isn't pointing at. Orphans come
      * from crashes mid-build. Safe to call at any time; idempotent.
      */
-    public void cleanOrphans() {
+    public synchronized void cleanOrphans() {
         if (!FeatureFlags.spacesEnabled()) return;
-        IRI current = getCurrentSpaceStateGraph();
+        IRI current;
+        try {
+            current = getCurrentSpaceStateGraph();
+        } catch (SpaceStateUnavailableException ex) {
+            // Every npass:* graph is "not the current one" when the pointer cannot be
+            // read, so continuing here would drop the live state along with the
+            // orphans. Skipping costs nothing: orphans are inert, and the next start
+            // will clean them up.
+            logger.warn("AuthorityResolver.cleanOrphans: cannot read the current-state pointer, "
+                    + "skipping so orphan cleanup cannot delete the live graph: {}", ex.toString());
+            return;
+        }
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
             int dropped = 0;
             try (RepositoryResult<org.eclipse.rdf4j.model.Resource> ctxs = conn.getContextIDs()) {
@@ -216,9 +269,20 @@ public final class AuthorityResolver {
         long loadCounter = getCurrentLoadCounter();
         IRI newGraph = SpacesVocab.forSpaceState(trustStateHash, loadCounter);
         IRI oldGraph = getCurrentSpaceStateGraph();
-        if (newGraph.equals(oldGraph)) {
-            logger.debug("AuthorityResolver.runFullBuild: already current at {}", newGraph);
-            return;
+        boolean rebuildInPlace = newGraph.equals(oldGraph);
+        if (rebuildInPlace) {
+            // "Already current" is only true if that graph was actually finished.
+            // Without the processedUpTo check this early return was the second half
+            // of the 2026-08-05 trap: once a damaged graph was published, the pointer
+            // name still matched, so every subsequent full build returned here and
+            // the instance could never repair itself.
+            if (readProcessedUpTo(oldGraph) >= 0) {
+                logger.debug("AuthorityResolver.runFullBuild: already current at {}", newGraph);
+                return;
+            }
+            logger.warn("AuthorityResolver.runFullBuild: {} is the current graph but has no "
+                    + "processedUpTo stamp; rebuilding it in place", newGraph);
+            dropGraph(newGraph);
         }
 
         // 1. Mirror trust-approved rows into the new graph.
@@ -228,25 +292,58 @@ public final class AuthorityResolver {
         //    delta filter FILTER(?ln > ?lastProcessed) includes everything).
         TierInsertedTriples counts = runAllTierLoops(newGraph, -1);
 
+        // 2b. Refuse to publish an empty build over a state we already have — but only
+        // when the emptiness cannot be true.
+        //
+        // Steps 4 and 5 below are destructive, so a build that read nothing must not
+        // reach them. The trap is that "produced nothing" has two causes: every source
+        // read failed, or the sources really are empty. Refusing in the second case
+        // would pin a stale space state forever, and stale trust data is
+        // over-permissive — revocations would stop propagating. That is the wrong way
+        // to fail for a trust-derived state.
+        //
+        // So the condition is: nothing was produced *while the trust state still has
+        // content to mirror*. That is the shape of a read failure. A genuinely empty
+        // trust state yields an empty build and is published normally.
+        //
+        // Only guarded when a previous state exists: a genuinely empty first build on
+        // a fresh instance has nothing to lose and must still be allowed to publish.
+        //
+        // Note this would NOT have fired on 2026-08-05: that build reported
+        // subspace-prefix=2478, so it was not empty. The wipe there came from the
+        // registry's trust state collapsing (correctly reflected) plus 2478 triples
+        // that were reported inserted and then measured as zero. This guard is for the
+        // total-read-failure case, which the same outage came close to several times.
+        long insertedTotal = totalInserted(counts);
+        if (mirrored == 0 && insertedTotal == 0 && oldGraph != null
+                && trustStateHasContent(trustStateHash)) {
+            logger.error("AuthorityResolver.runFullBuild: build produced an empty state graph "
+                    + "(mirrored=0, inserted=0) while trust state {} still has content and {} "
+                    + "holds the current state — refusing to flip the pointer or drop it. "
+                    + "This is the shape of a total read failure; the next tick will retry.",
+                    abbrev(trustStateHash), oldGraph);
+            if (!rebuildInPlace) {
+                dropGraph(newGraph);
+            }
+            return;
+        }
+
         // 3. Stamp processedUpTo inside the new graph.
         writeProcessedUpTo(newGraph, loadCounter);
 
         // 4. Flip the current-space-state pointer.
         flipPointer(newGraph);
 
-        // 5. Drop the old graph if one existed.
-        if (oldGraph != null) {
+        // 5. Drop the old graph if a *different* one existed. Dropping it when
+        //    rebuilding in place would delete what we just built.
+        if (oldGraph != null && !rebuildInPlace) {
             dropGraph(oldGraph);
         }
 
         TierSubjectTotals totals = computeTierSubjectTotals(newGraph);
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
         lastSubjectTotals = totals;
-        lastInsertedTriplesTotal = (long) counts.admin + counts.alias + counts.presetAttachment
-                + counts.presetAssignmentRef
-                + counts.attachment + counts.maintainer + counts.member + counts.observer
-                + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource
-                + counts.governingSpaceRef;
+        lastInsertedTriplesTotal = insertedTotal;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
         logger.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
@@ -286,8 +383,11 @@ public final class AuthorityResolver {
         long currentLoadCounter = getCurrentLoadCounter();
         long lastProcessed = readProcessedUpTo(graph);
         if (lastProcessed < 0) {
-            logger.warn("AuthorityResolver.runIncrementalCycle: missing processedUpTo on {}; skipping",
-                    graph);
+            // tick() now catches this first and rebuilds, so reaching here means a
+            // direct caller. Still refuse to run a delta against a graph that was
+            // never finished — the deltas would be layered onto missing base rows.
+            logger.warn("AuthorityResolver.runIncrementalCycle: missing processedUpTo on {}; "
+                    + "skipping (a full build is needed to repair this graph)", graph);
             return;
         }
         lastProcessedUpToLag = currentLoadCounter - lastProcessed;
@@ -587,6 +687,18 @@ public final class AuthorityResolver {
      * {@link #computeTierSubjectTotals} for the distinct-subject totals
      * surfaced to operators.
      */
+    /**
+     * Total triples inserted across every tier. Used both for the metrics gauge and
+     * for the empty-build guard in {@link #runFullBuild}, so the two can never
+     * disagree about what "this build produced nothing" means.
+     */
+    static long totalInserted(TierInsertedTriples c) {
+        return (long) c.admin + c.alias + c.presetAttachment + c.presetAssignmentRef
+                + c.attachment + c.maintainer + c.member + c.observer
+                + c.subSpace + c.subSpacePrefix + c.maintainedResource
+                + c.governingSpaceRef;
+    }
+
     static final class TierInsertedTriples {
         int admin;
         int alias;
@@ -3110,6 +3222,31 @@ public final class AuthorityResolver {
      *
      * @return number of rows mirrored (useful for metrics / logging)
      */
+    /**
+     * Whether the given trust state's graph holds anything at all.
+     *
+     * <p>Used by {@link #runFullBuild} to tell a build that read nothing because the store
+     * would not answer from a build that read nothing because there is nothing to read. Only
+     * the first is a reason to withhold the result; withholding the second would freeze a
+     * stale space state in place, and stale trust data is over-permissive.
+     *
+     * <p>Throws rather than guessing if the trust repo cannot be read — {@link #runFullBuild}
+     * then aborts without publishing or dropping anything, which is the safe direction.
+     *
+     * @param trustStateHash the trust state hash
+     * @return true if the trust state graph contains at least one triple
+     */
+    boolean trustStateHasContent(String trustStateHash) {
+        IRI trustStateIri = NPAT.forHash(trustStateHash);
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(TRUST_REPO)) {
+            String query = String.format("ASK { GRAPH <%s> { ?s ?p ?o } }", trustStateIri);
+            return conn.prepareBooleanQuery(QueryLanguage.SPARQL, query).evaluate();
+        } catch (Exception ex) {
+            throw new SpaceStateUnavailableException(
+                    "failed to read trust state graph " + trustStateIri, ex);
+        }
+    }
+
     int mirrorTrustState(String trustStateHash, IRI newGraph) {
         IRI trustStateIri = NPAT.forHash(trustStateHash);
         int count = 0;
@@ -3184,8 +3321,7 @@ public final class AuthorityResolver {
                     SpacesVocab.HAS_CURRENT_SPACE_STATE);
             return (v instanceof IRI iri) ? iri : null;
         } catch (Exception ex) {
-            logger.warn("AuthorityResolver: failed to read hasCurrentSpaceState pointer: {}", ex.toString());
-            return null;
+            throw new SpaceStateUnavailableException("failed to read hasCurrentSpaceState pointer", ex);
         }
     }
 
@@ -3197,12 +3333,15 @@ public final class AuthorityResolver {
             try {
                 return Long.parseLong(v.stringValue());
             } catch (NumberFormatException ex) {
-                logger.warn("AuthorityResolver: non-numeric currentLoadCounter: {}", v);
-                return 0;
+                // Was "return 0", which would name the new graph <hash>_0 and make it
+                // differ from the real current graph — so the build proceeded and then
+                // dropped the good one. Corrupt bookkeeping must stop the build.
+                throw new SpaceStateUnavailableException("non-numeric currentLoadCounter: " + v, ex);
             }
+        } catch (SpaceStateUnavailableException ex) {
+            throw ex;
         } catch (Exception ex) {
-            logger.warn("AuthorityResolver: failed to read currentLoadCounter: {}", ex.toString());
-            return 0;
+            throw new SpaceStateUnavailableException("failed to read currentLoadCounter", ex);
         }
     }
 
@@ -3258,8 +3397,10 @@ public final class AuthorityResolver {
                 return Long.parseLong(b.getBinding("n").getValue().stringValue());
             }
         } catch (Exception ex) {
-            logger.warn("AuthorityResolver: failed to read processedUpTo for {}: {}", graph, ex.toString());
-            return -1;
+            // Must not collapse to -1: callers read -1 as "this graph was never
+            // finished" and rebuild from scratch. A timed-out read returning -1 would
+            // make a healthy state look damaged and trigger a destructive rebuild.
+            throw new SpaceStateUnavailableException("failed to read processedUpTo for " + graph, ex);
         }
     }
 
