@@ -76,7 +76,15 @@ services:
       # HeapDumpOnOutOfMemoryError: /var/info is host-mounted (./data/info), so the
       # dump survives the exit above and can be opened after the fact. Sized in GB —
       # check free space there before enabling on a small host.
-      - JAVA_OPTS=-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/info/ -XX:MaxRAMPercentage=${RDF4J_MAX_RAM_PERCENTAGE:-50} -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=100 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
+      #
+      # PrintConcurrentLocks: makes a SIGQUIT (`kill -3`) thread dump include the
+      # "Locked ownable synchronizers" block, i.e. which thread *owns* each
+      # java.util.concurrent lock. Without it a plain kill -3 shows waiters but not
+      # holders. On 2026-08-05 a dump showed 171 threads parked on one
+      # SailSourceBranch ReentrantLock with no way to tell who held it, and the
+      # image ships a JRE (no jcmd/jstack), so there was no second way to ask.
+      # Zero runtime cost until a dump is requested.
+      - JAVA_OPTS=-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/info/ -XX:MaxRAMPercentage=${RDF4J_MAX_RAM_PERCENTAGE:-50} -XX:+PrintConcurrentLocks -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=100 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
       # Used by the healthcheck's federation probe below; defaults to the same
       # in-cluster URL the SERVICE rewrite uses, so the probe tests the real
       # federation route. Set explicitly empty to disable the probe.
