@@ -714,6 +714,11 @@ public class MainVerticle extends AbstractVerticle {
         //
         // Omitted rather than sent as 0 before the first tick completes, so consumers can
         // tell "not started yet" from "just ticked".
+        //
+        // The value is only stamped after RDF4J has actually answered (see
+        // JellyNanopubLoader#lastSuccessfulBatchAtMs), so on a caught-up instance it
+        // cycles 0..JellyNanopubLoader.STORE_PROBE_INTERVAL_MS rather than sitting at 0.
+        // Alert thresholds must therefore exceed that interval; minutes, not seconds.
         long lastBatchAt = JellyNanopubLoader.lastSuccessfulBatchAtMs;
         if (lastBatchAt != 0L) {
             long ageSeconds = Math.max(0L, (System.currentTimeMillis() - lastBatchAt) / 1000L);
