@@ -44,8 +44,8 @@
     <nanopub.version>1.91.0</nanopub.version>
     <nanopub-testsuite-connector.version>1.0.0</nanopub-testsuite-connector.version>
     <commons-exec.version>1.6.0</commons-exec.version>
-    <jcl-over-slf4j.version>2.0.7</jcl-over-slf4j.version>
-    <slf4j-simple.version>2.0.17</slf4j-simple.version>
+    <jcl-over-slf4j.version>2.0.18</jcl-over-slf4j.version>
+    <slf4j-simple.version>2.0.18</slf4j-simple.version>
     <micrometer-registry-prometheus.version>1.10.13</micrometer-registry-prometheus.version>
     <mockito-core.version>5.23.0</mockito-core.version>
 
