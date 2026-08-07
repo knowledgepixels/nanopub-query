@@ -39,7 +39,7 @@
 
     <vertx.version>4.5.32</vertx.version>
     <junit-jupiter.version>6.1.0</junit-jupiter.version>
-    <rdf4j.version>5.3.1</rdf4j.version>
+    <rdf4j.version>5.3.2</rdf4j.version>
 
     <nanopub.version>1.91.0</nanopub.version>
     <nanopub-testsuite-connector.version>1.0.0</nanopub-testsuite-connector.version>
