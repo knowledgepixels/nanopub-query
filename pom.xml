@@ -37,7 +37,7 @@
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <jib-maven-plugin.version>3.5.1</jib-maven-plugin.version>
 
-    <vertx.version>4.5.32</vertx.version>
+    <vertx.version>5.1.6</vertx.version>
     <junit-jupiter.version>6.1.0</junit-jupiter.version>
     <rdf4j.version>5.3.1</rdf4j.version>
 
