@@ -46,7 +46,7 @@
     <commons-exec.version>1.6.0</commons-exec.version>
     <jcl-over-slf4j.version>2.0.18</jcl-over-slf4j.version>
     <slf4j-simple.version>2.0.18</slf4j-simple.version>
-    <micrometer-registry-prometheus.version>1.10.13</micrometer-registry-prometheus.version>
+    <micrometer-registry-prometheus.version>1.17.0</micrometer-registry-prometheus.version>
     <mockito-core.version>5.23.0</mockito-core.version>
 
     <main.verticle>com.knowledgepixels.query.MainVerticle</main.verticle>
