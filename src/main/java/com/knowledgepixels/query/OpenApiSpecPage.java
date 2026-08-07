@@ -66,21 +66,23 @@ public class OpenApiSpecPage {
         responsesMap.put("200", successrespMap);
         List<Object> parametersList = new ArrayList<>();
 
-        final Map<String, Object> stringType = new LinkedHashMap<>();
-        stringType.put("type", "string");
-        final Map<String, Object> stringListType = new LinkedHashMap<>();
-        stringListType.put("type", "array");
-        stringListType.put("items", stringType);
-
         for (String p : grlcSpec.getPlaceholdersList()) {
             Map<String, Object> paramMap = new LinkedHashMap<>();
             paramMap.put("in", "query");
             String name = GrlcSpec.getParamName(p);
             paramMap.put("name", name);
             paramMap.put("required", !GrlcSpec.isOptionalPlaceholder(p));
+            // A fresh schema map is created for each parameter on purpose: sharing a single map
+            // instance across parameters makes SnakeYAML emit YAML anchors/aliases (&id/*id), which
+            // some OpenAPI validators fail to resolve (see issue #50).
+            final Map<String, Object> stringType = new LinkedHashMap<>();
+            stringType.put("type", "string");
             if (GrlcSpec.isMultiPlaceholder(p)) {
+                final Map<String, Object> stringListType = new LinkedHashMap<>();
+                stringListType.put("type", "array");
+                stringListType.put("items", stringType);
                 paramMap.put("style", "form");
-                paramMap.put("explde", "true");
+                paramMap.put("explode", true);
                 paramMap.put("schema", stringListType);
             } else {
                 paramMap.put("schema", stringType);
