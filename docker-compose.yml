@@ -98,7 +98,15 @@ services:
       - ./data/info:/var/info
       - ./entrypoint:/var/entrypoint
     ports:
-      - "8081:8080"
+      # Localhost only: RDF4J has no authentication, and every repository it
+      # serves is writable, including via DELETE on the repository URL and via
+      # the Workbench UI. Published on all interfaces it is an unauthenticated
+      # write endpoint on the public IP, which bypasses whatever the reverse
+      # proxy restricts. Note that a host firewall does not help here, since
+      # Docker manages its own iptables rules. Reached as http://rdf4j:8080/
+      # from the query container, and via the proxy on 127.0.0.1:8081.
+      # (Compare the 2026-08-02 Solr wipe on vodex.petapico.org.)
+      - "127.0.0.1:8081:8080"
     entrypoint: /var/entrypoint/init.sh
     # Docker's default grace period is 10 s, but a clean Tomcat shutdown here has to
     # close thousands of LMDB repos and measured ~100 s on kpxl (2026-07-31: kill at
