@@ -9,6 +9,13 @@
   },
   "packageRules": [
     {
+      "description": "RDF4J 6.x rejects 5.x LMDB stores (wipe + full re-ingest to upgrade) and fixes none of our LMDB defects (eclipse-rdf4j/rdf4j#5970); hold the server image below 6 until upgrading is worth a migration",
+      "matchPackageNames": [
+        "eclipse/rdf4j-workbench"
+      ],
+      "allowedVersions": "<6"
+    },
+    {
       "description": "Updates to the parent dependencies should trigger a new patch release",
       "matchFileNames": [
         "pom.xml"
