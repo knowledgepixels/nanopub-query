@@ -1,3 +1,53 @@
+## [1.24.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.24.1...nanopub-query-1.24.2) (2026-08-11)
+
+### Dependency updates
+
+* **core-deps:** update dependency org.eclipse.rdf4j:rdf4j-bom to v5.3.2 ([f060179](https://github.com/knowledgepixels/nanopub-query/commit/f060179f7de892fc8e2c9c2381c75d016d9991c3))
+* **core-deps:** update dependency org.junit:junit-bom to v6.1.3 ([f1e1b03](https://github.com/knowledgepixels/nanopub-query/commit/f1e1b0309ebc1994ff4a1cdeee34f7d812c5921e))
+* **core-deps:** update slf4j monorepo to v2.0.18 ([e18c08c](https://github.com/knowledgepixels/nanopub-query/commit/e18c08c1511fdbf1ebe97c37e52dbeb96861d54a))
+* **deps:** update eclipse/rdf4j-workbench docker tag to v6 ([edde1a4](https://github.com/knowledgepixels/nanopub-query/commit/edde1a4cb84468838db75df0cb3c1bb4f44c95b9))
+* **deps:** update vertx.version to v4.5.32 ([f9c90aa](https://github.com/knowledgepixels/nanopub-query/commit/f9c90aafa1f03f5aa9db280ebc7dddd7210436fe))
+
+### Bug Fixes
+
+* **nginx:** restrict /repo to read-only methods ([6446cae](https://github.com/knowledgepixels/nanopub-query/commit/6446cae3ffef5f807bc01bf4f0a177ebd8c643e6))
+* **openapi:** avoid YAML anchors in parameter schemas ([#50](https://github.com/knowledgepixels/nanopub-query/issues/50)) ([f846a9e](https://github.com/knowledgepixels/nanopub-query/commit/f846a9e4ddb4a5e12a20362377225eb3d0172f39))
+* **rdf4j:** bind port to localhost ([e282fbf](https://github.com/knowledgepixels/nanopub-query/commit/e282fbfcd337b9d7eb9a360378e6b366923f2c59))
+* **rdf4j:** pin server image to 5.3.2, hold renovate below 6.x ([98754a9](https://github.com/knowledgepixels/nanopub-query/commit/98754a9b70fba0fd28130d299dfad9228768631d)), closes [#179](https://github.com/knowledgepixels/nanopub-query/issues/179)
+
+### Tests
+
+* add in-memory triple store harness ([adfe694](https://github.com/knowledgepixels/nanopub-query/commit/adfe6941cc78399e215b575866578f3b056a042e))
+* **spaces:** cover the AuthorityResolver materialization pipeline ([6bb5971](https://github.com/knowledgepixels/nanopub-query/commit/6bb5971c3dce75884cf612d543e1bf4e9ea684ba))
+* **spaces:** realign read-helper tests with the fail-loud build guards ([0022f04](https://github.com/knowledgepixels/nanopub-query/commit/0022f044904aa6c02f859c598742b3b29c4bb60f)), closes [#159](https://github.com/knowledgepixels/nanopub-query/issues/159)
+* **trust-state:** cover loader fetch, materialization and bootstrap ([3540655](https://github.com/knowledgepixels/nanopub-query/commit/35406551ed67d39d6fd86d65493ee11350e0a8d5))
+* **trust-state:** cover snapshot extended-JSON parsing ([345723a](https://github.com/knowledgepixels/nanopub-query/commit/345723a997828027f0b8e926a27193ce60fb1786))
+
+### Build and continuous integration
+
+* **deps:** lock file maintenance ([ec2a7ad](https://github.com/knowledgepixels/nanopub-query/commit/ec2a7ad38dc2e99e8e70f3e3c982fb708758153c))
+* **deps:** update actions/checkout action to v7.0.1 ([80e2513](https://github.com/knowledgepixels/nanopub-query/commit/80e251362f33a89f6ba4662e4821be5e3f1cb4b1))
+* **deps:** update actions/setup-java action to v5.7.0 ([b96123c](https://github.com/knowledgepixels/nanopub-query/commit/b96123c7b2d112bb886e584cb49cfe8d906363f9))
+* **deps:** update actions/setup-node action to v7 ([b06784a](https://github.com/knowledgepixels/nanopub-query/commit/b06784a83fea5a4af5d8d58a36595d8235a17b83))
+* **deps:** update coverallsapp/github-action action to v2.3.8 ([e8ed5be](https://github.com/knowledgepixels/nanopub-query/commit/e8ed5be8e9eccf06ca17f245933f293b2a87d45d))
+* **deps:** update dependency com.google.cloud.tools:jib-maven-plugin to v3.5.2 ([d41e9cb](https://github.com/knowledgepixels/nanopub-query/commit/d41e9cb680707fd30da2675c443989397a739cfc))
+* **deps:** update dependency node to v24.19.0 ([0f1a7ad](https://github.com/knowledgepixels/nanopub-query/commit/0f1a7ade938f00e8992e414cdd438df561a2c2a1))
+* **deps:** update dependency org.apache.maven.plugins:maven-surefire-plugin to v3.5.6 ([324d060](https://github.com/knowledgepixels/nanopub-query/commit/324d060ef81464fc7d4eeb892322f792ec0aaefe))
+* **release:** update Node.js to v24.11.1 ([c19eb6a](https://github.com/knowledgepixels/nanopub-query/commit/c19eb6ad60cc746f587bf7620e64980839b32952))
+
+### General maintenance
+
+* **renovate:** add configuration ([e11d413](https://github.com/knowledgepixels/nanopub-query/commit/e11d4136521c28a86e8023bd5921996a0c6a83c4))
+* setting next snapshot version [skip ci] ([a66b3f0](https://github.com/knowledgepixels/nanopub-query/commit/a66b3f0797440d8ceb946a785a0d54748c6437d6))
+
+### Style improvements
+
+* **trust-state:** apply IDE formatting to TrustStateLoader ([73c19de](https://github.com/knowledgepixels/nanopub-query/commit/73c19de6eb051ae787e9ebb64305b1f645c31b83))
+
+### Refactoring
+
+* **trust-state:** extract HTTP GET seam in TrustStateLoader ([6b245d3](https://github.com/knowledgepixels/nanopub-query/commit/6b245d308dcd92e40fe34f155545d8769002a6d8))
+
 ## [1.24.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.24.0...nanopub-query-1.24.1) (2026-08-05)
 
 ### Bug Fixes
