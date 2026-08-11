@@ -82,8 +82,30 @@ public class MainVerticle extends AbstractVerticle {
                 new PoolOptions().setHttp1MaxSize(200).setHttp2MaxSize(200)
         );
 
+        // Idle timeout on the *server* side, which was previously unset ("wait forever").
+        // SERVICE clauses in /api queries loop back into this server via
+        // NANOPUB_QUERY_INTERNAL_URL, so the RDF4J server holds a pooled connection here
+        // for every federated evaluation. When RDF4J leaks such a lease (the ValueStore
+        // ReadTxn leak, eclipse-rdf4j/rdf4j#5970), nothing on this end ever closes the
+        // socket: it stays ESTABLISHED, Apache's evictExpiredConnections never sees it as
+        // stale, and the slot is gone until Tomcat restarts. Observed on 2026-08-11:
+        // 100/100 connections to this port held ESTABLISHED while all 157 Tomcat worker
+        // threads sat idle in their task queue, i.e. a fully leased pool with zero work in
+        // flight, and every federated query failing with "Timeout waiting for connection
+        // from pool" until the store was restarted by hand.
+        //
+        // Closing idle connections turns that permanent wedge into a self-healing one: a
+        // leaked lease is closed by this end, goes stale, and is evicted from RDF4J's pool.
+        // The default is deliberately far above any legitimate idle period on that route —
+        // RDF4J's own client uses a 10 s socket timeout for SERVICE evaluation — while
+        // still bounding the leak. Note this counts *any* inactivity, including a slow
+        // query that has not started streaming its response, so do not lower it below the
+        // slowest query this instance is expected to serve.
         HttpServer proxyServer = vertx.createHttpServer(
-                new HttpServerOptions().setMaxInitialLineLength(65536)
+                new HttpServerOptions()
+                        .setMaxInitialLineLength(65536)
+                        .setIdleTimeoutUnit(TimeUnit.SECONDS)
+                        .setIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_SERVER_IDLE_TIMEOUT", 300))
         );
         Router proxyRouter = Router.router(vertx);
         proxyRouter.route().handler(CorsHandler.create().addRelativeOrigin(".*"));
