@@ -40,7 +40,14 @@ services:
     # Source branch: https://github.com/Ostrzyciel/rdf4j/tree/piotr/merged-fixes-2025-12-10
     # (Commented out because it seems it doesn't have curl installed, which is needed for the healthcheck.)
     #image: ostrzyciel/rdf4j-workbench-tomcat:5.2.2-SNAPSHOT-b
-    image: eclipse/rdf4j-workbench:6.0.0-tomcat
+    # Pinned below 6.x: 6.0.0 changed the LMDB value-ID layout and refuses to
+    # open 5.x stores ("Directory contains data from an older unsupported
+    # version of LmdbStore" — verified empirically 2026-08-11), so the bump is
+    # a wipe-and-full-re-ingest migration, not an image swap. The 6.0.0 image
+    # also runs Tomcat as uid 100 instead of 101, breaking host-volume
+    # permissions. None of our three LMDB defects (eclipse-rdf4j/rdf4j#5970)
+    # are fixed in 6.0.0, so there is currently nothing to buy for that cost.
+    image: eclipse/rdf4j-workbench:5.3.2-tomcat
     restart: unless-stopped
     # Start as root so init.sh can apt-get install curl (missing from the
     # 5.3.1-tomcat image but required by the healthcheck). init.sh drops to
