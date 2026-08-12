@@ -635,7 +635,7 @@ public class NanopubLoader {
                 String newChecksumForCache = null;
                 try (conn) {
                     conn.begin(IsolationLevels.SNAPSHOT);
-                    var repoStatus = fetchRepoStatus(conn, npId);
+                    var repoStatus = fetchRepoStatus(conn, npId, repoName);
                     if (repoStatus.isLoaded) {
                         // INFO, not DEBUG: this skip decides that a shard write is unnecessary
                         // based on a single store read. When the backend misbehaves (issue #139:
@@ -893,7 +893,7 @@ public class NanopubLoader {
         }
     }
 
-    private record RepoStatus(boolean isLoaded, long count, String checksum) {
+    record RepoStatus(boolean isLoaded, long count, String checksum) {
     }
 
     /**
@@ -906,12 +906,21 @@ public class NanopubLoader {
      * @return the current status
      */
     @GeneratedFlagForDependentElements
-    private static RepoStatus fetchRepoStatus(RepositoryConnection conn, IRI npId) {
+    static RepoStatus fetchRepoStatus(RepositoryConnection conn, IRI npId, String repoName) {
         var result = conn.prepareTupleQuery(QueryLanguage.SPARQL, REPO_STATUS_QUERY_TEMPLATE.formatted(npId)).evaluate();
         try (result) {
             if (!result.hasNext()) {
-                // This may happen if the repo was created, but is completely empty.
-                return new RepoStatus(false, 0, NanopubUtils.INIT_CHECKSUM);
+                // Every repo this loader writes is seeded with count=0 + INIT_CHECKSUM in
+                // initNewRepo's creation transaction, so an empty result can only mean a
+                // degraded read (a misbehaving store returning no rows instead of failing,
+                // issue #142) or a store that lost its admin triples. Treating it as "fresh
+                // repo" would commit count=1 over the existing chain — observed on the kpxl
+                // full repo 2026-08-12 (count reset from 86860 to ~0 while all data was
+                // still present). Throw instead: the caller's retry loop absorbs transients,
+                // and a persistent failure surfaces to the operator rather than corrupting
+                // the chain.
+                throw new RuntimeException("Repo '" + repoName + "' returned no count/checksum chain; "
+                        + "refusing to treat a possibly-degraded read as a fresh repo");
             }
             var row = result.next();
             return new RepoStatus(row.hasBinding("loadNumber"), Long.parseLong(row.getBinding("count").getValue().stringValue()), row.getBinding("checksum").getValue().stringValue());
