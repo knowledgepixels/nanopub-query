@@ -42,7 +42,7 @@ import com.knowledgepixels.query.vocabulary.NPAT;
  * every ~2 s anyway and reads {@code Nanopub-Registry-Trust-State-Hash}). This
  * class does the rest: fetch {@code /trust-state/<hash>.json}, parse the
  * envelope, materialize the snapshot into a named graph, and swap the current
- * pointer — all in one serializable transaction.
+ * pointer — all in one atomic transaction.
  *
  * <p>
  * See {@code doc/design-trust-state-repos.md} for the full design.
@@ -249,7 +249,7 @@ public class TrustStateLoader {
     /**
      * Writes the snapshot's account-state triples into the trust state's named
      * graph, writes cross-state metadata into {@code npa:graph}, and swaps the
-     * current-state pointer — all in one serializable transaction. Idempotent
+     * current-state pointer — all in one atomic transaction. Idempotent
      * on the same hash (re-running just rewrites the same triples).
      *
      * @param snapshot the snapshot to materialize
@@ -259,7 +259,11 @@ public class TrustStateLoader {
 
         try (RepositoryConnection conn
                 = TripleStore.get().getRepoConnection(TRUST_REPO)) {
-            conn.begin(IsolationLevels.SERIALIZABLE);
+            // Crash-safety of the materialization + pointer swap comes from transaction
+            // atomicity, not the isolation level, and this poll thread is the trust
+            // repo's only writer; see NanopubLoader#repoWriteLocks for why SERIALIZABLE
+            // is avoided.
+            conn.begin(IsolationLevels.SNAPSHOT);
 
             // 1. Account-state triples in the trust state's named graph.
             // depth / pathCount / ratio / quota may be null (e.g. for status=skipped

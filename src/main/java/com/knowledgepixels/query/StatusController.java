@@ -166,8 +166,10 @@ public class StatusController {
             state = State.LAUNCHING;
             try (RepositoryConnection conn = openAdminConnection()) {
                 try {
-                    // Serializable, as the service state needs to be strictly consistent
-                    conn.begin(IsolationLevels.SERIALIZABLE);
+                    // This singleton's synchronized methods are the only writer of these
+                    // triples, so SNAPSHOT already gives strict consistency; see
+                    // NanopubLoader#repoWriteLocks for why SERIALIZABLE is avoided.
+                    conn.begin(IsolationLevels.SNAPSHOT);
                     // Fetch the state from the DB
                     try (var statements = conn.getStatements(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH)) {
                         if (!statements.hasNext()) {
@@ -314,7 +316,7 @@ public class StatusController {
         synchronized (this) {
             try (RepositoryConnection conn = openAdminConnection()) {
                 try {
-                    conn.begin(IsolationLevels.SERIALIZABLE);
+                    conn.begin(IsolationLevels.SNAPSHOT);
                     conn.remove(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, null, NPA.GRAPH);
                     conn.add(NPA.THIS_REPO, HAS_REGISTRY_SETUP_ID, vf.createLiteral(setupId), NPA.GRAPH);
                     conn.commit();
@@ -352,8 +354,10 @@ public class StatusController {
         synchronized (this) {
             try (RepositoryConnection conn = openAdminConnection()) {
                 try {
-                    // Serializable, as the service state needs to be strictly consistent
-                    conn.begin(IsolationLevels.SERIALIZABLE);
+                    // This singleton's synchronized methods are the only writer of these
+                    // triples, so SNAPSHOT already gives strict consistency; see
+                    // NanopubLoader#repoWriteLocks for why SERIALIZABLE is avoided.
+                    conn.begin(IsolationLevels.SNAPSHOT);
                     conn.remove(NPA.THIS_REPO, NPA.HAS_STATUS, null, NPA.GRAPH);
                     conn.add(NPA.THIS_REPO, NPA.HAS_STATUS, stateAsLiteral(newState), NPA.GRAPH);
                     conn.remove(NPA.THIS_REPO, NPA.HAS_REGISTRY_LOAD_COUNTER, null, NPA.GRAPH);

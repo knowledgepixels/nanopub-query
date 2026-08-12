@@ -241,7 +241,7 @@ public final class AuthorityResolver {
                     toDrop.add(iri);
                 }
                 for (IRI iri : toDrop) {
-                    conn.begin(IsolationLevels.SERIALIZABLE);
+                    conn.begin(IsolationLevels.SNAPSHOT);
                     conn.clear(iri);
                     conn.commit();
                     dropped++;
@@ -3253,7 +3253,11 @@ public final class AuthorityResolver {
         try (RepositoryConnection trustConn = TripleStore.get().getRepoConnection(TRUST_REPO);
              RepositoryConnection spacesConn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
             trustConn.begin(IsolationLevels.READ_COMMITTED);
-            spacesConn.begin(IsolationLevels.SERIALIZABLE);
+            // Append-only writes into the not-yet-published newGraph (the current-state
+            // pointer is swapped to it only after the build completes), and all spaces
+            // writers serialise via this class's synchronized methods; see
+            // NanopubLoader#repoWriteLocks for why SERIALIZABLE is avoided.
+            spacesConn.begin(IsolationLevels.READ_COMMITTED);
             // Walk rdf:type triples in the trust state's graph; for each AccountState,
             // check status and copy the approved ones verbatim (minus status-specific
             // detail triples, which we don't need for validation).
@@ -3360,7 +3364,7 @@ public final class AuthorityResolver {
                 NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.HAS_CURRENT_SPACE_STATE, newGraph,
                 NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.HAS_CURRENT_SPACE_STATE);
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-            conn.begin(IsolationLevels.SERIALIZABLE);
+            conn.begin(IsolationLevels.SNAPSHOT);
             conn.prepareUpdate(QueryLanguage.SPARQL, update).execute();
             conn.commit();
         }
@@ -3376,7 +3380,7 @@ public final class AuthorityResolver {
                 graph, graph, SpacesVocab.PROCESSED_UP_TO, loadCounter,
                 graph, graph, SpacesVocab.PROCESSED_UP_TO);
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-            conn.begin(IsolationLevels.SERIALIZABLE);
+            conn.begin(IsolationLevels.SNAPSHOT);
             conn.prepareUpdate(QueryLanguage.SPARQL, update).execute();
             conn.commit();
         }
@@ -3438,7 +3442,7 @@ public final class AuthorityResolver {
                 NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.NEEDS_FULL_REBUILD, value,
                 NPA.GRAPH, NPA.THIS_REPO, SpacesVocab.NEEDS_FULL_REBUILD);
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-            conn.begin(IsolationLevels.SERIALIZABLE);
+            conn.begin(IsolationLevels.SNAPSHOT);
             conn.prepareUpdate(QueryLanguage.SPARQL, update).execute();
             conn.commit();
         }
@@ -3446,7 +3450,7 @@ public final class AuthorityResolver {
 
     void dropGraph(IRI graph) {
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-            conn.begin(IsolationLevels.SERIALIZABLE);
+            conn.begin(IsolationLevels.SNAPSHOT);
             conn.clear(graph);
             conn.commit();
             logger.info("AuthorityResolver: dropped old space-state graph {}", graph);

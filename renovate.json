@@ -9,9 +9,16 @@
   },
   "packageRules": [
     {
-      "description": "RDF4J 6.x rejects 5.x LMDB stores (wipe + full re-ingest to upgrade) and fixes none of our LMDB defects (eclipse-rdf4j/rdf4j#5970); hold the server image below 6 until upgrading is worth a migration",
+      "description": "RDF4J server-image major bumps change the LMDB store format and require stopping the stack, wiping the stores, and a full re-ingest (see docker-compose.yml); hold within 6.x so a major never lands as a routine dependency bump",
       "matchPackageNames": [
         "eclipse/rdf4j-workbench"
+      ],
+      "allowedVersions": "<7"
+    },
+    {
+      "description": "The rdf4j client libraries stay on 5.x for now: 6.x requires the Jakarta/Java-25 migration, while REST protocol 12 keeps the 5.3.x client compatible with the 6.x server",
+      "matchPackageNames": [
+        "/^org\\.eclipse\\.rdf4j:/"
       ],
       "allowedVersions": "<6"
     },

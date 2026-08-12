@@ -11,6 +11,13 @@ if ! command -v curl >/dev/null 2>&1; then
     apt-get update && apt-get install -y --no-install-recommends curl
 fi
 
+# Align host-volume ownership with the image's tomcat user: the 6.0.0-tomcat
+# image runs tomcat as uid 100 where 5.3.x used 101, so data, logs, and heap
+# dumps written under the old image (or by root) are otherwise unwritable
+# after an image bump. We are still root here; the file count is small enough
+# that this is fast even on a fully ingested store.
+chown -R tomcat: /var/rdf4j /usr/local/tomcat/logs /var/info
+
 # Clear the "has been ready" marker for this container instance. The healthcheck
 # only restarts Tomcat when /var/info/ready exists, so that a probe failing while
 # the WARs are still deploying doesn't kill a perfectly healthy start-up. But

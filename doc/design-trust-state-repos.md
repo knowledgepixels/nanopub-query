@@ -227,13 +227,13 @@ In `TrustStateLoader`:
 
 Auto-init of the `trust` repo on first access works through the existing `initNewRepo` path; no new prefix branch is required (the repo name is a fixed string, not prefix-derived). If we want coverage metadata, we can add it later — trust isn't a "coverage item" in the same sense that `pubkey_`/`type_` are.
 
-**In `TrustStateLoader`**, after parsing a snapshot, do the full materialization + swap in a single serializable transaction on the `trust` repo:
+**In `TrustStateLoader`**, after parsing a snapshot, do the full materialization + swap in a single atomic transaction on the `trust` repo:
 
 ```java
 IRI trustStateIri = vf.createIRI(NPAT.NAMESPACE + hash);  // NPAT.NAMESPACE = "http://purl.org/nanopub/admin/truststate/"
 
 try (RepositoryConnection conn = TripleStore.get().getRepoConnection("trust")) {
-    conn.begin(IsolationLevels.SERIALIZABLE);
+    conn.begin(IsolationLevels.SNAPSHOT);  // single writer; SERIALIZABLE is avoided codebase-wide (see NanopubLoader#repoWriteLocks)
 
     // 1. Populate the state's named graph with account-state triples
     for (AccountEntry a : snapshot.accounts()) {
@@ -295,10 +295,10 @@ Initial deployment (no pointer): `loadUpdates` discovers the registry's hash, fe
 
 ## Risks & Mitigations
 
-1. **Partial materialization on crash:** The whole materialization + pointer swap runs in one serializable transaction, so a crash mid-transaction rolls back cleanly. No orphans possible.
+1. **Partial materialization on crash:** The whole materialization + pointer swap runs in one atomic transaction, so a crash mid-transaction rolls back cleanly. No orphans possible.
 2. **Registry unreachable at startup:** Don't block startup. Authority-checking code that runs without trust state should degrade visibly (log warning, treat all admin claims as unverifiable until state arrives). Better than refusing to serve any queries.
 3. **Hash returns 404 (snapshot pruned):** Skip; next poll will see a newer hash. Acceptable behavior — we lose visibility into one window of state changes but recover on the next valid hash.
-4. **Pointer-update race:** `SERIALIZABLE` isolation in the `trust` repo, plus the in-memory registry only updating after commit, prevents inconsistent views across concurrent reads.
+4. **Pointer-update race:** the poll thread is the `trust` repo's only writer and the transaction commits atomically, plus the in-memory registry only updating after commit, prevents inconsistent views across concurrent reads. (Originally specified as `SERIALIZABLE`; downgraded to `SNAPSHOT` since single-writer discipline provides the same guarantee and SERIALIZABLE is avoided codebase-wide — see `NanopubLoader#repoWriteLocks`.)
 5. **`createdAt` zone-bracket parsing:** Java's `ZonedDateTime.parse` accepts the bracket form natively, but `xsd:dateTime` doesn't. Strip-then-format. Test explicitly.
 6. **`status` value drift:** Don't filter at load time; surface all values as `npa:<status>` IRIs. If the registry adds new statuses later, queries can adapt without a loader change (the loader just mints whatever IRI the string maps to — no enumeration is hardcoded).
 7. **Status-semantics confusion:** The registry's status set is wider than just `loaded`/`toLoad`. `skipped` in particular means "explicitly rejected by trust calculation" — a query that treats it as approved silently lets rejected accounts through. Authority queries should always match a positive list (e.g. `?status IN (npa:loaded, npa:toLoad)`), never "not skipped".

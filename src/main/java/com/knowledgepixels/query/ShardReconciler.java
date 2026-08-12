@@ -594,7 +594,9 @@ public class ShardReconciler {
 
     private static void persistCheckpoint(String driverRepo, long checkpoint) {
         try (RepositoryConnection conn = TripleStore.get().getAdminRepoConnection()) {
-            conn.begin(IsolationLevels.SERIALIZABLE);
+            // Only the single sweep thread writes these triples; see
+            // NanopubLoader#repoWriteLocks for why SERIALIZABLE is avoided.
+            conn.begin(IsolationLevels.SNAPSHOT);
             conn.remove(NPA.THIS_REPO, HAS_RECONCILIATION_DRIVER, null, NPA.GRAPH);
             conn.remove(NPA.THIS_REPO, HAS_RECONCILIATION_CHECKPOINT, null, NPA.GRAPH);
             conn.add(NPA.THIS_REPO, HAS_RECONCILIATION_DRIVER, vf.createLiteral(driverRepo), NPA.GRAPH);
