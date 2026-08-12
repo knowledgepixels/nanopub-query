@@ -75,6 +75,13 @@ public class NanopubLoader {
      * <p>Keyed by repo name, so writers to different repos never contend. Calls are never
      * nested across repos — the invalidator paths loop and call one repo at a time — so there
      * is no lock-ordering hazard.
+     *
+     * <p>SERIALIZABLE is avoided codebase-wide, not just on this path: besides the
+     * branch-tainting above, the LMDB native-heap corruption behind the rdf4j crash loop
+     * (rdf4j #5970) is reported upstream to occur only under SERIALIZABLE transactions.
+     * Every write path in this process is single-writer (in-process locks, synchronized
+     * singletons, or single scheduled threads), so SNAPSHOT (for rewrites of existing
+     * state) or READ_COMMITTED (for append-only writes) is always sufficient.
      */
     private static final ConcurrentHashMap<String, ReentrantLock> repoWriteLocks = new ConcurrentHashMap<>();
 
@@ -710,10 +717,8 @@ public class NanopubLoader {
         while (!success) {
             // Same substitution as loadNanopubToRepo: the spaces load counter is a
             // read-modify-write, serialised by repoWriteLock instead of by the isolation
-            // level. NOTE: the spaces branch is also written by AuthorityResolver, which
-            // still uses SERIALIZABLE — so the ObservingSailDataset cost described on
-            // repoWriteLocks is not yet gone for this repo. Changing that is a separate
-            // step; this keeps the two loader paths consistent in the meantime.
+            // level. The spaces branch is also written by AuthorityResolver, whose own
+            // writers serialise via its synchronized methods at SNAPSHOT/READ_COMMITTED.
             ReentrantLock repoLock = repoWriteLock("spaces");
             repoLock.lock();
             try {
@@ -1005,7 +1010,7 @@ public class NanopubLoader {
         // so a query against a type repo can fetch the retractor's own assertion /
         // provenance / pubinfo, not only the join handle.
         // loadNanopubToRepo is idempotent (early-exit on npa:hasLoadNumber) and runs
-        // its own SERIALIZABLE transaction + retry loop, so it's safe to call here.
+        // its own locked transaction + retry loop, so it's safe to call here.
         for (IRI typeIri : typesToLoadFullInto) {
             loadNanopubToRepo(thisNp.getUri(), thisAllStatements, "type_" + Utils.createHash(typeIri));
         }

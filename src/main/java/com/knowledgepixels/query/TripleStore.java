@@ -606,8 +606,9 @@ public class TripleStore {
         if (!repoName.equals("empty")) {
             RepositoryConnection conn = getRepoConnection(repoName);
             try (conn) {
-                // Full isolation, just in case.
-                conn.begin(IsolationLevels.SERIALIZABLE);
+                // Append-only writes to a repo nothing else references yet; see
+                // NanopubLoader#repoWriteLocks for why SERIALIZABLE is avoided.
+                conn.begin(IsolationLevels.READ_COMMITTED);
                 conn.add(NPA.THIS_REPO, NPA.HAS_REPO_INIT_ID, vf.createLiteral(repoInitId), NPA.GRAPH);
                 if (tracksNanopubCountAndChecksum(repoName)) {
                     conn.add(NPA.THIS_REPO, NPA.HAS_NANOPUB_COUNT, vf.createLiteral(0L), NPA.GRAPH);
