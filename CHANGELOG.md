@@ -1,3 +1,19 @@
+## [1.25.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.24.2...nanopub-query-1.25.0) (2026-08-12)
+
+### Features
+
+* **rdf4j:** upgrade server image to 6.0.0 (requires store wipe + re-ingest) ([cc3c9ff](https://github.com/knowledgepixels/nanopub-query/commit/cc3c9ff12dc3df2c35a3d82d0b52a2eb91655a70)), closes [eclipse-rdf4j/rdf4j#5970](https://github.com/eclipse-rdf4j/rdf4j/issues/5970)
+* **scripts:** add fleet-wide meta/full consistency check ([6aa781b](https://github.com/knowledgepixels/nanopub-query/commit/6aa781be449f4b6ec280f245caaa123223222b25))
+
+### Bug Fixes
+
+* **loader:** refuse empty repo-status reads instead of resetting the count chain ([290e60f](https://github.com/knowledgepixels/nanopub-query/commit/290e60f190d276ef5419d3edca90be861c6ba86b)), closes [#142](https://github.com/knowledgepixels/nanopub-query/issues/142)
+* **store:** drop SERIALIZABLE isolation from all remaining writers ([6356f82](https://github.com/knowledgepixels/nanopub-query/commit/6356f824b4d6b52ef8f6b7076f738c13a0b7c530)), closes [eclipse-rdf4j/rdf4j#5970](https://github.com/eclipse-rdf4j/rdf4j/issues/5970) [#5817](https://github.com/knowledgepixels/nanopub-query/issues/5817) [#139](https://github.com/knowledgepixels/nanopub-query/issues/139) [NanopubLoader#repoWriteLocks](https://github.com/knowledgepixels/NanopubLoader/issues/repoWriteLocks)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([61f119a](https://github.com/knowledgepixels/nanopub-query/commit/61f119a122fdca19f19ce19261410dd9f2af0b10))
+
 ## [1.24.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.24.1...nanopub-query-1.24.2) (2026-08-11)
 
 ### Dependency updates
