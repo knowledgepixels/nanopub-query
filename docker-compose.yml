@@ -33,21 +33,22 @@ services:
         max-file: "3"
 
   rdf4j:
-    # Image with additional fixes:
-    # - JDK 25 for better performance
-    # - Fixed issue with federated query deadlocks
-    # - Allowed for disabling transactions in text repos for faster writes
-    # Source branch: https://github.com/Ostrzyciel/rdf4j/tree/piotr/merged-fixes-2025-12-10
-    # (Commented out because it seems it doesn't have curl installed, which is needed for the healthcheck.)
-    #image: ostrzyciel/rdf4j-workbench-tomcat:5.2.2-SNAPSHOT-b
-    # Pinned below 6.x: 6.0.0 changed the LMDB value-ID layout and refuses to
-    # open 5.x stores ("Directory contains data from an older unsupported
-    # version of LmdbStore" — verified empirically 2026-08-11), so the bump is
-    # a wipe-and-full-re-ingest migration, not an image swap. The 6.0.0 image
-    # also runs Tomcat as uid 100 instead of 101, breaking host-volume
-    # permissions. None of our three LMDB defects (eclipse-rdf4j/rdf4j#5970)
-    # are fixed in 6.0.0, so there is currently nothing to buy for that cost.
-    image: eclipse/rdf4j-workbench:5.3.2-tomcat
+    # 6.0.0 (from 5.3.2, 2026-08-12): upstream unified LMDB transaction
+    # handling via TxnManager (ValueStore rewritten), which may resolve our
+    # three LMDB defects (eclipse-rdf4j/rdf4j#5970); deployed together with the
+    # client-side removal of SERIALIZABLE transactions (the suspected
+    # corruption trigger), so either change may stop the malloc-corruption
+    # crash loop.
+    #
+    # MIGRATION REQUIRED — this is not a plain image swap: 6.x changed the LMDB
+    # value-ID layout and refuses to open 5.x stores ("Directory contains data
+    # from an older unsupported version of LmdbStore"). Deploying this bump
+    # means stopping the stack, wiping ./data/rdf4j/data, and letting the query
+    # app re-ingest everything from the Registry (a fresh admin repo makes the
+    # loader bootstrap from counter 0). The image also changed the tomcat uid
+    # (101 -> 100); init.sh re-chowns the mounted volumes at startup. The 5.3.x
+    # client library in the query app stays compatible (REST protocol 12).
+    image: eclipse/rdf4j-workbench:6.0.0-tomcat
     restart: unless-stopped
     # Start as root so init.sh can apt-get install curl (missing from the
     # 5.3.1-tomcat image but required by the healthcheck). init.sh drops to
@@ -174,8 +175,9 @@ services:
         # counts. Disabling the federation probe alone would have prevented 2.
         #
         # Re-enable with RDF4J_HEALTHCHECK_RESTART=on once the underlying LMDB
-        # ValueStore$ReadTxn leak is resolved upstream (still present in 5.3.2,
-        # after #5807; see rdf4j-issue-draft.md).
+        # ValueStore$ReadTxn leak is confirmed resolved (present through 5.3.2
+        # even after #5807; the 6.0.0 TxnManager rework may fix it, but verify
+        # in production first — see eclipse-rdf4j/rdf4j#5970).
         test: |
           restart_tomcat() {
             if [ "$$RDF4J_HEALTHCHECK_RESTART" != "on" ]; then
