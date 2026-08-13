@@ -25,6 +25,7 @@ import org.mockito.Mockito;
 import org.nanopub.vocabulary.NPA;
 
 import com.knowledgepixels.query.vocabulary.NPAA;
+import com.knowledgepixels.query.vocabulary.NPAE;
 import com.knowledgepixels.query.vocabulary.NPAT;
 
 /**
@@ -575,6 +576,100 @@ class TrustStateLoaderTest {
                       <https://example.org/alice> <http://xmlns.com/foaf/0.1/name> "Alice"
                     } }""".formatted(graph)),
                     "the MAX(ratio) row supplies the canonical name");
+        }
+    }
+
+    // ---------------- materialize: endorsement links (#184) ----------------
+    @Test
+    void materialize_writesEndorsementLinkTriplesIntoTheTrustStateGraph() {
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            TrustStateSnapshot.EdgeEntry e = new TrustStateSnapshot.EdgeEntry(
+                    "https://example.org/alice", "pk1",
+                    "https://example.org/bob", "pk2",
+                    "http://purl.org/np/RAendorse");
+            TrustStateLoader.materialize(new TrustStateSnapshot("hashE", 1L,
+                    Instant.parse("2026-01-01T00:00:00Z"),
+                    List.of(approved("pk1", "https://example.org/alice"),
+                            approved("pk2", "https://example.org/bob")),
+                    List.of(e)));
+
+            IRI graph = NPAT.forHash("hashE");
+            IRI link = NPAE.forHash(TrustStateLoader.endorsementLinkHash("hashE", e));
+            assertTrue(store.ask(TRUST, """
+                    ASK { GRAPH <%s> {
+                      <%s> a <%sEndorsementLink> ;
+                           <%sfromAgent>  <https://example.org/alice> ;
+                           <%stoAgent>    <https://example.org/bob> ;
+                           <%sviaNanopub> <http://purl.org/np/RAendorse> .
+                    } }
+                    """.formatted(graph, link, NPA.NAMESPACE, NPA.NAMESPACE,
+                    NPA.NAMESPACE, NPA.NAMESPACE)),
+                    "every edge field must be materialized on the link node");
+        }
+    }
+
+    @Test
+    void materialize_collapsesPerPubkeyDuplicatesOfAnAgentLevelEdge() {
+        // The registry lists edges per pubkey pair, so one agent-level edge can
+        // arrive as several rows. The link IRI hashes only the agent-level
+        // fields, so those rows must land on a single node.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            TrustStateSnapshot.EdgeEntry viaKey1 = new TrustStateSnapshot.EdgeEntry(
+                    "https://example.org/alice", "pk1a",
+                    "https://example.org/bob", "pk2",
+                    "http://purl.org/np/RAendorse");
+            TrustStateSnapshot.EdgeEntry viaKey2 = new TrustStateSnapshot.EdgeEntry(
+                    "https://example.org/alice", "pk1b",
+                    "https://example.org/bob", "pk2",
+                    "http://purl.org/np/RAendorse");
+            TrustStateLoader.materialize(new TrustStateSnapshot("hashD", 1L,
+                    Instant.parse("2026-01-01T00:00:00Z"),
+                    List.of(), List.of(viaKey1, viaKey2)));
+
+            assertEquals(1L, store.count(TRUST,
+                    "SELECT (COUNT(DISTINCT ?s) AS ?c) WHERE { GRAPH <%s> { ?s a <%sEndorsementLink> } }"
+                            .formatted(NPAT.forHash("hashD"), NPA.NAMESPACE)),
+                    "per-pubkey duplicate rows must collapse onto one link node");
+        }
+    }
+
+    @Test
+    void materialize_omitsEdgeViaNanopubWhenAbsentOrBlank() {
+        // Same nullable-field policy as the account-level viaNanopub: no triple
+        // rather than a bogus IRI minted from "" or whitespace.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            TrustStateSnapshot.EdgeEntry noVia = new TrustStateSnapshot.EdgeEntry(
+                    "https://example.org/alice", "pk1",
+                    "https://example.org/bob", "pk2", null);
+            TrustStateSnapshot.EdgeEntry blankVia = new TrustStateSnapshot.EdgeEntry(
+                    "https://example.org/bob", "pk2",
+                    "https://example.org/carol", "pk3", "   ");
+            TrustStateLoader.materialize(new TrustStateSnapshot("hashV", 1L,
+                    Instant.parse("2026-01-01T00:00:00Z"),
+                    List.of(), List.of(noVia, blankVia)));
+
+            IRI graph = NPAT.forHash("hashV");
+            assertEquals(2L, store.count(TRUST,
+                    "SELECT (COUNT(DISTINCT ?s) AS ?c) WHERE { GRAPH <%s> { ?s a <%sEndorsementLink> } }"
+                            .formatted(graph, NPA.NAMESPACE)),
+                    "both edges are materialized");
+            assertFalse(store.ask(TRUST,
+                    "ASK { GRAPH <%s> { ?s a <%sEndorsementLink> ; <%sviaNanopub> ?o } }"
+                            .formatted(graph, NPA.NAMESPACE, NPA.NAMESPACE)),
+                    "no viaNanopub triple for null or blank values");
+        }
+    }
+
+    @Test
+    void materialize_writesNoEndorsementLinksForAnEdgelessSnapshot() {
+        // Pre-#184 registries produce snapshots without edges; the back-compat
+        // constructor defaults to an empty list and nothing edge-shaped appears.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            TrustStateLoader.materialize(
+                    snapshot("hashO", 1L, approved("pk1", "https://example.org/a")));
+            assertFalse(store.ask(TRUST,
+                    "ASK { GRAPH <%s> { ?s a <%sEndorsementLink> } }"
+                            .formatted(NPAT.forHash("hashO"), NPA.NAMESPACE)));
         }
     }
 

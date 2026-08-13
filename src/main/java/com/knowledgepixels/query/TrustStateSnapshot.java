@@ -25,13 +25,29 @@ import io.vertx.core.json.JsonObject;
  * @param trustStateCounter monotonic counter; matches the registry's value
  * @param createdAt when the registry committed this snapshot
  * @param accounts one entry per non-{@code "$"} account in the trust graph
+ * @param edges one entry per non-invalidated endorsement edge between published
+ *              accounts (nanopub-query#184); empty when running against a
+ *              registry whose snapshot predates the field — additive
+ *              non-breaking schema, so absence must be tolerated during the
+ *              fleet rollout
  */
 public record TrustStateSnapshot(
         String trustStateHash,
         long trustStateCounter,
         Instant createdAt,
-        List<AccountEntry> accounts
+        List<AccountEntry> accounts,
+        List<EdgeEntry> edges
 ) {
+
+    /**
+     * Back-compat constructor without {@code edges} (defaults to an empty list) —
+     * the field is additive (nanopub-query#184). Convenient for call sites that
+     * predate it; production parsing always uses the canonical constructor.
+     */
+    public TrustStateSnapshot(String trustStateHash, long trustStateCounter,
+            Instant createdAt, List<AccountEntry> accounts) {
+        this(trustStateHash, trustStateCounter, createdAt, accounts, List.of());
+    }
 
     /**
      * One account in a trust state snapshot. Mirrors the fields the registry
@@ -90,6 +106,33 @@ public record TrustStateSnapshot(
     }
 
     /**
+     * One agent-level endorsement edge in a trust state snapshot
+     * (nanopub-query#184): the {@code (fromAgent, fromPubkey)} account endorsed
+     * the {@code (toAgent, toPubkey)} account via the endorsement nanopub
+     * {@code viaNanopub}. The registry lists edges per pubkey pair, so the same
+     * agent-level edge can appear more than once; consumers folding to agent
+     * level (e.g. {@link TrustStateLoader}) deduplicate on
+     * {@code (fromAgent, toAgent, viaNanopub)}.
+     *
+     * @param fromAgent agent IRI of the endorsing account
+     * @param fromPubkey hex-encoded public key of the endorsing account
+     * @param toAgent agent IRI of the endorsed account
+     * @param toPubkey hex-encoded public key of the endorsed account
+     * @param viaNanopub full URI of the endorsement nanopub carrying the
+     *                   {@code npx:approvesOf} assertion, or {@code null} if the
+     *                   registry omitted it — tolerated like the other additive
+     *                   fields
+     */
+    public record EdgeEntry(
+            String fromAgent,
+            String fromPubkey,
+            String toAgent,
+            String toPubkey,
+            String viaNanopub
+    ) {
+    }
+
+    /**
      * Parses a {@code /trust-state/<hash>.json} envelope from its JSON
      * serialization. Throws {@link IllegalArgumentException} if the JSON is
      * malformed or missing required fields.
@@ -145,8 +188,40 @@ public record TrustStateSnapshot(
             ));
         }
 
+        // Additive (nanopub-query#184): snapshots from registries predating the
+        // field have no 'edges' array — treat that as empty rather than failing.
+        List<EdgeEntry> edges;
+        JsonArray edgesArray;
+        try {
+            edgesArray = obj.getJsonArray("edges");
+        } catch (ClassCastException ex) {
+            throw new IllegalArgumentException("Trust state 'edges' field is not an array", ex);
+        }
+        if (edgesArray == null) {
+            edges = List.of();
+        } else {
+            edges = new ArrayList<>(edgesArray.size());
+            for (int i = 0; i < edgesArray.size(); i++) {
+                JsonObject e;
+                try {
+                    e = edgesArray.getJsonObject(i);
+                } catch (ClassCastException ex) {
+                    throw new IllegalArgumentException(
+                            "Trust state edge entry " + i + " is not a JSON object", ex);
+                }
+                edges.add(new EdgeEntry(
+                        requireString(e, "fromAgent"),
+                        requireString(e, "fromPubkey"),
+                        requireString(e, "toAgent"),
+                        requireString(e, "toPubkey"),
+                        e.getString("viaNanopub")
+                ));
+            }
+            edges = Collections.unmodifiableList(edges);
+        }
+
         return new TrustStateSnapshot(hash, counter, createdAt,
-                Collections.unmodifiableList(accounts));
+                Collections.unmodifiableList(accounts), edges);
     }
 
     private static String requireString(JsonObject obj, String key) {

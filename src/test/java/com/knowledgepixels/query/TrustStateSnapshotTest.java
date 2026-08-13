@@ -38,6 +38,15 @@ class TrustStateSnapshotTest {
                   "ratio": 0.0024,
                   "quota": 24000
                 }
+              ],
+              "edges": [
+                {
+                  "fromAgent": "https://orcid.org/0000-0001-5118-256X",
+                  "fromPubkey": "edf7482308e4e59fc3f658fbd1fe2a2a9a538de3adce2ec7ad6c5f804461d310",
+                  "toAgent": "https://orcid.org/0000-0002-1267-0234",
+                  "toPubkey": "1162349fdeaf431e71ab55898cb2a425b971d466150c2aa5b3c1beb498045a37",
+                  "viaNanopub": "http://purl.org/np/RAendorsement0000000000000000000000000000000"
+                }
               ]
             }
             """;
@@ -96,6 +105,71 @@ class TrustStateSnapshotTest {
                 "introNanopub extracted when present");
         assertNull(s.accounts().get(1).introNanopub(),
                 "introNanopub is null when the account row omits it (pre-#118 registry)");
+    }
+
+    @Test
+    void parse_extractsEdgeEntries() {
+        // nanopub-query#184: agent-level endorsement edges, additive envelope field.
+        TrustStateSnapshot s = TrustStateSnapshot.parse(FIXTURE);
+        assertEquals(1, s.edges().size());
+        TrustStateSnapshot.EdgeEntry e = s.edges().getFirst();
+        assertEquals("https://orcid.org/0000-0001-5118-256X", e.fromAgent());
+        assertEquals("edf7482308e4e59fc3f658fbd1fe2a2a9a538de3adce2ec7ad6c5f804461d310", e.fromPubkey());
+        assertEquals("https://orcid.org/0000-0002-1267-0234", e.toAgent());
+        assertEquals("1162349fdeaf431e71ab55898cb2a425b971d466150c2aa5b3c1beb498045a37", e.toPubkey());
+        assertEquals("http://purl.org/np/RAendorsement0000000000000000000000000000000", e.viaNanopub());
+    }
+
+    @Test
+    void parse_missingEdgesArrayYieldsEmptyList() {
+        // A pre-#184 registry emits no 'edges' field at all; the snapshot must
+        // still parse, with an empty edge list, for the fleet rollout to work.
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": {"$numberLong": "1"},
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": []
+                }""";
+        TrustStateSnapshot s = TrustStateSnapshot.parse(json);
+        assertTrue(s.edges().isEmpty());
+    }
+
+    @Test
+    void parse_edgeViaNanopubIsNullWhenAbsent() {
+        String json = FIXTURE.replace(
+                "\"viaNanopub\": \"http://purl.org/np/RAendorsement0000000000000000000000000000000\"",
+                "\"viaNanopub\": null");
+        assertNull(TrustStateSnapshot.parse(json).edges().getFirst().viaNanopub());
+    }
+
+    @Test
+    void parse_throwsIllegalArgumentOnNonArrayEdgesField() {
+        // A malformed envelope must surface as IllegalArgumentException — the
+        // type fetchSnapshot() catches and logs — never as a raw ClassCastException.
+        String json = """
+                {
+                  "trustStateHash": "abc",
+                  "trustStateCounter": {"$numberLong": "1"},
+                  "createdAt": "2026-04-15T14:16:16Z[Etc/UTC]",
+                  "accounts": [],
+                  "edges": "not-an-array"
+                }""";
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(json));
+    }
+
+    @Test
+    void parse_throwsOnMissingEdgeEndpointField() {
+        String json = FIXTURE.replace(
+                "\"toAgent\": \"https://orcid.org/0000-0002-1267-0234\",", "");
+        assertThrows(IllegalArgumentException.class, () -> TrustStateSnapshot.parse(json));
+    }
+
+    @Test
+    void parse_returnsUnmodifiableEdgeList() {
+        TrustStateSnapshot s = TrustStateSnapshot.parse(FIXTURE);
+        assertThrows(UnsupportedOperationException.class,
+                () -> s.edges().add(new TrustStateSnapshot.EdgeEntry("a", "b", "c", "d", null)));
     }
 
     @Test
