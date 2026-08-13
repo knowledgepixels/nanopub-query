@@ -26,6 +26,23 @@ class MainVerticleGlobalHeadersTest {
     }
 
     @Test
+    void advertisesLocalInstanceOnlyWhenFlagIsSet() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class);
+             MockedStatic<Utils> mockedUtils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+            initializeStatusController(mockedTripleStore);
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            MainVerticle.applyGlobalHeaders(response);
+            verify(response, never()).putHeader(eq("Nanopub-Query-Local-Instance"), anyString());
+
+            mockedUtils.when(() -> Utils.getRawEnv("NANOPUB_QUERY_LOCAL_INSTANCE")).thenReturn("true");
+            MainVerticle.applyGlobalHeaders(response);
+            verify(response).putHeader("Nanopub-Query-Local-Instance", "true");
+        }
+    }
+
+    @Test
     void neverReadsTheStoreWhenTheLoadedCountCacheIsCold() {
         // applyGlobalHeaders runs on the Vert.x event loop for every inbound request.
         // The non-cached accessors fall back to a blocking store read on a cold cache,
