@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.hash.Hashing;
 import com.knowledgepixels.query.vocabulary.NPAA;
+import com.knowledgepixels.query.vocabulary.NPAE;
 import com.knowledgepixels.query.vocabulary.NPAT;
 
 /**
@@ -81,6 +82,9 @@ public class TrustStateLoader {
     private static final IRI NPA_RATIO = vf.createIRI(NPA.NAMESPACE, "ratio");
     private static final IRI NPA_QUOTA = vf.createIRI(NPA.NAMESPACE, "quota");
     private static final IRI NPA_VIA_NANOPUB = vf.createIRI(NPA.NAMESPACE, "viaNanopub");
+    private static final IRI NPA_ENDORSEMENT_LINK = vf.createIRI(NPA.NAMESPACE, "EndorsementLink");
+    private static final IRI NPA_FROM_AGENT = vf.createIRI(NPA.NAMESPACE, "fromAgent");
+    private static final IRI NPA_TO_AGENT = vf.createIRI(NPA.NAMESPACE, "toAgent");
 
     private static final CloseableHttpClient httpClient
             = HttpClientBuilder.create().setDefaultRequestConfig(Utils.getHttpRequestConfig()).build();
@@ -247,8 +251,8 @@ public class TrustStateLoader {
     }
 
     /**
-     * Writes the snapshot's account-state triples into the trust state's named
-     * graph, writes cross-state metadata into {@code npa:graph}, and swaps the
+     * Writes the snapshot's account-state and endorsement-link triples into the
+     * trust state's named graph, writes cross-state metadata into {@code npa:graph}, and swaps the
      * current-state pointer — all in one atomic transaction. Idempotent
      * on the same hash (re-running just rewrites the same triples).
      *
@@ -314,6 +318,27 @@ public class TrustStateLoader {
             for (Map.Entry<String, String> e : resolveCanonicalNames(snapshot).entrySet()) {
                 conn.add(vf.createIRI(e.getKey()), FOAF.NAME,
                         vf.createLiteral(e.getValue()), trustStateIri);
+            }
+
+            // 1c. Agent-level endorsement links (nanopub-query#184), so consumers
+            // can draw the endorsement network without reconstructing edges from
+            // the full repo. The snapshot lists edges per pubkey pair; the IRI
+            // hash below folds those onto one node per (fromAgent, toAgent,
+            // viaNanopub), and the resulting identical triples merge in the store.
+            for (TrustStateSnapshot.EdgeEntry e : snapshot.edges()) {
+                IRI linkIri = NPAE.forHash(
+                        endorsementLinkHash(snapshot.trustStateHash(), e));
+                conn.add(linkIri, RDF.TYPE, NPA_ENDORSEMENT_LINK, trustStateIri);
+                conn.add(linkIri, NPA_FROM_AGENT,
+                        vf.createIRI(e.fromAgent()), trustStateIri);
+                conn.add(linkIri, NPA_TO_AGENT,
+                        vf.createIRI(e.toAgent()), trustStateIri);
+                // Same nullable-field treatment as the account-level viaNanopub
+                // above: only emit when the registry supplied a usable URI.
+                if (e.viaNanopub() != null && !e.viaNanopub().isBlank()) {
+                    conn.add(linkIri, NPA_VIA_NANOPUB,
+                            vf.createIRI(e.viaNanopub()), trustStateIri);
+                }
             }
 
             // 2. Cross-state metadata in npa:graph
@@ -395,6 +420,20 @@ public class TrustStateLoader {
      */
     static String accountStateHash(String trustStateHash, TrustStateSnapshot.AccountEntry a) {
         String composite = trustStateHash + "|" + a.pubkey() + "|" + a.agent();
+        return Hashing.sha256().hashString(composite, StandardCharsets.UTF_8).toString();
+    }
+
+    /**
+     * Computes the endorsement-link hash for a single edge within a snapshot.
+     * SHA-256 over {@code trustStateHash + "|" + fromAgent + "|" + toAgent + "|"
+     * + viaNanopub} ({@code viaNanopub} contributing as the empty string when
+     * absent). The pubkeys are deliberately left out: the link is agent-level,
+     * so the snapshot's per-pubkey duplicate rows of one edge all map to the
+     * same IRI and collapse into a single materialized node.
+     */
+    static String endorsementLinkHash(String trustStateHash, TrustStateSnapshot.EdgeEntry e) {
+        String via = e.viaNanopub() == null ? "" : e.viaNanopub();
+        String composite = trustStateHash + "|" + e.fromAgent() + "|" + e.toAgent() + "|" + via;
         return Hashing.sha256().hashString(composite, StandardCharsets.UTF_8).toString();
     }
 

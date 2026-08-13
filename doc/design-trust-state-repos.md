@@ -76,6 +76,30 @@ GRAPH npat:abc... {
 }
 ```
 
+### Per-state endorsement links (in the trust-state's named graph)
+
+Added later for [#184](https://github.com/knowledgepixels/nanopub-query/issues/184): the
+registry's snapshot envelope additionally carries the agent-level endorsement edges the
+trust calculation saw (additive `edges` array; non-invalidated edges between published
+accounts only), and they are materialized alongside the account states:
+
+```turtle
+GRAPH npat:abc... {
+    npae:UVW...
+        a npa:EndorsementLink ;
+        npa:fromAgent <endorsingAgentIRI> ;
+        npa:toAgent <endorsedAgentIRI> ;
+        npa:viaNanopub <endorsementNanopubURI> .
+    …
+}
+```
+
+The link IRI hashes `trustStateHash|fromAgent|toAgent|viaNanopub` — agent-level, so the
+envelope's per-pubkey duplicate rows of one edge collapse onto a single node. This lets
+consumers (e.g. the global trust-network SVG view) draw the whole endorsement network
+from the trust repo alone, without reconstructing edges from `npx:approvesOf` scans over
+the full repo.
+
 ### Cross-state metadata (in `npa:graph`)
 
 ```turtle
