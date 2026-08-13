@@ -24,6 +24,7 @@ import org.nanopub.extra.security.MalformedCryptoElementException;
 import org.nanopub.extra.security.NanopubSignatureElement;
 import org.nanopub.extra.security.SignatureUtils;
 import org.nanopub.extra.server.GetNanopub;
+import org.nanopub.extra.server.NanopubServerUtils;
 import org.nanopub.extra.setting.IntroNanopub;
 import org.nanopub.vocabulary.NP;
 import org.nanopub.vocabulary.NPA;
@@ -180,6 +181,14 @@ public class NanopubLoader {
         String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());
         if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) || !np.getProvenanceUri().toString().contains(ac) || !np.getPubinfoUri().toString().contains(ac)) {
             notes.add("could not load nanopub as not all graphs contained the artifact code");
+            aborted = true;
+            return;
+        }
+
+        // Checked before the signature: protection is about not distributing the
+        // content at all, so it applies to invalidly-signed nanopubs too.
+        if (NanopubServerUtils.isProtectedNanopub(np) && !FeatureFlags.localInstance()) {
+            notes.add("could not load nanopub as it is protected (npx:ProtectedNanopub) and this is not a local instance");
             aborted = true;
             return;
         }
@@ -433,6 +442,14 @@ public class NanopubLoader {
     public static void load(Nanopub np, long counter) throws RDF4JException {
         NanopubLoader loader = new NanopubLoader(np, counter);
         loader.executeLoading();
+    }
+
+    boolean isAborted() {
+        return aborted;
+    }
+
+    List<String> getNotes() {
+        return notes;
     }
 
     @GeneratedFlagForDependentElements

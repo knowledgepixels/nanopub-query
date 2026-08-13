@@ -72,6 +72,10 @@ public class MainVerticle extends AbstractVerticle {
             logger.warn("Shard reconciliation disabled via NANOPUB_QUERY_ENABLE_RECONCILIATION=false — "
                     + "nanopubs silently missing from individual shard repos (issue #139) will not be detected or repaired.");
         }
+        if (FeatureFlags.localInstance()) {
+            logger.warn("Instance declared local/private via NANOPUB_QUERY_LOCAL_INSTANCE=true — "
+                    + "nanopubs typed npx:ProtectedNanopub will be loaded and served. Never use this setting on a public instance.");
+        }
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
                         .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))
@@ -697,6 +701,11 @@ public class MainVerticle extends AbstractVerticle {
         Long setupId = StatusController.get().getRegistrySetupId();
         response.putHeader("Nanopub-Query-Registry-Setup-Id", setupId == null ? "" : setupId.toString());
         response.putHeader("Nanopub-Query-Load-Counter", String.valueOf(state.loadCounter));
+        // Advertised only when set, so consumers can tell that this instance loads
+        // npx:ProtectedNanopub nanopubs and must not be treated as a public source.
+        if (FeatureFlags.localInstance()) {
+            response.putHeader("Nanopub-Query-Local-Instance", "true");
+        }
         // Forward registry metadata headers
         String coverageTypes = JellyNanopubLoader.lastCoverageTypes;
         response.putHeader("Nanopub-Query-Registry-Coverage-Types", coverageTypes != null ? coverageTypes : "all");

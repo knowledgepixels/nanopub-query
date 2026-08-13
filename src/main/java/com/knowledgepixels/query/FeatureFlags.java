@@ -3,8 +3,9 @@ package com.knowledgepixels.query;
 /**
  * Operator-controlled feature flags, read from the environment on each call. Kept
  * as a central table so operator-controlled features have consistent naming and a
- * single place to audit. Both flags default to {@code true}, i.e. the feature is
- * enabled unless explicitly disabled.
+ * single place to audit. The {@code NANOPUB_QUERY_ENABLE_*} flags default to
+ * {@code true}, i.e. the feature is enabled unless explicitly disabled;
+ * {@link #localInstance()} defaults to {@code false}.
  *
  * <p>Disabling a flag makes the corresponding feature's entry points no-op:
  * polling, materialisation, and auxiliary repo creation are all skipped. Callers
@@ -120,6 +121,24 @@ public final class FeatureFlags {
     public static boolean reconciliationEnabled() {
         return "true".equalsIgnoreCase(
                 Utils.getEnvString("NANOPUB_QUERY_ENABLE_RECONCILIATION", "true"));
+    }
+
+    /**
+     * When {@code true}, this instance is declared local/private: nanopubs typed
+     * {@code npx:ProtectedNanopub} are loaded like any other. On the default
+     * public setting they are rejected at load time
+     * ({@link NanopubLoader}), as the 1st-generation nanopub-server did with its
+     * {@code run.as.local.server} flag, so that content its publisher marked as
+     * protected is never served from a public query endpoint.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_LOCAL_INSTANCE} environment
+     * variable. Default: {@code false}. Never enable this on a public instance.
+     *
+     * @return {@code true} if this instance is configured as local/private
+     */
+    public static boolean localInstance() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_LOCAL_INSTANCE", "false"));
     }
 
     private FeatureFlags() {
