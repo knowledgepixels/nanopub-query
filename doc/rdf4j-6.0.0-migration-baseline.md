@@ -186,3 +186,39 @@ recreation and gives timestamps. Note the log file timestamps inside are UTC whi
 - Secondary outcome (federation wedge) is **not** resolved by this window: at
   06:01Z all three hosts, both versions, answered the SERVICE probe normally.
   Needs its own observation period.
+
+---
+
+# CONFIRMED — 2026-08-18T14:30Z, full 23h with two 6.0.0 hosts
+
+| host | version | window | crashes | rate |
+|---|---|---|---|---|
+| **nanodash** | **6.0.0** | 23.2 h | **0** | **0/day** |
+| **petapico** | **6.0.0** | 7.7 h | **0** | **0/day** |
+| kpxl | 5.3.2 | 23.2 h | **32** | 33.1/day |
+
+Expected for nanodash under its own pre-migration rate (2.4/h) was 56 crashes;
+under kpxl's contemporaneous rate, 32. Observed zero. P(0) = 7e-25 and 1e-14.
+Two independent hosts on 6.0.0, zero crashes between them, against a control
+crashing 33/day over exactly the same hours.
+
+Counted from Tomcat startup lines, with every startup accounted for as a
+deliberate operation:
+
+- nanodash: 15:19 (migration), 04:37 (recreation, cause unexplained), 12:54 (restart)
+- petapico: 06:47 (post-wipe sync boot), 12:55 (restart)
+- `RestartCount=0` on both — a crash would auto-restart and increment it
+
+**Conclusion: rdf4j 6.0.0 fixes the glibc malloc corruption crash loop
+(eclipse-rdf4j/rdf4j#5970 defect 3).** The 5.3.2 store wipe is not the cause —
+nanodash was crash-looping at ~4/h within hours of its previous fresh re-ingest
+on 5.3.2.
+
+**The federation wedge is a separate, unfixed bug.** It wedges on 6.0.0 too, and
+was isolated on 2026-08-18 to leaked leases inside rdf4j's own client pool: on
+kpxl the loopback route answered in 0.011 s via curl from inside the rdf4j
+container, while the same SERVICE query through rdf4j failed at 10.003 s with
+`Timeout waiting for connection from pool` (= `connectionRequestTimeout`). At
+~45k /api req/h with sub-second hops, real concurrency is 1–2, so 60 held leases
+are leaked, not saturated. Version-independent because 6.0.0's JDK/HC5 client
+honours the same `maxConnPerRoute=60`. Do not read it as a 6.0.0 regression.
