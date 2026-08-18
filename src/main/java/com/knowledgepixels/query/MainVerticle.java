@@ -398,8 +398,10 @@ public class MainVerticle extends AbstractVerticle {
                 req.response().putHeader("content-type", "text/yaml").end(spec);
             }).onFailure(ex -> {
                 if (ex instanceof InvalidGrlcSpecException) {
+                    logger.warn("Bad grlc request for '{}': {}", req.normalizedPath(), ex.getMessage());
                     req.response().setStatusCode(400).end(ex.getMessage());
                 } else {
+                    logger.error("Unexpected error for grlc request '{}'", req.normalizedPath(), ex);
                     req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
                 }
             });
@@ -413,8 +415,10 @@ public class MainVerticle extends AbstractVerticle {
                 req.response().putHeader("content-type", "text/yaml").end(spec);
             }).onFailure(ex -> {
                 if (ex instanceof InvalidGrlcSpecException) {
+                    logger.warn("Bad openapi request for '{}': {}", req.normalizedPath(), ex.getMessage());
                     req.response().setStatusCode(400).end("Invalid grlc API definition: " + ex.getMessage());
                 } else {
+                    logger.error("Unexpected error for openapi request '{}'", req.normalizedPath(), ex);
                     req.response().setStatusCode(500).end("Unexpected error: " + ex.getMessage());
                 }
             });
@@ -457,12 +461,14 @@ public class MainVerticle extends AbstractVerticle {
                         req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
                         logger.info("Forwarding apix request to /rdf4j-server/repositories/{}", grlcSpec.getRepoName());
                     } catch (InvalidGrlcSpecException ex) {
+                        logger.warn("Bad API request for '{}' with params {}: {}", req.getURI(), req.proxiedRequest().params(), ex.getMessage());
                         return Future.succeededFuture(context.request()
                                 .response()
                                 .setStatusCode(400)
                                 .putHeader("Content-Type", "text/plain")
                                 .setBody(Body.body(Buffer.buffer("Bad request: " + ex.getMessage()))));
                     } catch (Exception ex) {
+                        logger.error("Unexpected error for API request '{}' with params {}", req.getURI(), req.proxiedRequest().params(), ex);
                         return Future.succeededFuture(context.request()
                                 .response()
                                 .setStatusCode(500)
