@@ -98,8 +98,19 @@ services:
       # deadlock threshold, and the thread headroom is what makes it safe.
       #
       # The invariant to preserve is still "outer + federated self-calls <=
-      # Tomcat workers", so maxThreads defaults to 400 alongside a 200-per-route
-      # pool (worst case 200 + 200 = 400). Change the two together or not at all.
+      # Tomcat workers", so maxThreads defaults alongside a per-route pool of
+      # half its value. Change the two together or not at all.
+      #
+      # SECOND CEILING (2026-08-20, found the hard way): rdf4j 6.0.0 hardcodes
+      # LMDB's reader table at 256 slots, and STOCK 6.0.0 pins one slot per
+      # thread (ThreadLocal read txn, freed only on thread death). A 400-thread
+      # default therefore drove stock hosts into intermittent
+      # "MDB_READERS_FULL: Environment maxreaders limit reached" on plain
+      # queries (petapico, within a day of the raise). Hosts running the
+      # PR#5974 lmdbpool canary pool their readers and are immune (kpxl, no
+      # errors under the same load). So the default stays BELOW 256 with
+      # headroom: 240 threads / 120 per route / 240 total. A canary host may
+      # raise all three in its .env (e.g. 400/200/400).
       #
       # This is mitigation, not a cure: it raises the threshold above realistic
       # concurrency but the circular wait remains reachable. The fix is removing
@@ -136,13 +147,13 @@ services:
       # SailSourceBranch ReentrantLock with no way to tell who held it, and the
       # image ships a JRE (no jcmd/jstack), so there was no second way to ask.
       # Zero runtime cost until a dump is requested.
-      - JAVA_OPTS=-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/info/ -XX:MaxRAMPercentage=${RDF4J_MAX_RAM_PERCENTAGE:-50} -XX:+PrintConcurrentLocks -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=${RDF4J_MAX_CONN_PER_ROUTE:-200} -Dorg.eclipse.rdf4j.client.http.maxConnTotal=${RDF4J_MAX_CONN_TOTAL:-400}
+      - JAVA_OPTS=-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/info/ -XX:MaxRAMPercentage=${RDF4J_MAX_RAM_PERCENTAGE:-50} -XX:+PrintConcurrentLocks -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=${RDF4J_MAX_CONN_PER_ROUTE:-120} -Dorg.eclipse.rdf4j.client.http.maxConnTotal=${RDF4J_MAX_CONN_TOTAL:-240}
       # Used by the healthcheck's federation probe below; defaults to the same
       # in-cluster URL the SERVICE rewrite uses, so the probe tests the real
       # federation route. Set explicitly empty to disable the probe.
       # Tomcat HTTP connector thread pool; see entrypoint/init.sh. Must stay
       # >= 2x maxConnPerRoute (outer query + its own federated self-call).
-      - RDF4J_TOMCAT_MAX_THREADS=${RDF4J_TOMCAT_MAX_THREADS:-400}
+      - RDF4J_TOMCAT_MAX_THREADS=${RDF4J_TOMCAT_MAX_THREADS:-240}
       - NANOPUB_QUERY_INTERNAL_URL=${NANOPUB_QUERY_INTERNAL_URL-http://query:9393/}
       # Whether a failing healthcheck probe may kill Tomcat. Off by default —
       # see the reasoning above the healthcheck test block.
