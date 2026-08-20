@@ -18,6 +18,31 @@ fi
 # that this is fast even on a fully ingested store.
 chown -R tomcat: /var/rdf4j /usr/local/tomcat/logs /var/info
 
+# Raise Tomcat's HTTP connector thread pool. The shipped server.xml leaves the
+# 8080 connector without a maxThreads attribute, so Tomcat's default of 200
+# applies (the maxThreads="150" visible in server.xml is inside a commented-out
+# <Executor> block and is NOT in effect).
+#
+# Why this is needed: SERVICE clauses in /api queries loop back to this same
+# server, so every outer federated query needs a SECOND worker thread to serve
+# its own sub-request. The worker pool must therefore stay at or above twice
+# maxConnPerRoute, or the connection-pool ceiling set in docker-compose.yml
+# cannot actually be reached.
+#
+# Note this is NOT itself the wedge fix. A dump taken while genuinely wedged
+# (2026-08-20) had only 42 http-nio workers against maxThreads=400 while all 60
+# route connections were held -- connections bind, threads do not, which is why
+# raising maxThreads alone measurably changed nothing. It is here so that
+# raising maxConnPerRoute is safe. See the rationale block in docker-compose.yml.
+#
+# conf/ is not a mounted volume, so this is re-applied cleanly on every start.
+if [ -n "$RDF4J_TOMCAT_MAX_THREADS" ]; then
+    sed -i "s|<Connector port=\"8080\" protocol=\"HTTP/1.1\"|<Connector port=\"8080\" protocol=\"HTTP/1.1\" maxThreads=\"$RDF4J_TOMCAT_MAX_THREADS\"|" \
+        /usr/local/tomcat/conf/server.xml
+    echo "init.sh: set Tomcat connector maxThreads=$RDF4J_TOMCAT_MAX_THREADS"
+    grep -n 'Connector port="8080"' /usr/local/tomcat/conf/server.xml
+fi
+
 # Clear the "has been ready" marker for this container instance. The healthcheck
 # only restarts Tomcat when /var/info/ready exists, so that a probe failing while
 # the WARs are still deploying doesn't kill a perfectly healthy start-up. But

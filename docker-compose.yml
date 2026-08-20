@@ -61,19 +61,52 @@ services:
       # single HttpClient route inside this container. The RDF4J defaults
       # (25 per route, 50 total) saturate under concurrent federated queries,
       # starving every /api call with "Timeout waiting for connection from
-      # pool" (incident 2026-07-28). Keep the sum of concurrent outer queries
-      # and federated self-calls below Tomcat's worker pool.
+      # pool" (incident 2026-07-28).
       #
-      # That pool is 150, not the 200 Tomcat default this comment previously
-      # assumed: the eclipse/rdf4j-workbench image ships a server.xml with
-      # maxThreads="150" on every connector. With maxConnPerRoute=100 the worst
-      # case was therefore 100 outer + 100 federated self-calls = 200 workers
-      # against 150 — past the deadlock boundary the paragraph above is meant to
-      # stay below, leaving nothing for the healthcheck probe or other repos.
-      # 60 bounds the worst case at 120 and keeps real headroom. It also makes a
-      # leaked-lease wedge (eclipse-rdf4j/rdf4j#5970) degrade rather than become
-      # total, since fewer leases are needed before the route saturates; the
-      # server-side idle timeout in MainVerticle now lets those leases expire.
+      # CORRECTION 2026-08-20 — the earlier sizing reasoned about the wrong
+      # failure mode, and the 100 -> 60 reduction made the wedge *more* likely.
+      # (The claim that the worker pool is 150 was also wrong: maxThreads="150"
+      # sits in a commented-out <Executor> block in the image's server.xml and
+      # is not in effect; the active 8080 connector uses Tomcat's default 200.)
+      #
+      # A thread dump taken on kpxl while genuinely wedged (2026-08-20 05:18Z)
+      # shows the real mechanism: a re-entrant deadlock on this single
+      # route, not Tomcat thread starvation. The raw dump is not committed;
+      # the load-bearing numbers are reproduced below.
+      #
+      #   - RepositoryFederatedService.select obtains SERVICE results via
+      #     SPARQLProtocolSession.getBackgroundTupleQueryResult, which pins a
+      #     pooled connection for the entire lifetime of result consumption.
+      #   - ServiceQueryEvaluationStep sits under JoinIterator.getInstance, so a
+      #     SERVICE inside a join fires one request per binding. An outer query
+      #     is therefore mid-iteration over result #1 -- holding a connection --
+      #     when it asks the same pool for the connection for result #2.
+      #   - Snapshot: 60 of 60 connections held by BackgroundTupleResult
+      #     producers blocked in QueueIteration.put on a full ArrayBlockingQueue
+      #     (their consumers cannot drain), and 28 threads blocked in
+      #     acquireEndpoint. 22 of those 28 were get-view-displays
+      #     (repositories/type_11daee46...), which carries 3 nested SERVICE hops.
+      #
+      # Nobody can proceed; only connectionRequestTimeout (10s) breaks the cycle,
+      # which is why the symptom flaps rather than staying dead. Crucially, a
+      # SMALLER pool deadlocks at LOWER concurrency, so "fewer leases are needed
+      # before the route saturates" -- the old rationale for 60 -- was backwards.
+      #
+      # Threads were never the binding constraint: the same dump had 42
+      # http-nio workers against maxThreads=400. That is also why the maxThreads
+      # A/B showed no benefit on its own. Raising the pool is what moves the
+      # deadlock threshold, and the thread headroom is what makes it safe.
+      #
+      # The invariant to preserve is still "outer + federated self-calls <=
+      # Tomcat workers", so maxThreads defaults to 400 alongside a 200-per-route
+      # pool (worst case 200 + 200 = 400). Change the two together or not at all.
+      #
+      # This is mitigation, not a cure: it raises the threshold above realistic
+      # concurrency but the circular wait remains reachable. The fix is removing
+      # the nesting -- get-view-displays 3 SERVICE hops -> 1, already validated
+      # byte-for-byte identical -- plus an upstream report against rdf4j.
+      # Keep this block in sync with nanopub-infrastructure/nanopub-query/,
+      # which is the deploy source of truth.
       #
       # ExitOnOutOfMemoryError: without it, a heap OOM is survivable in the worst
       # possible way. On kpxl 2026-08-05 the OOM killed the "http-nio-8080-Acceptor"
@@ -103,10 +136,13 @@ services:
       # SailSourceBranch ReentrantLock with no way to tell who held it, and the
       # image ships a JRE (no jcmd/jstack), so there was no second way to ask.
       # Zero runtime cost until a dump is requested.
-      - JAVA_OPTS=-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/info/ -XX:MaxRAMPercentage=${RDF4J_MAX_RAM_PERCENTAGE:-50} -XX:+PrintConcurrentLocks -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=60 -Dorg.eclipse.rdf4j.client.http.maxConnTotal=120
+      - JAVA_OPTS=-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/info/ -XX:MaxRAMPercentage=${RDF4J_MAX_RAM_PERCENTAGE:-50} -XX:+PrintConcurrentLocks -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000 -Dorg.eclipse.rdf4j.client.http.maxConnPerRoute=${RDF4J_MAX_CONN_PER_ROUTE:-200} -Dorg.eclipse.rdf4j.client.http.maxConnTotal=${RDF4J_MAX_CONN_TOTAL:-400}
       # Used by the healthcheck's federation probe below; defaults to the same
       # in-cluster URL the SERVICE rewrite uses, so the probe tests the real
       # federation route. Set explicitly empty to disable the probe.
+      # Tomcat HTTP connector thread pool; see entrypoint/init.sh. Must stay
+      # >= 2x maxConnPerRoute (outer query + its own federated self-call).
+      - RDF4J_TOMCAT_MAX_THREADS=${RDF4J_TOMCAT_MAX_THREADS:-400}
       - NANOPUB_QUERY_INTERNAL_URL=${NANOPUB_QUERY_INTERNAL_URL-http://query:9393/}
       # Whether a failing healthcheck probe may kill Tomcat. Off by default —
       # see the reasoning above the healthcheck test block.
