@@ -37,6 +37,14 @@ chown -R tomcat: /var/rdf4j /usr/local/tomcat/logs /var/info
 #
 # conf/ is not a mounted volume, so this is re-applied cleanly on every start.
 if [ -n "$RDF4J_TOMCAT_MAX_THREADS" ]; then
+    # IDEMPOTENT strip-then-insert. conf/ persists across container RESTARTS
+    # (only a recreation resets it), and this script runs on every start: a
+    # plain insert appended one maxThreads copy per restart until the duplicate
+    # attribute made server.xml unparseable and Tomcat crash-looped (kpxl,
+    # 2026-08-20, 22 copies). First remove any maxThreads previously injected
+    # on the 8080 connector, then insert the current value exactly once.
+    sed -i 's|<Connector port="8080" protocol="HTTP/1.1"\( maxThreads="[0-9]*"\)*|<Connector port="8080" protocol="HTTP/1.1"|' \
+        /usr/local/tomcat/conf/server.xml
     sed -i "s|<Connector port=\"8080\" protocol=\"HTTP/1.1\"|<Connector port=\"8080\" protocol=\"HTTP/1.1\" maxThreads=\"$RDF4J_TOMCAT_MAX_THREADS\"|" \
         /usr/local/tomcat/conf/server.xml
     echo "init.sh: set Tomcat connector maxThreads=$RDF4J_TOMCAT_MAX_THREADS"
