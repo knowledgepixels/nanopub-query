@@ -29,6 +29,16 @@ services:
       # store wipe this fills holes (missing nanopubs) idempotently. Set it for
       # one `up -d`, then recreate again without it so later restarts don't
       # re-trigger the sweep.
+      #
+      # ONLY on a wiped or out-of-rotation instance. On a live one the sweep
+      # cycles all ~2,800 LMDB repos through the 100-slot repo cache against
+      # live traffic: point-reads hit the 10s client timeout, batches die on
+      # retry backoff (~50 nanopubs/min, ETA days), and the loader state is
+      # clobbered meanwhile (status LOADING_INITIAL, counter at sweep position)
+      # — measured 2026-08-21. For a bounded hole of RECENT nanopubs, rewind
+      # the admin repo instead (npa:hasRegistryLoadCounter to just below the
+      # hole + npa:hasStatus "READY", with the container stopped): the update
+      # loop re-processes only that window in under a minute.
       - FORCE_RESYNC=${FORCE_RESYNC:-false}
     #     - INIT_WAIT_SECONDS=120   # Only used by the local nanopub loader
     # Public base URL, used only in generated documentation (grlc spec listings,
