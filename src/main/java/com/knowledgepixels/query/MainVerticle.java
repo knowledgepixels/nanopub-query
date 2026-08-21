@@ -130,6 +130,13 @@ public class MainVerticle extends AbstractVerticle {
         int proxyPort = Utils.getEnvInt("RDF4J_PROXY_PORT", 8080);
         rdf4jProxy.origin(proxyPort, proxy);
 
+        // Server-side query evaluation limit injected into every proxied rdf4j request
+        // (see Utils.appendQueryTimeout). The public edge cuts clients at 10s, but that
+        // never stops the server-side evaluation; this does. Kept well above the edge
+        // timeout so aborts stay rare: interrupted evaluations concurrent with writes
+        // are a suspected LMDB corruption trigger upstream (rdf4j#5960/#4806).
+        int queryTimeoutSeconds = Utils.getEnvInt("RDF4J_QUERY_TIMEOUT_SECONDS", 60);
+
         rdf4jProxy.addInterceptor(new ProxyInterceptor() {
 
             @Override
@@ -137,6 +144,7 @@ public class MainVerticle extends AbstractVerticle {
             public Future<ProxyResponse> handleProxyRequest(ProxyContext context) {
                 ProxyRequest request = context.request();
                 request.setURI(request.getURI().replaceAll("/", "_").replaceFirst("^_repo_", "/rdf4j-server/repositories/"));
+                request.setURI(Utils.appendQueryTimeout(request.getURI(), queryTimeoutSeconds));
                 // For later to try to get HTML tables out:
 //				if (request.headers().get("Accept") == null) {
 //					request.putHeader("Accept", "text/html");
@@ -458,7 +466,8 @@ public class MainVerticle extends AbstractVerticle {
                         //req.putHeader("Content-Type", "application/x-www-form-urlencoded");
                         //req.setBody(Body.body(Buffer.buffer("query=" + URLEncoder.encode(grlcSpec.getExpandedQueryContent(), Charsets.UTF_8))));
 
-                        req.setURI("/rdf4j-server/repositories/" + grlcSpec.getRepoName());
+                        req.setURI(Utils.appendQueryTimeout(
+                                "/rdf4j-server/repositories/" + grlcSpec.getRepoName(), queryTimeoutSeconds));
                         logger.info("Forwarding apix request to /rdf4j-server/repositories/{}", grlcSpec.getRepoName());
                     } catch (InvalidGrlcSpecException ex) {
                         logger.warn("Bad API request for '{}' with params {}: {}", req.getURI(), req.proxiedRequest().params(), ex.getMessage());

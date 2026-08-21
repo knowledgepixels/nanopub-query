@@ -294,4 +294,37 @@ class UtilsTest {
         assert (rc != null);
     }
 
+    @Test
+    void appendQueryTimeoutAddsParamWithoutQueryString() {
+        assertEquals("/rdf4j-server/repositories/full?timeout=60",
+                Utils.appendQueryTimeout("/rdf4j-server/repositories/full", 60));
+    }
+
+    @Test
+    void appendQueryTimeoutAddsParamToExistingQueryString() {
+        assertEquals("/rdf4j-server/repositories/full?query=select&timeout=60",
+                Utils.appendQueryTimeout("/rdf4j-server/repositories/full?query=select", 60));
+    }
+
+    @Test
+    void appendQueryTimeoutKeepsClientSuppliedTimeout() {
+        assertEquals("/rdf4j-server/repositories/full?timeout=5",
+                Utils.appendQueryTimeout("/rdf4j-server/repositories/full?timeout=5", 60));
+        assertEquals("/rdf4j-server/repositories/full?query=select&timeout=5",
+                Utils.appendQueryTimeout("/rdf4j-server/repositories/full?query=select&timeout=5", 60));
+    }
+
+    @Test
+    void appendQueryTimeoutDoesNotMatchOtherParamsEndingInTimeout() {
+        assertEquals("/repo?mytimeout=5&timeout=60",
+                Utils.appendQueryTimeout("/repo?mytimeout=5", 60));
+    }
+
+    @Test
+    void appendQueryTimeoutDisabledByNonPositiveValue() {
+        assertEquals("/repo/full", Utils.appendQueryTimeout("/repo/full", 0));
+        assertEquals("/repo/full", Utils.appendQueryTimeout("/repo/full", -1));
+        assertNull(Utils.appendQueryTimeout(null, 60));
+    }
+
 }

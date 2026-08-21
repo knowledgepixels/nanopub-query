@@ -16,6 +16,14 @@ services:
       - ENDPOINT_BASE=http://rdf4j:8080/rdf4j-server/
       - REGISTRY_FIXED_URL=https://registry.knowledgepixels.com/
       - RDF4J_PROXY_HOST=rdf4j
+      # Server-side SPARQL evaluation limit (seconds) injected into every /repo
+      # and /api request proxied to rdf4j; 0 disables. The public edge cuts
+      # clients at 10s but that never stops server-side evaluation — abandoned
+      # heavy queries pile up and can spiral the changeset overlay (2026-08-21
+      # CPU storm). Keep well above the edge timeout: aborted evaluations
+      # concurrent with writes are a suspected corruption trigger upstream
+      # (rdf4j#5960/#4806), so this is a backstop, not a first-line limit.
+      - RDF4J_QUERY_TIMEOUT_SECONDS=${RDF4J_QUERY_TIMEOUT_SECONDS:-60}
       # One-shot repair/resync switch: re-streams the whole registry at startup;
       # per-repo isLoaded checks skip everything already present, so WITHOUT a
       # store wipe this fills holes (missing nanopubs) idempotently. Set it for
