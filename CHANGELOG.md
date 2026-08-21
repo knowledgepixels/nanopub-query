@@ -1,3 +1,30 @@
+## [1.26.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.25.0...nanopub-query-1.26.0) (2026-08-21)
+
+### Features
+
+* inject server-side query timeout into proxied rdf4j requests ([986ecf9](https://github.com/knowledgepixels/nanopub-query/commit/986ecf96aee802af666f0752d25df9cc80a4b35d)), closes [5960/#4806](https://github.com/5960/nanopub-query/issues/4806)
+* **loader:** reject npx:ProtectedNanopub nanopubs on non-local instances ([c606148](https://github.com/knowledgepixels/nanopub-query/commit/c606148412b431a06bdb1e67f230cb5d1e27bea8)), closes [#186](https://github.com/knowledgepixels/nanopub-query/issues/186)
+* **trust:** materialize endorsement links from the trust state snapshot ([28c2ae7](https://github.com/knowledgepixels/nanopub-query/commit/28c2ae769fb3957bb63146efc9811450c049bc17)), closes [nanopub-registry#131](https://github.com/knowledgepixels/nanopub-registry/issues/131) [nanopub-registry#131](https://github.com/knowledgepixels/nanopub-registry/issues/131) [#184](https://github.com/knowledgepixels/nanopub-query/issues/184) [#184](https://github.com/knowledgepixels/nanopub-query/issues/184)
+* wire FORCE_RESYNC through compose as a one-shot repair switch ([72a46ef](https://github.com/knowledgepixels/nanopub-query/commit/72a46ef45fe9a4768ee1e2feab8135386e793d85))
+
+### Bug Fixes
+
+* cap default maxThreads under LMDB's 256-reader hardcap ([1af528d](https://github.com/knowledgepixels/nanopub-query/commit/1af528d23065a671903d7e39bd4069b7978ac901)), closes [PR#5974](https://github.com/knowledgepixels/PR/issues/5974)
+* Log Failed Query Requests in MainVerticle ([b27aeb9](https://github.com/knowledgepixels/nanopub-query/commit/b27aeb9ed386af2ecc999052463e09f578e395b8))
+* make the maxThreads sed idempotent; it crash-looped kpxl ([6ecff68](https://github.com/knowledgepixels/nanopub-query/commit/6ecff6839fa6828e0c3aba6366f3b0d332541b2c))
+* raise federation pool here too; the 60 cap deadlocked rdf4j ([81a3644](https://github.com/knowledgepixels/nanopub-query/commit/81a3644780f037acbd0d0c059dc0e8c55e9f1e1e))
+
+### Documentation
+
+* confirm 6.0.0 fixes the crash loop over a full 23h ([1388338](https://github.com/knowledgepixels/nanopub-query/commit/1388338b6ffd88bddd052d4a9a6fea98c8411f27))
+* **notes:** the DB archive is per-instance and per-rdf4j-version ([14f30fb](https://github.com/knowledgepixels/nanopub-query/commit/14f30fbc61c56096d428776fcddf73c970d5dfe3))
+* rdf4j 6.0.0 stops the malloc crash loop (measured) ([d9453b2](https://github.com/knowledgepixels/nanopub-query/commit/d9453b26376e169d47e59f8040a763f21b4306f2))
+* record pre-migration baseline for the rdf4j 6.0.0 test ([9ce5d18](https://github.com/knowledgepixels/nanopub-query/commit/9ce5d18831394c61a2c3717e71b3a0b44dc54fea)), closes [nanopub-infrastructure#34](https://github.com/knowledgepixels/nanopub-infrastructure/issues/34)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([8f13fa9](https://github.com/knowledgepixels/nanopub-query/commit/8f13fa970bc284c67294b6fef1a77bc4e445afa6))
+
 ## [1.25.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.24.2...nanopub-query-1.25.0) (2026-08-12)
 
 ### Features
