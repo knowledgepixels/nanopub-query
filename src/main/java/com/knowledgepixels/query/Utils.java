@@ -212,6 +212,28 @@ public class Utils {
         return defaultValue;
     }
 
+    /**
+     * Appends the RDF4J protocol {@code timeout} parameter (in seconds) to a request URI,
+     * making the server abort query evaluation after the given time. Without this, a client
+     * disconnect (e.g. the public proxy's 10s cut) leaves the server evaluating to completion;
+     * enough of those zombie evaluations pinning store snapshots sent the changeset overlay
+     * into a self-reinforcing pile-up that saturated every worker thread (incident 2026-08-21).
+     * <p>
+     * A URI that already carries a {@code timeout} parameter is returned unchanged, so
+     * clients can request a shorter (or longer) limit explicitly. A non-positive
+     * {@code timeoutSeconds} disables injection.
+     *
+     * @param uri            the request URI, with or without a query string
+     * @param timeoutSeconds server-side evaluation limit in seconds; non-positive = no-op
+     * @return the URI with the timeout parameter appended, or unchanged
+     */
+    public static String appendQueryTimeout(String uri, int timeoutSeconds) {
+        if (timeoutSeconds <= 0 || uri == null) return uri;
+        int q = uri.indexOf('?');
+        if (q >= 0 && uri.substring(q).matches(".*[?&]timeout=.*")) return uri;
+        return uri + (q >= 0 ? "&" : "?") + "timeout=" + timeoutSeconds;
+    }
+
     private static String version;
 
     /**
