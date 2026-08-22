@@ -653,6 +653,90 @@ class AuthorityResolverPipelineTest {
     }
 
     @Test
+    void tick_stampsAnIntegrityCountThatMatchesTheGraph() {
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            trustAccount(store, HASH, "a1", "https://example.org/alice", "pk1", "loaded");
+            setLoadCounter(store, 9L);
+            TrustStateRegistry.get().setCurrentHash(HASH);
+
+            resolver().tick();
+
+            IRI graph = resolver().getCurrentSpaceStateGraph();
+            long stamped = resolver().readStateTripleCount(graph);
+            assertTrue(stamped > 0, "a full build must stamp the integrity count");
+            assertEquals(stamped, resolver().countStateGraphTriples(graph),
+                    "the stamp equals the graph's actual triple count, stamp included");
+        }
+    }
+
+    @Test
+    void tick_rebuildsWhenTheStateGraphLostTriples() {
+        // The 2026-08-22 incident shape: rdf4j dropped acked-but-unmerged changesets
+        // across a restart, leaving a state graph with 7,439 of 19,283 triples while
+        // its processedUpTo stamp was intact — served as healthy until repaired by
+        // hand. The integrity-count check must catch this and rebuild automatically.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            trustAccount(store, HASH, "a1", "https://example.org/alice", "pk1", "loaded");
+            setLoadCounter(store, 9L);
+            TrustStateRegistry.get().setCurrentHash(HASH);
+            resolver().tick();
+            IRI graph = resolver().getCurrentSpaceStateGraph();
+            long healthyCount = resolver().countStateGraphTriples(graph);
+
+            // Truncate: silently remove the mirrored account rows, keep the stamps.
+            store.update(SPACES, """
+                    DELETE WHERE { GRAPH <%s> { ?s a <%sAccountState> ; ?p ?o . } }
+                    """.formatted(graph, NPA.NAMESPACE));
+            assertTrue(resolver().countStateGraphTriples(graph) < healthyCount,
+                    "precondition: the graph really lost content");
+
+            resolver().tick();
+
+            IRI rebuilt = resolver().getCurrentSpaceStateGraph();
+            assertEquals(resolver().readStateTripleCount(rebuilt),
+                    resolver().countStateGraphTriples(rebuilt),
+                    "tick detected the mismatch and republished a consistent graph");
+            assertEquals(healthyCount, resolver().countStateGraphTriples(rebuilt),
+                    "the rebuilt graph holds the full content again");
+            assertTrue(store.ask(SPACES, """
+                    ASK { GRAPH <%s> { ?s a <%sAccountState> . } }
+                    """.formatted(rebuilt, NPA.NAMESPACE)),
+                    "the truncated-away rows are back");
+        }
+    }
+
+    @Test
+    void tick_toleratesAPreStampGraphAndUpgradesItOnItsNextMutation() {
+        // Graphs published before the integrity stamp existed have no
+        // stateTripleCount. They must not be treated as damaged (a fleet-wide
+        // rebuild on deploy), and the first incremental cycle stamps them.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            IRI graph = SpacesVocab.forSpaceState(HASH, 3L);
+            resolver().flipPointer(graph);
+            resolver().writeProcessedUpTo(graph, 3L);
+            // Marker triple: an in-place rebuild would drop it; tolerance keeps it.
+            store.update(SPACES, """
+                    INSERT DATA { GRAPH <%s> { <urn:legacy:marker> a <urn:legacy:Marker> . } }
+                    """.formatted(graph));
+            setLoadCounter(store, 11L);
+            TrustStateRegistry.get().setCurrentHash(HASH);
+            assertEquals(-1L, resolver().readStateTripleCount(graph), "precondition: legacy graph");
+
+            resolver().tick();
+
+            assertEquals(graph, resolver().getCurrentSpaceStateGraph(),
+                    "no rebuild: the legacy graph is tolerated");
+            assertTrue(store.ask(SPACES, """
+                    ASK { GRAPH <%s> { <urn:legacy:marker> ?p ?o . } }
+                    """.formatted(graph)),
+                    "the marker survived — the graph was not dropped and rebuilt");
+            long stamped = resolver().readStateTripleCount(graph);
+            assertEquals(resolver().countStateGraphTriples(graph), stamped,
+                    "the incremental cycle upgraded the legacy graph with a consistent stamp");
+        }
+    }
+
+    @Test
     void tick_isANoOpWithoutATrustState() {
         try (InMemoryTripleStore ignored = new InMemoryTripleStore()) {
             resolver().tick();

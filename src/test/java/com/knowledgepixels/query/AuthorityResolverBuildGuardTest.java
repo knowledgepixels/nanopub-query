@@ -94,6 +94,7 @@ class AuthorityResolverBuildGuardTest {
         doReturn(new TierSubjectTotals(0L, 0L, 0L)).when(ar).computeTierSubjectTotals(any(IRI.class));
         doReturn(true).when(ar).trustStateHasContent(anyString());
         doNothing().when(ar).writeProcessedUpTo(any(IRI.class), anyLong());
+        doNothing().when(ar).writeStateTripleCount(any(IRI.class));
         doNothing().when(ar).flipPointer(any(IRI.class));
         doNothing().when(ar).dropGraph(any(IRI.class));
         return ar;
@@ -154,6 +155,7 @@ class AuthorityResolverBuildGuardTest {
     void alreadyCurrentWithHealthyStampDoesNotRebuild() {
         AuthorityResolver ar = buildSpy(NEW_GRAPH, 768, counts(1839));
         doReturn(COUNTER).when(ar).readProcessedUpTo(NEW_GRAPH);
+        doReturn(-1L).when(ar).readStateTripleCount(NEW_GRAPH);
 
         ar.runFullBuild(HASH);
 
@@ -167,6 +169,7 @@ class AuthorityResolverBuildGuardTest {
         // current" forever; the graph behind it was empty and unusable.
         AuthorityResolver ar = buildSpy(NEW_GRAPH, 768, counts(1839));
         doReturn(-1L).when(ar).readProcessedUpTo(NEW_GRAPH);
+        doReturn(-1L).when(ar).readStateTripleCount(NEW_GRAPH);
 
         ar.runFullBuild(HASH);
 
@@ -235,6 +238,8 @@ class AuthorityResolverBuildGuardTest {
         AuthorityResolver ar = spy(AuthorityResolver.get());
         doReturn(NEW_GRAPH).when(ar).getCurrentSpaceStateGraph();
         doReturn(COUNTER).when(ar).readProcessedUpTo(NEW_GRAPH);
+        doReturn(19283L).when(ar).readStateTripleCount(NEW_GRAPH);
+        doReturn(19283L).when(ar).countStateGraphTriples(NEW_GRAPH);
         doNothing().when(ar).runIncrementalCycle(any(IRI.class));
         doNothing().when(ar).runFullBuild(anyString());
 

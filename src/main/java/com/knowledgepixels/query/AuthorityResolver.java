@@ -186,6 +186,24 @@ public final class AuthorityResolver {
             runFullBuild(trustStateHash);
             return;
         }
+        // Integrity check: the stateTripleCount stamp is rewritten by every mutation,
+        // so a disagreement means part of a write was lost after the fact — e.g. rdf4j
+        // dropping acked-but-unmerged changesets across a restart (2026-08-22: a state
+        // graph survived with 7,439 of 19,283 triples, processedUpTo intact, and served
+        // truncated authority data until repaired by hand). A stamp of -1 is a graph
+        // published by a pre-stamp version: skip, it becomes verifiable at its next
+        // mutation.
+        long expectedCount = readStateTripleCount(currentGraph);
+        if (expectedCount >= 0) {
+            long actualCount = countStateGraphTriples(currentGraph);
+            if (actualCount != expectedCount) {
+                logger.warn("AuthorityResolver.tick: current space-state graph {} holds {} triples "
+                        + "but its stateTripleCount stamp says {} — truncated or partially lost "
+                        + "state; running full build", currentGraph, actualCount, expectedCount);
+                runFullBuild(trustStateHash);
+                return;
+            }
+        }
         runIncrementalCycle(currentGraph);
     }
 
@@ -271,17 +289,24 @@ public final class AuthorityResolver {
         IRI oldGraph = getCurrentSpaceStateGraph();
         boolean rebuildInPlace = newGraph.equals(oldGraph);
         if (rebuildInPlace) {
-            // "Already current" is only true if that graph was actually finished.
-            // Without the processedUpTo check this early return was the second half
-            // of the 2026-08-05 trap: once a damaged graph was published, the pointer
-            // name still matched, so every subsequent full build returned here and
-            // the instance could never repair itself.
-            if (readProcessedUpTo(oldGraph) >= 0) {
+            // "Already current" is only true if that graph was actually finished AND
+            // still holds everything it claims to. Without the processedUpTo check
+            // this early return was the second half of the 2026-08-05 trap: once a
+            // damaged graph was published, the pointer name still matched, so every
+            // subsequent full build returned here and the instance could never repair
+            // itself. The integrity-count check closes the same loophole for the
+            // 2026-08-22 shape (graph truncated after publication, stamps intact) —
+            // without it, tick() would detect the mismatch, call this method, and be
+            // bounced right back here forever.
+            long expected = readStateTripleCount(oldGraph);
+            boolean countConsistent = expected < 0 || expected == countStateGraphTriples(oldGraph);
+            if (readProcessedUpTo(oldGraph) >= 0 && countConsistent) {
                 logger.debug("AuthorityResolver.runFullBuild: already current at {}", newGraph);
                 return;
             }
-            logger.warn("AuthorityResolver.runFullBuild: {} is the current graph but has no "
-                    + "processedUpTo stamp; rebuilding it in place", newGraph);
+            logger.warn("AuthorityResolver.runFullBuild: {} is the current graph but is "
+                    + "unfinished or inconsistent (processedUpTo={}, countConsistent={}); "
+                    + "rebuilding it in place", newGraph, readProcessedUpTo(oldGraph), countConsistent);
             dropGraph(newGraph);
         }
 
@@ -330,6 +355,11 @@ public final class AuthorityResolver {
 
         // 3. Stamp processedUpTo inside the new graph.
         writeProcessedUpTo(newGraph, loadCounter);
+
+        // 3b. Stamp the integrity triple-count, so tick() can detect a graph
+        //     that later loses part of its content (truncated writes, dropped
+        //     changesets across a store restart) and rebuild it automatically.
+        writeStateTripleCount(newGraph);
 
         // 4. Flip the current-space-state pointer.
         flipPointer(newGraph);
@@ -430,6 +460,9 @@ public final class AuthorityResolver {
         }
 
         writeProcessedUpTo(graph, currentLoadCounter);
+        // Re-stamp the integrity count after this cycle's mutations (also
+        // upgrades pre-stamp graphs to verifiable on their first mutation).
+        writeStateTripleCount(graph);
 
         TierSubjectTotals totals = computeTierSubjectTotals(graph);
         long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
@@ -3383,6 +3416,71 @@ public final class AuthorityResolver {
             conn.begin(IsolationLevels.SNAPSHOT);
             conn.prepareUpdate(QueryLanguage.SPARQL, update).execute();
             conn.commit();
+        }
+    }
+
+    /**
+     * Rewrites the {@link SpacesVocab#STATE_TRIPLE_COUNT} integrity stamp so it
+     * equals the graph's actual triple count (stamp triple included). Runs as a
+     * single transaction — delete old stamp, count, insert new stamp — so the
+     * stamp is either consistent with the content it was measured against or
+     * absent, never half-updated. Called after every mutation of a space-state
+     * graph; {@link #tick()} verifies it and rebuilds on mismatch.
+     */
+    void writeStateTripleCount(IRI graph) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            conn.begin(IsolationLevels.SNAPSHOT);
+            conn.prepareUpdate(QueryLanguage.SPARQL, String.format(
+                    "DELETE WHERE { GRAPH <%s> { <%s> <%s> ?old } }",
+                    graph, graph, SpacesVocab.STATE_TRIPLE_COUNT)).execute();
+            long withoutStamp;
+            try (TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, String.format(
+                    "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <%s> { ?s ?p ?o } }", graph)).evaluate()) {
+                withoutStamp = Long.parseLong(r.next().getBinding("n").getValue().stringValue());
+            }
+            // +1 for the stamp triple itself, so a plain count of the graph matches the stamp.
+            conn.prepareUpdate(QueryLanguage.SPARQL, String.format(
+                    "INSERT DATA { GRAPH <%s> { <%s> <%s> \"%d\"^^<http://www.w3.org/2001/XMLSchema#long> } }",
+                    graph, graph, SpacesVocab.STATE_TRIPLE_COUNT, withoutStamp + 1)).execute();
+            conn.commit();
+        }
+    }
+
+    /**
+     * Reads the {@link SpacesVocab#STATE_TRIPLE_COUNT} stamp from the given
+     * space-state graph. Returns {@code -1} if absent (graph published by a
+     * pre-stamp version; it becomes verifiable at its next mutation). Throws on
+     * read failure — the same absent-vs-error distinction as
+     * {@link #readProcessedUpTo}: a timed-out read must not look like damage.
+     */
+    long readStateTripleCount(IRI graph) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            String query = String.format(
+                    "SELECT ?n WHERE { GRAPH <%s> { <%s> <%s> ?n } }",
+                    graph, graph, SpacesVocab.STATE_TRIPLE_COUNT);
+            try (TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+                if (!r.hasNext()) return -1;
+                return Long.parseLong(r.next().getBinding("n").getValue().stringValue());
+            }
+        } catch (Exception ex) {
+            throw new SpaceStateUnavailableException("failed to read stateTripleCount for " + graph, ex);
+        }
+    }
+
+    /**
+     * Counts the triples in the given space-state graph. Throws on read failure
+     * rather than returning a sentinel, for the same reason as
+     * {@link #readStateTripleCount}.
+     */
+    long countStateGraphTriples(IRI graph) {
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            String query = String.format(
+                    "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <%s> { ?s ?p ?o } }", graph);
+            try (TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+                return Long.parseLong(r.next().getBinding("n").getValue().stringValue());
+            }
+        } catch (Exception ex) {
+            throw new SpaceStateUnavailableException("failed to count triples of " + graph, ex);
         }
     }
 
