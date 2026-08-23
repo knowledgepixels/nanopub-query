@@ -252,6 +252,17 @@ public final class SpacesVocab {
     public static final IRI PROCESSED_UP_TO = vf.createIRI(NPA.NAMESPACE, "processedUpTo");
 
     /**
+     * Integrity stamp: the exact number of triples the space-state graph holds
+     * (including this stamp triple itself), rewritten by every mutation of the
+     * graph — full build and incremental cycle alike. A graph whose actual
+     * triple count disagrees with its stamp lost part of a write (e.g. rdf4j
+     * dropped acked-but-unmerged changesets across a restart, incident
+     * 2026-08-22, where a state graph survived with 7,439 of 19,283 triples
+     * while its {@code processedUpTo} stamp was intact) and must be rebuilt.
+     */
+    public static final IRI STATE_TRIPLE_COUNT = vf.createIRI(NPA.NAMESPACE, "stateTripleCount");
+
+    /**
      * Flag (boolean literal) set in {@code npa:graph} when an incremental cycle
      * has DELETEd a structural derivation (admin-tier RoleInstantiation,
      * RoleAssignment, or RoleDeclaration). Triggers the periodic full-rebuild
