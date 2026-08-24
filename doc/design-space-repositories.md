@@ -335,6 +335,94 @@ try (var trustConn = trustRepo.getConnection();
 
 Keeps the spaces-repo transaction local, avoids SERVICE fragility, and matches the existing `TrustStateLoader` pattern (also Java-side cross-source copy).
 
+### Pending-account mirror (issue #195)
+
+A second, additive mirror step. The trust snapshot only contains accounts the trust
+traversal reached, so a newcomer who published an introduction but has not been endorsed
+yet has no row at all — and every self-signed path resolves the publisher through such a
+row. The consequence was that a self-signed observer role never materialized (invisible in
+participant lists) and the user's own view displays were filtered off their profile page.
+
+`AuthorityResolver.mirrorPendingAccounts` reads introduction nanopubs from `npa:graph` of
+the **`meta`** repo (`npa:isIntroductionOf`, `npa:declaresPubkey`,
+`npa:hasValidSignatureForPublicKeyHash`, `npa:hasLoadNumber` — the registry distributes
+introductions from unknown pubkeys too when optional load is on, which is why the data is
+there) and writes one row per accepted `(agent, pubkey)` pair:
+
+```
+<npaa:…> a npa:PendingAccountState ;
+         npa:agent       <agent> ;
+         npa:pubkey      "<pubkeyHash>" ;
+         npa:trustStatus npa:seen ;
+         npa:viaNanopub  <introNp> .
+```
+
+`npa:pubkey` holds the **hash**, exactly as it does on mirrored approved rows — it is joined
+against `npa:pubkeyHash` in the extraction graph and against
+`npa:hasValidSignatureForPublicKeyHash` in read queries. The full key is only used to check
+that the declaration is authoritative.
+
+Acceptance rules:
+
+- **Authoritative introductions only** — the declared key must be the key that signed the
+  introduction (`SHA256(?pubkey) = ?pkh`). Co-declared keys of a multi-key introduction are
+  deliberately not mirrored.
+- **Self-retraction honoured** — the same publisher-matched `npx:invalidates` gate the
+  tiers use (issue #112); a foreign key cannot retract someone else's introduction.
+- **Approved agents are skipped** — an agent that already has an approved `AccountState`
+  row is left alone, so a rogue introduction cannot pollute an approved user's page.
+- **Approved pubkeys are skipped** — an approved key cannot be re-bound to a second
+  identity.
+
+#### Why a distinct class, not `npa:AccountState`
+
+The `AccountState` row *is* the pubkey→agent identity binding. Every authority join in
+`AuthorityResolver` (`PUBLISHER_IS_ADMIN`, `publisherIsTieredRole`, `adminTierUpdate`, the
+`revoker*` blocks — ~18 sites) resolves `?pkh → ?publisher` through one and then pairs it
+with a `RoleInstantiation` keyed on the **agent**. Since a role granted by an approved
+admin materializes for an assignee who has no approved account of their own, agents can and
+do hold authority without an `AccountState` row — 43 of them on the production fleet when
+this was written (3 admins, 8 maintainers, 38 members), plus 3 `npa:hasRootAdmin` agents.
+
+Emitting pending rows as bare `AccountState` would therefore let anyone bind their own key
+to such an agent by publishing a self-asserted introduction, and act with that agent's
+authority — up to a full space takeover through the root-admin seed. Restricting the mirror
+to agents with no approved account does *not* close that, because those agents have no
+approved account by construction. The distinct class fails closed at every join site,
+including published queries that cannot be retrofitted after deployment.
+
+The only consumer that opts in is the observer tier's `PUBLISHER_IS_SELF_PENDING` pass
+(`observer(self,pending)`), which is safe because observer roles are self-assignable by the
+tier model and `?agent` is already bound by the instantiation — it can never bind a pending
+key to a *different* agent. Rows materialized through it carry `npa:trustStatus npa:seen`
+so read queries can render them as pending with a one-triple `OPTIONAL`. The published
+`get-view-displays` query gains a matching display-only self-arm
+(`doc/queries/get-view-displays.rq`).
+
+#### Watermark and lifecycle
+
+The step runs on every full build (from scratch) and on every incremental cycle, bounded by
+`npa:pendingScannedUpTo` — a watermark over the **meta** repo's load numbers, kept separate
+from `processedUpTo` because it counts a different repo's counter. Absent means "never
+scanned", so an instance upgraded onto an older graph does one full scan on its next cycle;
+no re-ingest is needed. When the step adds rows, the cycle's late-arrival sweep is
+triggered, so an introduction and the self-signed role it enables can land together.
+
+Failure is soft: a `meta` read that fails logs a warning, leaves the watermark alone and
+lets the cycle continue — pending rows are additive and confer no authority, so losing a
+pass costs visibility, not correctness. This is the opposite call from the trust mirror,
+where a failed read must abort the build.
+
+Approval needs no cleanup pass: it flips the trust-state hash, which makes `tick()` run a
+full build that re-derives everything from scratch, stops mirroring the now-approved
+account, and therefore also drops any role that had materialized through its pending row.
+That is what makes the residual spoofing risk self-healing — a rogue introduction claiming a
+not-yet-approved agent can surface observer roles and view displays on that agent's page
+(display-only, flagged pending), and it disappears the moment the real account is approved.
+
+The step can be disabled with `NANOPUB_QUERY_ENABLE_PENDING_ACCOUNTS=false`, which restores
+the pre-#195 behaviour.
+
 ## Update flow
 
 Incremental and add-only at the raw layer; incremental at the space-state layer too, with full rebuild on trust-state flips *and* on periodic rebuild triggers (see [Periodic full rebuild](#periodic-full-rebuild)). All full rebuilds run in parallel with reads by writing to a brand-new graph and flipping the pointer atomically.

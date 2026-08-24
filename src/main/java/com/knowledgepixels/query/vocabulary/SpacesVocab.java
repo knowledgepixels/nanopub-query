@@ -252,6 +252,17 @@ public final class SpacesVocab {
     public static final IRI PROCESSED_UP_TO = vf.createIRI(NPA.NAMESPACE, "processedUpTo");
 
     /**
+     * Watermark for the pending-account mirror (issue #195): the highest
+     * {@code meta}-repo load number whose introduction nanopubs have already been
+     * scanned into this space-state graph. Kept separate from
+     * {@link #PROCESSED_UP_TO} because it counts a different repo's load numbers.
+     * Absent (or {@code -1}) means "never scanned", which makes the next cycle do a
+     * full scan — exactly what an upgraded instance needs on a graph built by an
+     * older version.
+     */
+    public static final IRI PENDING_SCANNED_UP_TO = vf.createIRI(NPA.NAMESPACE, "pendingScannedUpTo");
+
+    /**
      * Integrity stamp: the exact number of triples the space-state graph holds
      * (including this stamp triple itself), rewritten by every mutation of the
      * graph — full build and incremental cycle alike. A graph whose actual
