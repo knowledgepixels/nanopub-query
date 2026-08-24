@@ -57,6 +57,10 @@ final class InMemoryTripleStore implements AutoCloseable {
         // against a closed connection.
         when(store.getRepoConnection(anyString()))
                 .thenAnswer(inv -> repo(inv.getArgument(0)).getConnection());
+        // Utils.createHash writes its reverse-hash triple to the admin repo, so any
+        // code path that hashes a pubkey or type IRI needs this seam backed too.
+        when(store.getAdminRepoConnection())
+                .thenAnswer(inv -> repo(TripleStore.ADMIN_REPO).getConnection());
         staticMock = mockStatic(TripleStore.class);
         staticMock.when(TripleStore::get).thenReturn(store);
     }

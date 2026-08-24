@@ -363,7 +363,7 @@ public class ShardReconciler {
      * Derives the set of shard repos the loader is expected to have populated for
      * a nanopub, from its admin metadata: {@code meta}, {@code full}/{@code text}
      * (feature-flagged), the signer's pubkey repo, one type repo per eligible
-     * computed type (same exclusions as {@link NanopubLoader#executeLoading}:
+     * computed type (shard eligibility per {@link NanopubLoader#isShardedType}:
      * locally-minted IRIs and non-http(s) IRIs are skipped), and {@code spaces}
      * for trigger-typed nanopubs. The driver repo itself is excluded — membership
      * there is what put the nanopub in the window. {@code last30d} is not checked
@@ -380,10 +380,7 @@ public class ShardReconciler {
         }
         repos.add("pubkey_" + pubkeyHash);
         for (IRI typeIri : types) {
-            if (typeIri.stringValue().startsWith(npId.stringValue())) {
-                continue;
-            }
-            if (!typeIri.stringValue().matches("https?://.*")) {
+            if (!NanopubLoader.isShardedType(typeIri, npId)) {
                 continue;
             }
             repos.add("type_" + Utils.createHash(typeIri));
