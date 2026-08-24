@@ -26,8 +26,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Main verticle that coordinates the incoming HTTP requests.
@@ -38,6 +41,93 @@ public class MainVerticle extends AbstractVerticle {
     private static String css = null;
 
     private static final Logger logger = LoggerFactory.getLogger(MainVerticle.class);
+
+    /**
+     * Every periodic scheduler started by {@link #start}, so shutdown can stop them
+     * before anything closes the store underneath a running tick.
+     */
+    private static final List<ScheduledExecutorService> schedulers = new CopyOnWriteArrayList<>();
+
+    /** Set once {@link #shutdownGracefully} has run, so a second signal is a no-op. */
+    private static final AtomicBoolean shutdownDone = new AtomicBoolean(false);
+
+    /** The Vert.x instance to close on shutdown; {@code vertx} itself is per-verticle state. */
+    private static volatile io.vertx.core.Vertx vertxRef;
+
+    /**
+     * Budget for letting in-flight work finish during shutdown, in seconds. Must stay
+     * comfortably below the container's {@code stop_grace_period} (150 s in
+     * docker-compose.yml), or the runtime's SIGKILL lands in the middle of exactly the
+     * write this wait exists to protect.
+     */
+    private static final int SHUTDOWN_QUIESCE_SECONDS = Integer.parseInt(
+            Utils.getEnvString("NANOPUB_QUERY_SHUTDOWN_QUIESCE_SECONDS", "90"));
+
+    /**
+     * Ordered, write-quiescing shutdown. Runs from the JVM shutdown hook, i.e. on
+     * SIGTERM from {@code docker stop} / {@code compose down} / a restart.
+     *
+     * <p>The order is the point. An LMDB write that is still in flight when the store
+     * goes down gets aborted, and an aborted write is the incomplete-rollback condition
+     * behind the value-ID remap corruption (eclipse-rdf4j/rdf4j#4775) that scrambled
+     * metadata and swallowed nanopubs on 2026-08-20 and 2026-08-24. So:
+     *
+     * <ol>
+     *   <li>stop the schedulers, so no new load / materializer / reconciler tick starts;</li>
+     *   <li>wait for the tick that is already running to finish on its own — a full
+     *       space-state build measured ~70 s, so the budget is generous by design;</li>
+     *   <li>suspend store writes and wait until no repo write lock is held, which is
+     *       the point at which nothing is inside a transaction;</li>
+     *   <li>only then close the repositories and the HTTP server.</li>
+     * </ol>
+     *
+     * <p>Each step is bounded and logged. Exceeding a budget is reported as a WARN
+     * naming what was still running: that line is the difference between "we shut down
+     * cleanly" and "this stop is a corruption candidate", and the fleet has needed that
+     * distinction after the fact more than once.
+     */
+    static void shutdownGracefully() {
+        if (!shutdownDone.compareAndSet(false, true)) return;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(SHUTDOWN_QUIESCE_SECONDS);
+        logger.info("Gracefully shutting down (quiesce budget {}s)...", SHUTDOWN_QUIESCE_SECONDS);
+        try {
+            for (ScheduledExecutorService scheduler : schedulers) {
+                scheduler.shutdown();
+            }
+            boolean ticksFinished = true;
+            for (ScheduledExecutorService scheduler : schedulers) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0 || !scheduler.awaitTermination(remaining, TimeUnit.NANOSECONDS)) {
+                    ticksFinished = false;
+                    break;
+                }
+            }
+            if (!ticksFinished) {
+                logger.warn("Shutdown: a periodic tick was still running when the quiesce budget ran out");
+            }
+            long remaining = Math.max(0, deadline - System.nanoTime());
+            boolean quiesced = NanopubLoader.suspendWritesAndAwaitQuiescence(
+                    TimeUnit.NANOSECONDS.toMillis(remaining));
+            if (quiesced && ticksFinished) {
+                logger.info("Shutdown: all writes quiesced; closing repositories");
+            } else {
+                logger.warn("Shutdown: closing repositories WITHOUT full write quiescence "
+                        + "(ticksFinished={}, writesQuiesced={}) — if this stop is followed by store "
+                        + "corruption, this line is the reason to suspect it (rdf4j#4775)",
+                        ticksFinished, quiesced);
+            }
+            TripleStore.get().shutdownRepositories();
+            if (vertxRef != null) {
+                vertxRef.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            }
+            logger.info("Graceful shutdown completed");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            logger.warn("Graceful shutdown interrupted", ex);
+        } catch (Exception ex) {
+            logger.info("Graceful shutdown failed", ex);
+        }
+    }
 
     /**
      * Start the main verticle.
@@ -530,8 +620,9 @@ public class MainVerticle extends AbstractVerticle {
         // been invalidated. `scheduleWithFixedDelay` naturally serialises ticks and cannot
         // pile up if the work occasionally runs long. Same pattern as `JellyNanopubLoader.loadUpdates`
         // below.
-        Executors.newSingleThreadScheduledExecutor()
-                .scheduleWithFixedDelay(collector::updateMetrics, 1, 1, TimeUnit.SECONDS);
+        ScheduledExecutorService metricsExecutor = Executors.newSingleThreadScheduledExecutor();
+        metricsExecutor.scheduleWithFixedDelay(collector::updateMetrics, 1, 1, TimeUnit.SECONDS);
+        schedulers.add(metricsExecutor);
 
 
         new Thread(() -> {
@@ -610,6 +701,7 @@ public class MainVerticle extends AbstractVerticle {
             // Start periodic nanopub loading
             logger.info("Starting periodic nanopub loading...");
             var executor = Executors.newSingleThreadScheduledExecutor();
+            schedulers.add(executor);
             executor.scheduleWithFixedDelay(
                     JellyNanopubLoader::loadUpdates,
                     JellyNanopubLoader.UPDATES_POLL_INTERVAL,
@@ -627,7 +719,9 @@ public class MainVerticle extends AbstractVerticle {
             // window — is the repair latency for a dropped shard, and the damage
             // window of a missing shard is exactly the post-publish minutes when
             // its author is actively using it. An idle tick is one bounded query.
-            Executors.newSingleThreadScheduledExecutor().scheduleWithFixedDelay(
+            ScheduledExecutorService reconcilerExecutor = Executors.newSingleThreadScheduledExecutor();
+            schedulers.add(reconcilerExecutor);
+            reconcilerExecutor.scheduleWithFixedDelay(
                     () -> {
                         try {
                             ShardReconciler.tick();
@@ -649,6 +743,7 @@ public class MainVerticle extends AbstractVerticle {
             // two ticks naturally — they never overlap.
             if (FeatureFlags.spacesEnabled()) {
                 var spacesExecutor = Executors.newSingleThreadScheduledExecutor();
+                schedulers.add(spacesExecutor);
                 spacesExecutor.scheduleWithFixedDelay(
                         () -> {
                             try {
@@ -674,16 +769,8 @@ public class MainVerticle extends AbstractVerticle {
             }
         }).start();
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                logger.info("Gracefully shutting down...");
-                TripleStore.get().shutdownRepositories();
-                vertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
-                logger.info("Graceful shutdown completed");
-            } catch (Exception ex) {
-                logger.info("Graceful shutdown failed", ex);
-            }
-        }));
+        vertxRef = vertx;
+        Runtime.getRuntime().addShutdownHook(new Thread(MainVerticle::shutdownGracefully));
     }
 
     private String getResourceAsString(String file) {

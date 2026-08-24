@@ -51,6 +51,21 @@ services:
     # edge and compete with external clients for nginx's per-repo connection
     # limits (issue #142, incident 2026-07-28).
     #     - NANOPUB_QUERY_INTERNAL_URL=http://query:9393/
+    # Stop this service BEFORE rdf4j (compose stops dependents first), so the store
+    # never has one of our writes in flight when it goes down. An aborted LMDB write
+    # is the incomplete-rollback condition behind the value-ID remap corruption of
+    # eclipse-rdf4j/rdf4j#4775 — the 2026-08-20 and 2026-08-24 events scrambled
+    # metadata across subjects and swallowed nanopubs outright. depends_on also
+    # orders startup (rdf4j first), which is harmless: the loader already retries
+    # while the backend comes up.
+    depends_on:
+      - rdf4j
+    # Docker's default is 10 s, which SIGKILLs the JVM in the middle of whatever it
+    # was writing — the very thing the shutdown hook exists to avoid. Kept above
+    # NANOPUB_QUERY_SHUTDOWN_QUIESCE_SECONDS (90 s) so the quiesce can finish and
+    # still leave room for closing repositories; a full space-state build alone can
+    # run ~70 s. Raise both together or neither.
+    stop_grace_period: 150s
     logging:
       options:
         max-size: "10m"

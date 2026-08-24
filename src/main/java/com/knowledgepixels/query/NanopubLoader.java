@@ -91,6 +91,87 @@ public class NanopubLoader {
     }
 
     /**
+     * Set once shutdown has begun: no new store write may start, and any retry loop
+     * must give up rather than open a fresh transaction.
+     *
+     * <p>Why this exists: a store write that is still in flight when the backend goes
+     * down is aborted, and an aborted LMDB write is the incomplete-rollback condition
+     * behind the value-ID remap corruption we keep hitting (eclipse-rdf4j/rdf4j#4775;
+     * events on 2026-08-20 and 2026-08-24 lost nanopubs and scrambled metadata across
+     * subjects). Signal forwarding and a long {@code stop_grace_period} already stop
+     * the backend from being hard-killed; this closes the other half, so the backend
+     * has nothing in flight to abort when its turn to stop comes.
+     */
+    private static volatile boolean writesSuspended = false;
+
+    /** Whether shutdown has suspended store writes. */
+    static boolean writesSuspended() {
+        return writesSuspended;
+    }
+
+    /**
+     * Suspends new store writes and waits for in-flight ones to finish.
+     *
+     * <p>Sets {@link #writesSuspended} — so a writer that has not yet taken its repo
+     * lock aborts instead of starting — and then acquires every repo write lock, which
+     * is only possible once no writer is inside a transaction. The locks are
+     * deliberately <em>not</em> released: this runs on the shutdown path, and holding
+     * them keeps the quiesced state until the process exits.
+     *
+     * <p>Covers the per-nanopub load path. The materializer serialises on its own
+     * singleton instead, so {@code MainVerticle} stops its scheduler and awaits the
+     * running tick before calling this.
+     *
+     * @param timeoutMillis total budget to wait for in-flight writes
+     * @return true if every repo lock was acquired, i.e. no write was still running
+     */
+    static boolean suspendWritesAndAwaitQuiescence(long timeoutMillis) {
+        writesSuspended = true;
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        for (Map.Entry<String, ReentrantLock> entry : repoWriteLocks.entrySet()) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                logger.warn("Shutdown: timed out before reaching repo '{}'; a write may still be in flight",
+                        entry.getKey());
+                return false;
+            }
+            try {
+                if (!entry.getValue().tryLock(remaining, TimeUnit.NANOSECONDS)) {
+                    logger.warn("Shutdown: repo '{}' still has a write in flight after the quiesce budget",
+                            entry.getKey());
+                    return false;
+                }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Clears the shutdown state: unsets the suspension flag and releases every repo
+     * write lock this thread still holds from a {@link #suspendWritesAndAwaitQuiescence}
+     * call. Production never needs it — the process exits — but both are static and
+     * would otherwise leak into every later test in the same JVM.
+     */
+    static void resetShutdownStateForTesting() {
+        writesSuspended = false;
+        for (ReentrantLock lock : repoWriteLocks.values()) {
+            while (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    /** Thrown by write paths once {@link #writesSuspended} is set. */
+    static final class WritesSuspendedException extends IllegalStateException {
+        WritesSuspendedException(String repoName) {
+            super("shutting down: refusing to start a write to repo '" + repoName + "'");
+        }
+    }
+
+    /**
      * Cached count of nanopubs ever loaded into the {@code meta} repo. Maintained
      * for {@link MainVerticle}'s {@code Nanopub-Query-Loaded-Nanopub-Count}
      * response header. Mirrors the persisted {@code npa:hasNanopubCount} triple
@@ -664,6 +745,12 @@ public class NanopubLoader {
             // process is the only writer of those triples, so the guarantee is the same; see
             // repoWriteLocks for why the isolation level is the expensive way to buy it.
             // Held across the whole transaction, released before any retry back-off.
+            // Fail closed once shutdown has begun (rdf4j#4775): starting a transaction
+            // now means it is in flight when the backend stops, and the abort is the
+            // corruption trigger. Throwing rather than skipping keeps the nanopub
+            // un-stamped, so the loader re-processes it after the restart instead of
+            // recording a load that never landed (the issue #139 failure shape).
+            if (writesSuspended) throw new WritesSuspendedException(repoName);
             ReentrantLock repoLock = repoWriteLock(repoName);
             repoLock.lock();
             try {
@@ -756,6 +843,7 @@ public class NanopubLoader {
             // read-modify-write, serialised by repoWriteLock instead of by the isolation
             // level. The spaces branch is also written by AuthorityResolver, whose own
             // writers serialise via its synchronized methods at SNAPSHOT/READ_COMMITTED.
+            if (writesSuspended) throw new WritesSuspendedException("spaces");
             ReentrantLock repoLock = repoWriteLock("spaces");
             repoLock.lock();
             try {
