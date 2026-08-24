@@ -205,6 +205,12 @@ public class MainVerticle extends AbstractVerticle {
                              + "</script>\n"
                              + "</body>\n"
                              + "</html>");
+            } else if (req.normalizedPath().matches(SparqlEditorRoute.PATH_PATTERN)) {
+                // SIB's sparql-editor, offered alongside the plain YASGUI page above
+                // rather than instead of it (issue #51).
+                req.response()
+                        .putHeader("content-type", "text/html")
+                        .end(SparqlEditorRoute.renderHtml(SparqlEditorRoute.repoFromPath(req.normalizedPath())));
             } else {
                 req.response()
                         .putHeader("content-type", "text/plain")
@@ -231,7 +237,8 @@ public class MainVerticle extends AbstractVerticle {
                              + "<body>\n"
                              + "<h3>Nanopub Query repo: " + repo + "</h3>\n"
                              + "<p>Endpoint: <a href=\"/repo/" + repo + "\">/repo/" + repo + "</a></p>"
-                             + "<p>YASGUI: <a href=\"/tools/" + repo + "/yasgui.html\">/tools/" + repo + "/yasgui.hml</a></p>"
+                             + "<p>YASGUI: <a href=\"/tools/" + repo + "/yasgui.html\">/tools/" + repo + "/yasgui.html</a></p>"
+                             + "<p>SPARQL editor: <a href=\"/tools/" + repo + "/sparql-editor.html\">/tools/" + repo + "/sparql-editor.html</a></p>"
                              + "</body>\n"
                              + "</html>");
             } else {
