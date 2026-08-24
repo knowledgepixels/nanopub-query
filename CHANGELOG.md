@@ -1,3 +1,13 @@
+## [1.27.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.27.0...nanopub-query-1.27.1) (2026-08-24)
+
+### Bug Fixes
+
+* quiesce store writes before shutting down the store ([a82c5a9](https://github.com/knowledgepixels/nanopub-query/commit/a82c5a90e02ed9bb8ba5f31663308b17f9bbf90b)), closes [eclipse-rdf4j/rdf4j#4775](https://github.com/eclipse-rdf4j/rdf4j/issues/4775) [#139](https://github.com/knowledgepixels/nanopub-query/issues/139)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([a4e757f](https://github.com/knowledgepixels/nanopub-query/commit/a4e757fe38f5fefa047a4f6cfe1c8cd0cb2fc4f6))
+
 ## [1.27.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.26.0...nanopub-query-1.27.0) (2026-08-24)
 
 ### Features
