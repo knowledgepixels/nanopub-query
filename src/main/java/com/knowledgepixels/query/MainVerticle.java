@@ -68,6 +68,11 @@ public class MainVerticle extends AbstractVerticle {
             logger.warn("Writes to the 'last30d' repo disabled via NANOPUB_QUERY_ENABLE_LAST30D_REPO=false — "
                     + "the /repo/last30d endpoint will be empty; rewrite queries against /repo/full with a date filter.");
         }
+        if (!FeatureFlags.pendingAccountsEnabled()) {
+            logger.warn("Pending-account mirror disabled via NANOPUB_QUERY_ENABLE_PENDING_ACCOUNTS=false — "
+                    + "introduced-but-not-yet-approved accounts stay invisible: their self-signed observer "
+                    + "roles do not materialise and their own view displays stay hidden (issue #195).");
+        }
         if (!FeatureFlags.reconciliationEnabled()) {
             logger.warn("Shard reconciliation disabled via NANOPUB_QUERY_ENABLE_RECONCILIATION=false — "
                     + "nanopubs silently missing from individual shard repos (issue #139) will not be detected or repaired.");
