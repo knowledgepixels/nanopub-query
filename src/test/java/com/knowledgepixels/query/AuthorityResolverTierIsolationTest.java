@@ -49,8 +49,10 @@ class AuthorityResolverTierIsolationTest {
     private static final IRI R2    = ex("ref-R2");
     private static final IRI ALICE = ex("alice");
     private static final IRI BOB   = ex("bob");
+    private static final IRI CAROL = ex("carol");
     private static final Literal PKH_A = vf.createLiteral("pkhA");
     private static final Literal PKH_B = vf.createLiteral("pkhB");
+    private static final Literal PKH_C = vf.createLiteral("pkhC");
 
     private Repository repo;
     private RepositoryConnection c;
@@ -242,6 +244,76 @@ class AuthorityResolverTierIsolationTest {
                 "foreign-key invalidation must NOT remove the RoleAssignment");
     }
 
+    // ---------------- pending accounts (issue #195) ----------------
+
+    @Test
+    void pendingAccountMaterializesItsOwnObserverRoleWithAPendingStamp() {
+        // Carol was introduced but is not trust-approved yet: she has a pending row and
+        // no AccountState. Her self-signed observer role must become visible, flagged.
+        IRI roleX = ex("roleX");
+        IRI pred = ex("hasObserver");
+        extAttachment("att1", S, roleX, PKH_A, ex("np_att"));
+        runToFixpoint(AuthorityResolver.attachmentValidationUpdate(STATE, -1));
+        roleDecl("rd1", roleX, GEN.OBSERVER_ROLE, GEN.HAS_INVERSE_PROPERTY, pred, ex("np_rd"));
+        pendingAccount("pacctC", CAROL, PKH_C);
+        extInstantiation("ri_o", S, CAROL, SpacesVocab.INVERSE_PROPERTY, pred, PKH_C, ex("np_o"));
+
+        // The approved self-arm must not see a pending row at all.
+        runToFixpoint(AuthorityResolver.nonAdminTierUpdate(
+                STATE, -1, GEN.OBSERVER_ROLE, AuthorityResolver.PUBLISHER_IS_SELF));
+        assertFalse(observerInRef(R1, CAROL),
+                "the approved self-arm must not resolve a pending account");
+
+        runToFixpoint(AuthorityResolver.nonAdminTierUpdate(
+                STATE, -1, GEN.OBSERVER_ROLE, AuthorityResolver.PUBLISHER_IS_SELF_PENDING,
+                AuthorityResolver.PENDING_ROLE_STAMP));
+        assertTrue(observerInRef(R1, CAROL), "self-signed observer role of a pending account materializes");
+        assertTrue(ask("?ri a gen:RoleInstantiation ; npa:forSpaceRef <" + R1 + "> ;"
+                        + " npa:forAgent <" + CAROL + "> ; npa:trustStatus npa:seen ."),
+                "the materialized row is stamped as awaiting approval");
+    }
+
+    @Test
+    void pendingAccountConfersNoAdminAuthority_issue195() {
+        // The escalation the distinct class exists to prevent: Carol holds an admin role
+        // (granted by an approved admin, which needs no approved account of her own) but
+        // has only a self-asserted introduction. Anyone can publish such an introduction,
+        // so a pending row must not let its key act as her.
+        admin("adm_c", R1, S, CAROL);
+        pendingAccount("pacctC", CAROL, PKH_C);
+        extInstantiation("ri_adm", S, ex("eve"), SpacesVocab.INVERSE_PROPERTY, GEN.HAS_ADMIN,
+                PKH_C, ex("np_adm"));
+
+        runToFixpoint(AuthorityResolver.adminTierUpdate(STATE, -1));
+        assertFalse(adminInRef(R1, ex("eve")),
+                "a pending account must not be able to mint admins");
+
+        // Control: the very same data with an approved account does materialize, so the
+        // assertion above is testing the class distinction and not a broken fixture.
+        account("acctC", CAROL, PKH_C);
+        runToFixpoint(AuthorityResolver.adminTierUpdate(STATE, -1));
+        assertTrue(adminInRef(R1, ex("eve")),
+                "control: with an approved account the same grant validates");
+    }
+
+    @Test
+    void pendingAccountConfersNoMemberGrantingAuthority_issue195() {
+        IRI roleX = ex("roleX");
+        IRI pred = ex("hasMember");
+        extAttachment("att1", S, roleX, PKH_A, ex("np_att"));
+        runToFixpoint(AuthorityResolver.attachmentValidationUpdate(STATE, -1));
+        roleDecl("rd1", roleX, GEN.MEMBER_ROLE, GEN.HAS_INVERSE_PROPERTY, pred, ex("np_rd"));
+        // Carol is an admin of R1 but only pending; she grants Dave a member role.
+        admin("adm_c", R1, S, CAROL);
+        pendingAccount("pacctC", CAROL, PKH_C);
+        extInstantiation("ri_m", S, ex("dave"), SpacesVocab.INVERSE_PROPERTY, pred, PKH_C, ex("np_m"));
+
+        runToFixpoint(AuthorityResolver.nonAdminTierUpdate(
+                STATE, -1, GEN.MEMBER_ROLE, AuthorityResolver.PUBLISHER_IS_ADMIN));
+        assertFalse(memberInRef(R1, ex("dave")),
+                "PUBLISHER_IS_ADMIN must not resolve through a pending row");
+    }
+
     // ---------------- seeding helpers ----------------
 
     private void refIri(IRI ref, IRI iri) { c.add(ref, SpacesVocab.SPACE_IRI, iri, SPACES); }
@@ -251,6 +323,15 @@ class AuthorityResolverTierIsolationTest {
         c.add(a, RDF.TYPE, npa("AccountState"), STATE);
         c.add(a, npa("agent"), agent, STATE);
         c.add(a, npa("pubkey"), pkh, STATE);
+    }
+
+    /** An introduced-but-unapproved account row, as the pending mirror writes it (#195). */
+    private void pendingAccount(String name, IRI agent, Literal pkh) {
+        IRI a = ex(name);
+        c.add(a, RDF.TYPE, npa("PendingAccountState"), STATE);
+        c.add(a, npa("agent"), agent, STATE);
+        c.add(a, npa("pubkey"), pkh, STATE);
+        c.add(a, npa("trustStatus"), npa("seen"), STATE);
     }
 
     private void admin(String name, IRI ref, IRI iri, IRI agent) {
@@ -370,6 +451,16 @@ class AuthorityResolverTierIsolationTest {
     private boolean memberInRef(IRI ref, IRI agent) {
         return ask("?ri a gen:RoleInstantiation ; npa:forSpaceRef <" + ref + "> ; npa:forAgent <" + agent + "> ."
                 + " FILTER NOT EXISTS { ?ri npa:inverseProperty gen:hasAdmin }");
+    }
+
+    private boolean adminInRef(IRI ref, IRI agent) {
+        return ask("?ri a gen:RoleInstantiation ; npa:forSpaceRef <" + ref + "> ;"
+                + " npa:inverseProperty gen:hasAdmin ; npa:forAgent <" + agent + "> .");
+    }
+
+    private boolean observerInRef(IRI ref, IRI agent) {
+        return ask("?ri a gen:RoleInstantiation ; npa:forSpaceRef <" + ref + "> ;"
+                + " npa:forAgent <" + agent + "> ; npa:hasRoleType gen:ObserverRole .");
     }
 
     private boolean memberCarriesProperty(IRI ref, IRI agent, IRI pred) {

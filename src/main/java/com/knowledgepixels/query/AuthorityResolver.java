@@ -1,6 +1,8 @@
 package com.knowledgepixels.query;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -23,7 +25,9 @@ import org.nanopub.vocabulary.NPX;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.hash.Hashing;
 import com.knowledgepixels.query.vocabulary.GEN;
+import com.knowledgepixels.query.vocabulary.NPAA;
 import com.knowledgepixels.query.vocabulary.NPAT;
 import com.knowledgepixels.query.vocabulary.SpacesVocab;
 
@@ -42,7 +46,8 @@ import com.knowledgepixels.query.vocabulary.SpacesVocab;
  * </ul>
  *
  * <p>Incremental cycle order: invalidation DELETEs (admin RI / RoleAssignment /
- * non-admin RI) → mirror-step delta is implicit (rebuilt only on full build) →
+ * non-admin RI) → trust mirror-step delta is implicit (rebuilt only on full build) →
+ * pending-account mirror delta (issue #195, bounded by its own meta-repo watermark) →
  * per-tier INSERTs (admin → alias → attachment → maintainer → member → observer) →
  * late-arrival sweep (re-run downstream tiers without the load-number filter
  * iff this cycle added any structural rows). Sets {@code npa:needsFullRebuild}
@@ -60,6 +65,8 @@ public final class AuthorityResolver {
 
     private static final String SPACES_REPO = "spaces";
     private static final String TRUST_REPO = "trust";
+    /** Source of introduction-nanopub meta triples for the pending-account mirror (issue #195). */
+    private static final String META_REPO = "meta";
 
     /** NPA constants pulled in locally (trust-side). */
     private static final IRI NPA_HAS_CURRENT_TRUST_STATE =
@@ -71,6 +78,27 @@ public final class AuthorityResolver {
     private static final IRI NPA_VIA_NANOPUB = vf.createIRI(NPA.NAMESPACE, "viaNanopub");
     private static final IRI NPA_LOADED = vf.createIRI(NPA.NAMESPACE, "loaded");
     private static final IRI NPA_TO_LOAD = vf.createIRI(NPA.NAMESPACE, "toLoad");
+
+    /**
+     * Class of the introduced-but-unapproved account rows written by
+     * {@link #mirrorPendingAccounts} (issue #195).
+     *
+     * <p>Deliberately <em>not</em> {@code npa:AccountState}. An {@code AccountState}
+     * row is the pubkey&rarr;agent identity binding every authority join in this class
+     * resolves through ({@code PUBLISHER_IS_ADMIN}, {@link #publisherIsTieredRole},
+     * {@link #adminTierUpdate}, the {@code revoker*} blocks), and those joins pair it
+     * with a {@code RoleInstantiation} keyed on the <em>agent</em>. Since an
+     * introduction is self-asserted, emitting these rows as bare {@code AccountState}
+     * would let anyone bind their own key to any agent that already holds authority
+     * without having an approved account — 43 such agents existed on the production
+     * fleet when this was written, three of them admins. The distinct class fails
+     * closed for every existing join site, and for published queries that cannot be
+     * retrofitted.
+     */
+    private static final IRI NPA_PENDING_ACCOUNT_STATE =
+            vf.createIRI(NPA.NAMESPACE, "PendingAccountState");
+    /** Trust status stamped on pending rows and on the roles materialized through them. */
+    private static final IRI NPA_SEEN = vf.createIRI(NPA.NAMESPACE, "seen");
 
     /**
      * Trust-approved set: rows with one of these {@code npa:trustStatus} values
@@ -313,6 +341,12 @@ public final class AuthorityResolver {
         // 1. Mirror trust-approved rows into the new graph.
         int mirrored = mirrorTrustState(trustStateHash, newGraph);
 
+        // 1b. Mirror introduced-but-unapproved accounts (issue #195). Runs before the
+        //     tier loops so this build's observer(self,pending) pass sees the rows.
+        //     Additive and authority-free, so it is deliberately not part of the
+        //     empty-build guard below.
+        int pendingMirrored = mirrorPendingAccountsSafely(newGraph, /*fromScratch=*/ true);
+
         // 2. Per-tier UPDATE loops (from scratch: lastProcessed = -1 so the
         //    delta filter FILTER(?ln > ?lastProcessed) includes everything).
         TierInsertedTriples counts = runAllTierLoops(newGraph, -1);
@@ -376,11 +410,11 @@ public final class AuthorityResolver {
         lastInsertedTriplesTotal = insertedTotal;
         lastFullBuildDurationMs = durationMs;
         lastProcessedUpToLag = 0L;
-        logger.info("AuthorityResolver: full build complete — graph={} mirrored={} rows loadCounter={} "
+        logger.info("AuthorityResolver: full build complete — graph={} mirrored={} rows pending={} rows loadCounter={} "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={} governing-space-ref={}) durationMs={}",
-                newGraph, mirrored, loadCounter,
+                newGraph, mirrored, pendingMirrored, loadCounter,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
                 counts.subSpace, counts.subSpacePrefix, counts.maintainedResource, counts.governingSpaceRef,
@@ -428,8 +462,13 @@ public final class AuthorityResolver {
         }
 
         boolean structuralInvalidation = applyInvalidations(graph, lastProcessed);
+        // Pending-account delta (issue #195), before the tier loops so a newcomer's
+        // introduction and their self-signed role can land in the same cycle. Keyed on
+        // the meta repo's own load numbers, hence its own watermark.
+        int pendingMirrored = mirrorPendingAccountsSafely(graph, /*fromScratch=*/ false);
         TierInsertedTriples counts = runAllTierLoops(graph, lastProcessed);
-        boolean structuralAdds = (counts.admin > 0)
+        boolean structuralAdds = (pendingMirrored > 0)
+                || (counts.admin > 0)
                 || (counts.alias > 0)
                 || (counts.presetAttachment > 0)
                 || (counts.attachment > 0)
@@ -473,12 +512,12 @@ public final class AuthorityResolver {
                 + counts.subSpace + counts.subSpacePrefix + counts.maintainedResource
                 + counts.governingSpaceRef;
         lastIncrementalCycleDurationMs = durationMs;
-        logger.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] "
+        logger.info("AuthorityResolver: incremental cycle complete — graph={} delta=({}, {}] pending={} rows "
                         + "subjects: adminRIs={} attachmentRAs={} nonAdminRIs={} "
                         + "(inserted-triples: admin={} alias={} preset-attachment={} preset-assignment-ref={} attachment={} maintainer={} member={} observer={} "
                         + "subspace={} subspace-prefix={} maintained-resource={} governing-space-ref={}) "
                         + "structuralInvalidation={} structuralAdds={} durationMs={}",
-                graph, lastProcessed, currentLoadCounter,
+                graph, lastProcessed, currentLoadCounter, pendingMirrored,
                 totals.adminRIs(), totals.attachmentRAs(), totals.nonAdminRIs(),
                 counts.admin, counts.alias, counts.presetAttachment, counts.presetAssignmentRef, counts.attachment, counts.maintainer, counts.member, counts.observer,
                 counts.subSpace, counts.subSpacePrefix, counts.maintainedResource, counts.governingSpaceRef,
@@ -655,6 +694,9 @@ public final class AuthorityResolver {
                         GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MEMBER_ROLE)));
         c.observer += runTierLabeled("observer(self,late)", graph,
                 nonAdminTierUpdate(graph, -1, GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
+        c.observer += runTierLabeled("observer(self,pending,late)", graph,
+                nonAdminTierUpdate(graph, -1, GEN.OBSERVER_ROLE,
+                        PUBLISHER_IS_SELF_PENDING, PENDING_ROLE_STAMP));
         return c;
     }
 
@@ -827,6 +869,11 @@ public final class AuthorityResolver {
                 GEN.OBSERVER_ROLE, publisherIsTieredRole(GEN.MEMBER_ROLE)));
         c.observer += runTierLabeled("observer(self)", graph, nonAdminTierUpdate(graph, lastProcessed,
                 GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF));
+        // Self-attestation by a not-yet-approved account (issue #195). Runs after the
+        // approved pass; the two are disjoint by construction (a pending row only exists
+        // for an agent with no approved row) and the tier's dedup covers the rest.
+        c.observer += runTierLabeled("observer(self,pending)", graph, nonAdminTierUpdate(graph, lastProcessed,
+                GEN.OBSERVER_ROLE, PUBLISHER_IS_SELF_PENDING, PENDING_ROLE_STAMP));
         return c;
     }
 
@@ -1766,12 +1813,44 @@ public final class AuthorityResolver {
             """;
 
     /**
+     * Observer self-evidence from a not-yet-approved account (issue #195): same shape,
+     * but resolved through the pending row {@link #mirrorPendingAccounts} wrote.
+     *
+     * <p>Safe only because the observer tier is self-assignable by the tier model — the
+     * grant carries no authority, and {@code ?agent} is already bound by the
+     * instantiation, so this can never bind a pending key to a <em>different</em> agent.
+     * It is the single place in this class where a non-approved row is accepted; every
+     * other constraint keeps matching {@code npa:AccountState}.
+     */
+    static final String PUBLISHER_IS_SELF_PENDING = """
+            ?acct a npa:PendingAccountState ;
+                  npa:pubkey ?pkh ;
+                  npa:agent  ?agent .
+            """;
+
+    /**
+     * Extra INSERT triples stamped on roles materialized through a pending account, so
+     * read queries can render them as "pending approval" with a one-triple OPTIONAL
+     * instead of re-deriving the account's status.
+     */
+    static final String PENDING_ROLE_STAMP = "npa:trustStatus npa:seen ;\n                       ";
+
+    /**
      * Maintainer / Member / Observer tier INSERT. Same shape: find an instantiation
      * whose predicate matches a RoleDeclaration of the given tier attached to the
      * target space, and whose publisher passes the tier-specific constraint.
      */
     static String nonAdminTierUpdate(IRI graph, long lastProcessed,
                                      IRI tierClass, String publisherConstraint) {
+        return nonAdminTierUpdate(graph, lastProcessed, tierClass, publisherConstraint, "");
+    }
+
+    /**
+     * Variant that stamps {@code extraInsert} onto every materialized row — used by the
+     * pending-account observer pass to mark the row as awaiting trust approval.
+     */
+    static String nonAdminTierUpdate(IRI graph, long lastProcessed, IRI tierClass,
+                                     String publisherConstraint, String extraInsert) {
         // Order tuned for RDF4J's evaluator (which executes BGPs roughly in order).
         // The crucial choice is the *anchor*: instantiation-first plans send the
         // planner exploring the full ~thousands of candidate RIs and only filter
@@ -1813,7 +1892,7 @@ public final class AuthorityResolver {
                        # / gen:hasRole ?role, exactly as the *-roles-ref queries do.
                        npa:hasRoleType <%7$s> ;
                        gen:hasRole ?role ;
-                       npa:viaNanopub ?np .
+                       %12$snpa:viaNanopub ?np .
                 } }
                 WHERE {
                   # 1. Anchor: validated attachments in this space-state graph (ref-keyed).
@@ -1944,7 +2023,8 @@ public final class AuthorityResolver {
                 publisherConstraint,
                 NPA.GRAPH,
                 nonAdminRevocationSuppressionFilter(graph, tierClass),
-                EPOCH_DT);
+                EPOCH_DT,
+                extraInsert);
     }
 
     /**
@@ -3280,6 +3360,20 @@ public final class AuthorityResolver {
         }
     }
 
+    /**
+     * First object of {@code (subject, predicate)} in {@code context}, or {@code null}.
+     *
+     * <p>Closes the underlying {@link RepositoryResult}: the {@code .stream().findFirst()}
+     * shorthand this replaces leaves the iteration open, which RDF4J reports as
+     * "Connection closed before all iterations were closed" whenever the cleaner has not
+     * collected it before the connection closes.
+     */
+    private static Value firstObject(RepositoryConnection conn, IRI subject, IRI predicate, IRI context) {
+        try (RepositoryResult<Statement> r = conn.getStatements(subject, predicate, null, context)) {
+            return r.hasNext() ? r.next().getObject() : null;
+        }
+    }
+
     int mirrorTrustState(String trustStateHash, IRI newGraph) {
         IRI trustStateIri = NPAT.forHash(trustStateHash);
         int count = 0;
@@ -3299,13 +3393,10 @@ public final class AuthorityResolver {
                 while (typeRows.hasNext()) {
                     Statement st = typeRows.next();
                     if (!(st.getSubject() instanceof IRI accountStateIri)) continue;
-                    Value status = trustConn.getStatements(accountStateIri, NPA_TRUST_STATUS, null, trustStateIri)
-                            .stream().findFirst().map(Statement::getObject).orElse(null);
+                    Value status = firstObject(trustConn, accountStateIri, NPA_TRUST_STATUS, trustStateIri);
                     if (!(status instanceof IRI statusIri) || !APPROVED_SET.contains(statusIri)) continue;
-                    Value agent = trustConn.getStatements(accountStateIri, NPA_AGENT, null, trustStateIri)
-                            .stream().findFirst().map(Statement::getObject).orElse(null);
-                    Value pubkey = trustConn.getStatements(accountStateIri, NPA_PUBKEY, null, trustStateIri)
-                            .stream().findFirst().map(Statement::getObject).orElse(null);
+                    Value agent = firstObject(trustConn, accountStateIri, NPA_AGENT, trustStateIri);
+                    Value pubkey = firstObject(trustConn, accountStateIri, NPA_PUBKEY, trustStateIri);
                     if (agent == null || pubkey == null) {
                         logger.warn("AuthorityResolver.mirror: account {} missing agent or pubkey; skipping",
                                 accountStateIri);
@@ -3319,8 +3410,7 @@ public final class AuthorityResolver {
                     // finding #4). Optional: absent for snapshots from registries that predate
                     // nanopub-registry#117/#118, so consumers (e.g. get-space-members-ref) must
                     // treat npa:viaNanopub on an AccountState as best-effort, not guaranteed.
-                    Value viaNanopub = trustConn.getStatements(accountStateIri, NPA_VIA_NANOPUB, null, trustStateIri)
-                            .stream().findFirst().map(Statement::getObject).orElse(null);
+                    Value viaNanopub = firstObject(trustConn, accountStateIri, NPA_VIA_NANOPUB, trustStateIri);
                     if (viaNanopub != null) {
                         spacesConn.add(accountStateIri, NPA_VIA_NANOPUB, viaNanopub, newGraph);
                     }
@@ -3343,6 +3433,203 @@ public final class AuthorityResolver {
             trustConn.commit();
         }
         return count;
+    }
+
+    // ---------------- Pending-account mirror (issue #195) ----------------
+
+    /**
+     * Result of one {@link #mirrorPendingAccounts} pass.
+     *
+     * @param rows        number of {@code npa:PendingAccountState} rows written
+     * @param scannedUpTo the new watermark: the highest {@code meta} load number this
+     *                    pass looked at, or the incoming watermark when it saw nothing
+     */
+    record PendingMirrorResult(int rows, long scannedUpTo) {}
+
+    /** Approved (agent, pubkey) pairs already present in a space-state graph. */
+    private record ApprovedIndex(Set<IRI> agents, Set<String> pubkeys) {}
+
+    /**
+     * Reads the approved {@code npa:AccountState} rows of a space-state graph into
+     * two lookup sets. Used by {@link #mirrorPendingAccounts} to keep self-asserted
+     * introductions away from identities that trust approval has already settled.
+     */
+    private ApprovedIndex readApprovedIndex(IRI graph) {
+        Set<IRI> agents = new HashSet<>();
+        Set<String> pubkeys = new HashSet<>();
+        String query = String.format("""
+                SELECT ?agent ?pubkey WHERE {
+                  GRAPH <%1$s> {
+                    ?acct a <%2$s> ;
+                          <%3$s> ?agent ;
+                          <%4$s> ?pubkey .
+                  }
+                }
+                """, graph, NPA_ACCOUNT_STATE, NPA_AGENT, NPA_PUBKEY);
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO);
+             TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+            while (r.hasNext()) {
+                BindingSet b = r.next();
+                if (b.getValue("agent") instanceof IRI agent) agents.add(agent);
+                pubkeys.add(b.getValue("pubkey").stringValue());
+            }
+        } catch (Exception ex) {
+            // Must not degrade to an empty index: that would drop both exclusions and
+            // let a self-asserted introduction claim an already-approved identity.
+            throw new SpaceStateUnavailableException(
+                    "failed to read approved account rows from " + graph, ex);
+        }
+        return new ApprovedIndex(agents, pubkeys);
+    }
+
+    /**
+     * Mirrors introduced-but-unapproved accounts into {@code graph} as
+     * {@code npa:PendingAccountState} rows, so that self-signed observer roles and
+     * own-profile view displays from not-yet-approved users become visible
+     * (issue #195). Reads introduction nanopubs from {@code npa:graph} of the
+     * {@code meta} repo — the registry distributes them for unknown pubkeys too when
+     * optional load is on, which is why the data is there at all.
+     *
+     * <p>Only <em>authoritative</em> introductions count: the declared key must be the
+     * key that signed the introduction ({@code SHA256(?pubkey) = ?pkh}), so the other
+     * keys of a multi-key introduction are deliberately not mirrored. Self-retraction
+     * is honoured through the same publisher-matched {@code npx:invalidates} gate the
+     * tiers use (issue #112).
+     *
+     * <p>Two exclusions keep self-asserted data away from settled identities:
+     * an agent that already has an approved {@code AccountState} row is skipped (so a
+     * rogue introduction cannot pollute an approved user's page or lists), and so is a
+     * pubkey that already has one (so an approved key cannot be re-bound to a second
+     * identity).
+     *
+     * <p>The rows never confer authority: they carry {@link #NPA_PENDING_ACCOUNT_STATE},
+     * which no authority join in this class matches. Approval needs no cleanup pass —
+     * it flips the trust-state hash, which makes {@link #tick()} run a full build that
+     * re-derives everything and simply stops mirroring the pending row.
+     *
+     * @param graph          the space-state graph to write into
+     * @param fromLoadNumber scan only introductions with a {@code meta} load number
+     *                       greater than this ({@code -1} scans everything)
+     * @return the number of rows written and the new watermark
+     */
+    PendingMirrorResult mirrorPendingAccounts(IRI graph, long fromLoadNumber) {
+        if (!FeatureFlags.pendingAccountsEnabled()) {
+            return new PendingMirrorResult(0, fromLoadNumber);
+        }
+        ApprovedIndex approved = readApprovedIndex(graph);
+        // ?pkh, not ?pubkey, is what goes into the row: npa:pubkey on a space-state
+        // account row holds the pubkey *hash* (it is joined against the extraction
+        // graph's npa:pubkeyHash and against npa:hasValidSignatureForPublicKeyHash),
+        // despite the predicate's name. The full key is only used to prove the
+        // declaration is authoritative.
+        String query = String.format("""
+                SELECT DISTINCT ?agent ?pkh ?np ?ln WHERE {
+                  GRAPH <%1$s> {
+                    ?np <%2$s> ?agent ;
+                        <%3$s> ?pubkey ;
+                        <%4$s> ?pkh ;
+                        <%5$s> ?ln .
+                    # Authoritative introduction: the declared key signed it.
+                    FILTER (SHA256(?pubkey) = STR(?pkh))
+                    # Self-retraction gate (issue #112): only the introduction's own
+                    # publisher can invalidate it.
+                    FILTER NOT EXISTS {
+                      ?inv <%6$s> ?np ;
+                           <%4$s> ?pkh .
+                    }
+                    FILTER (?ln > %7$d)
+                  }
+                }
+                """, NPA.GRAPH, NPA.IS_INTRODUCTION_OF, NPA.DECLARES_PUBKEY,
+                NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, NPA.HAS_LOAD_NUMBER,
+                NPX.INVALIDATES, fromLoadNumber);
+
+        List<Statement[]> pending = new ArrayList<>();
+        long maxLoadNumber = fromLoadNumber;
+        try (RepositoryConnection metaConn = TripleStore.get().getRepoConnection(META_REPO);
+             TupleQueryResult r = metaConn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+            while (r.hasNext()) {
+                BindingSet b = r.next();
+                long ln = Long.parseLong(b.getValue("ln").stringValue());
+                maxLoadNumber = Math.max(maxLoadNumber, ln);
+                if (!(b.getValue("agent") instanceof IRI agent)) continue;
+                if (!(b.getValue("np") instanceof IRI introNp)) continue;
+                Value pubkeyHash = b.getValue("pkh");
+                if (approved.agents().contains(agent)) continue;
+                if (approved.pubkeys().contains(pubkeyHash.stringValue())) continue;
+                IRI rowIri = pendingAccountIri(graph, pubkeyHash.stringValue(), agent);
+                pending.add(new Statement[] {
+                        vf.createStatement(rowIri, RDF.TYPE, NPA_PENDING_ACCOUNT_STATE, graph),
+                        vf.createStatement(rowIri, NPA_AGENT, agent, graph),
+                        vf.createStatement(rowIri, NPA_PUBKEY, pubkeyHash, graph),
+                        vf.createStatement(rowIri, NPA_TRUST_STATUS, NPA_SEEN, graph),
+                        vf.createStatement(rowIri, NPA_VIA_NANOPUB, introNp, graph),
+                });
+            }
+        } catch (Exception ex) {
+            throw new SpaceStateUnavailableException(
+                    "failed to read introduction nanopubs from the " + META_REPO + " repo", ex);
+        }
+
+        int count = 0;
+        try (RepositoryConnection spacesConn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            // Append-only writes, same rationale as mirrorTrustState: all spaces writers
+            // serialise through this class's synchronized methods.
+            spacesConn.begin(IsolationLevels.READ_COMMITTED);
+            for (Statement[] row : pending) {
+                IRI rowIri = (IRI) row[0].getSubject();
+                // Re-running a cycle (or a watermark rewind) must not duplicate rows.
+                if (spacesConn.hasStatement(rowIri, RDF.TYPE, NPA_PENDING_ACCOUNT_STATE, false, graph)) {
+                    continue;
+                }
+                for (Statement st : row) {
+                    spacesConn.add(st);
+                }
+                count++;
+            }
+            spacesConn.commit();
+        }
+        return new PendingMirrorResult(count, maxLoadNumber);
+    }
+
+    /**
+     * Mints the {@code npaa:} subject of a pending-account row. Keyed on the state
+     * graph (which encodes the trust-state hash and the build's load counter), so the
+     * IRI is stable within a build and different across builds — the same property
+     * {@code TrustStateLoader.accountStateHash} gives approved rows.
+     */
+    private static IRI pendingAccountIri(IRI graph, String pubkeyHash, IRI agent) {
+        String composite = graph.stringValue() + "|" + pubkeyHash + "|" + agent.stringValue() + "|pending";
+        return NPAA.forHash(Hashing.sha256().hashString(composite, StandardCharsets.UTF_8).toString());
+    }
+
+    /**
+     * Runs {@link #mirrorPendingAccounts} and advances the watermark, or logs and
+     * carries on when the read fails.
+     *
+     * <p>Fail-soft is deliberate and is the opposite call from the trust mirror's:
+     * pending rows are purely additive and confer no authority, so losing a pass costs
+     * visibility for not-yet-approved users until the next cycle, whereas aborting the
+     * cycle would stall the whole space state over a display-only feature. The
+     * watermark is advanced only on success, so a failed pass is retried in full.
+     *
+     * @return number of rows written (0 if disabled or on read failure)
+     */
+    private int mirrorPendingAccountsSafely(IRI graph, boolean fromScratch) {
+        long fromLoadNumber = -1;
+        try {
+            if (!fromScratch) fromLoadNumber = readPendingScannedUpTo(graph);
+            PendingMirrorResult result = mirrorPendingAccounts(graph, fromLoadNumber);
+            if (result.scannedUpTo() != fromLoadNumber) {
+                writePendingScannedUpTo(graph, result.scannedUpTo());
+            }
+            return result.rows();
+        } catch (Exception ex) {
+            logger.warn("AuthorityResolver: pending-account mirror failed on {} (watermark stays at {}); "
+                    + "not-yet-approved accounts stay invisible until the next cycle: {}",
+                    graph, fromLoadNumber, ex.getMessage(), ex);
+            return 0;
+        }
     }
 
     // ---------------- Pointer + counter helpers ----------------
@@ -3416,6 +3703,49 @@ public final class AuthorityResolver {
             conn.begin(IsolationLevels.SNAPSHOT);
             conn.prepareUpdate(QueryLanguage.SPARQL, update).execute();
             conn.commit();
+        }
+    }
+
+    /**
+     * Writes the pending-account watermark ({@link SpacesVocab#PENDING_SCANNED_UP_TO})
+     * into the given space-state graph. Same replace-in-place shape as
+     * {@link #writeProcessedUpTo}.
+     */
+    void writePendingScannedUpTo(IRI graph, long metaLoadNumber) {
+        String update = String.format("""
+                DELETE { GRAPH <%s> { <%s> <%s> ?old } }
+                INSERT { GRAPH <%s> { <%s> <%s> "%d"^^<http://www.w3.org/2001/XMLSchema#long> } }
+                WHERE  { OPTIONAL { GRAPH <%s> { <%s> <%s> ?old } } }
+                """,
+                graph, graph, SpacesVocab.PENDING_SCANNED_UP_TO,
+                graph, graph, SpacesVocab.PENDING_SCANNED_UP_TO, metaLoadNumber,
+                graph, graph, SpacesVocab.PENDING_SCANNED_UP_TO);
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
+            conn.begin(IsolationLevels.SNAPSHOT);
+            conn.prepareUpdate(QueryLanguage.SPARQL, update).execute();
+            conn.commit();
+        }
+    }
+
+    /**
+     * Reads the pending-account watermark from the given space-state graph.
+     * Returns {@code -1} when absent — which is both the never-scanned case and the
+     * upgrade case (a graph built by a version without this step), and correctly makes
+     * the next cycle scan every introduction.
+     */
+    long readPendingScannedUpTo(IRI graph) {
+        String query = String.format(
+                "SELECT ?n WHERE { GRAPH <%s> { <%s> <%s> ?n } }",
+                graph, graph, SpacesVocab.PENDING_SCANNED_UP_TO);
+        try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO);
+             TupleQueryResult r = conn.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate()) {
+            if (!r.hasNext()) return -1;
+            return Long.parseLong(r.next().getBinding("n").getValue().stringValue());
+        } catch (Exception ex) {
+            // Unlike processedUpTo, -1 here is harmless (it re-scans), but a read that
+            // failed is still a read failure: let the caller's fail-soft wrapper log it
+            // rather than silently rescanning every cycle.
+            throw new SpaceStateUnavailableException("failed to read pendingScannedUpTo for " + graph, ex);
         }
     }
 

@@ -76,6 +76,13 @@ GRAPH npat:abc... {
 }
 ```
 
+Only rows whose `npa:trustStatus` is `npa:loaded` or `npa:toLoad` are mirrored into the
+space state (`APPROVED_SET`), and accounts the trust traversal never reached are absent from
+the snapshot entirely. Introduced-but-unapproved accounts are therefore sourced elsewhere —
+from introduction nanopubs in the `meta` repo, written as `npa:PendingAccountState` rows
+that confer no authority; see "Pending-account mirror" in
+[design-space-repositories.md](design-space-repositories.md) (issue #195).
+
 ### Per-state endorsement links (in the trust-state's named graph)
 
 Added later for [#184](https://github.com/knowledgepixels/nanopub-query/issues/184): the

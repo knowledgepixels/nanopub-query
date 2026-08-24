@@ -168,6 +168,28 @@ public final class FeatureFlags {
         return "true".equalsIgnoreCase(
                 Utils.getEnvString("NANOPUB_QUERY_ALLOW_TEST_REGISTRY", "false"));
     }
+    
+  /**
+     * When {@code false}, the pending-account mirror is disabled: introduced-but-
+     * unapproved accounts are not written into the space-state graph as
+     * {@code npa:PendingAccountState} rows, so self-signed observer roles from
+     * not-yet-approved users stay invisible (the pre-issue-#195 behaviour).
+     *
+     * <p>Kill switch for an operator who does not want self-asserted introductions
+     * to surface at all — e.g. a deployment that treats trust approval as the only
+     * admission gate for visibility. Pending rows never confer authority either
+     * way; they carry a distinct class precisely so that no authority join can
+     * match them.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_ENABLE_PENDING_ACCOUNTS}
+     * environment variable. Default: {@code true}.
+     *
+     * @return {@code true} if the pending-account mirror is enabled
+     */
+    public static boolean pendingAccountsEnabled() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_ENABLE_PENDING_ACCOUNTS", "true"));
+    }
 
     private FeatureFlags() {
     }

@@ -482,11 +482,7 @@ public class NanopubLoader {
             runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "pubkey_" + Utils.createHash(el.getPublicKeyString())));
             //		loadNanopubToRepo(np.getUri(), textStatements, "text-pubkey_" + Utils.createHash(el.getPublicKeyString()));
             for (IRI typeIri : NanopubUtils.getTypes(np)) {
-                // Exclude locally minted IRIs:
-                if (typeIri.stringValue().startsWith(np.getUri().stringValue())) {
-                    continue;
-                }
-                if (!typeIri.stringValue().matches("https?://.*")) {
+                if (!isShardedType(typeIri, np.getUri())) {
                     continue;
                 }
                 runTask.accept(() -> loadNanopubToRepo(np.getUri(), allStatements, "type_" + Utils.createHash(typeIri)));
@@ -632,6 +628,30 @@ public class NanopubLoader {
                 }
             }
         }
+    }
+
+    /**
+     * Whether a nanopub type gets its own {@code type_} shard for the given
+     * nanopub: locally minted types (IRIs in the nanopub's own namespace) and
+     * non-http(s) types are not sharded on.
+     *
+     * <p>Single definition of the rule, because it is applied from four places
+     * that have to agree: the per-type fan-out in {@link #executeLoading}, both
+     * directions of the retractor propagation ({@link #loadInvalidateStatements}
+     * and {@link #loadInvalidatorIntoTypeRepos}), and
+     * {@link ShardReconciler#expectedShardRepos}. Where they disagreed, a
+     * retractor could be written into a type repo the regular loader would never
+     * create, or be assumed already present in one it had in fact skipped.
+     *
+     * @param typeIri the nanopub type
+     * @param npId    the nanopub carrying that type
+     * @return true if the type maps to a shard repo for that nanopub
+     */
+    static boolean isShardedType(IRI typeIri, IRI npId) {
+        if (typeIri.stringValue().startsWith(npId.stringValue())) {
+            return false;
+        }
+        return typeIri.stringValue().matches("https?://.*");
     }
 
     @GeneratedFlagForDependentElements
@@ -973,7 +993,13 @@ public class NanopubLoader {
                     Set<IRI> thisNpTypes = NanopubUtils.getTypes(thisNp);
                     for (Value v : Utils.getObjectsForPattern(metaConn, NPA.GRAPH, invalidatedNpId, NPX.HAS_NANOPUB_TYPE)) {
                         if (v instanceof IRI typeIri) {
-                            if (!thisNpTypes.contains(typeIri)) {
+                            // Only types the invalidated nanopub is actually sharded on, and
+                            // only those this nanopub's own fan-out doesn't already cover —
+                            // "carries the type" isn't enough, the type has to be one this
+                            // nanopub is itself sharded on (mirrors loadInvalidatorIntoTypeRepos).
+                            boolean coveredByOwnFanOut = thisNpTypes.contains(typeIri)
+                                    && isShardedType(typeIri, thisNp.getUri());
+                            if (isShardedType(typeIri, invalidatedNpId) && !coveredByOwnFanOut) {
                                 // Defer until after the meta-read commits — full load goes
                                 // through loadNanopubToRepo, which has its own transaction
                                 // and retry loop (see post-loop block below).
@@ -1055,9 +1081,10 @@ public class NanopubLoader {
      * Extracts a map from invalidator IRI to that invalidator's pubkey literal
      * out of an {@code invalidatingStatements} list as produced by
      * {@link #getInvalidatingStatements}. The list interleaves
-     * {@code (?inv, npx:invalidates, ?np)} and
-     * {@code (?inv, npa:hasValidSignatureForPublicKey, ?pubkey)} triples per
-     * invalidator; this helper picks out only the pubkey-binding triples.
+     * {@code (?inv, npx:invalidates, ?np)},
+     * {@code (?inv, npa:hasValidSignatureForPublicKey, ?pubkey)} and
+     * {@code (?inv, npa:hasValidSignatureForPublicKeyHash, ?hash)} triples per
+     * invalidator; this helper picks out only the full-pubkey triples.
      */
     private static Map<IRI, String> collectInvalidatorPubkeys(List<Statement> invalidatingStatements) {
         Map<IRI, String> result = new LinkedHashMap<>();
@@ -1090,16 +1117,16 @@ public class NanopubLoader {
 
         List<IRI> typesToLoadInto = new ArrayList<>();
         for (IRI typeIri : thisNpTypes) {
-            // Match the regular per-type load loop's exclusion of locally-minted IRIs.
-            if (typeIri.stringValue().startsWith(thisNpId.stringValue())) {
+            // Match the regular per-type load loop's shard eligibility.
+            if (!isShardedType(typeIri, thisNpId)) {
                 continue;
             }
-            if (!typeIri.stringValue().matches("https?://.*")) {
+            // Skip only the type repos the invalidator's own fan-out really populated:
+            // carrying the type is not enough if the invalidator itself isn't sharded on it.
+            if (invTypes.contains(typeIri) && isShardedType(typeIri, invIri)) {
                 continue;
             }
-            if (!invTypes.contains(typeIri)) {
-                typesToLoadInto.add(typeIri);
-            }
+            typesToLoadInto.add(typeIri);
         }
         if (typesToLoadInto.isEmpty()) {
             return;
@@ -1298,6 +1325,29 @@ public class NanopubLoader {
         return conn;
     }
 
+    /**
+     * Reads back, from the {@code meta} repo, the markers saying that {@code npId}
+     * is already invalidated by some earlier-loaded nanopub. Per invalidator the
+     * returned list holds three triples, all in {@code npa:graph}:
+     * {@code npx:invalidates}, {@code npa:hasValidSignatureForPublicKey} and
+     * {@code npa:hasValidSignatureForPublicKeyHash}.
+     *
+     * <p>The hash triple is derived locally with {@link Utils#createHash} rather
+     * than read from {@code meta}: the loader computes it the same way when it
+     * first writes the pair, so the two can't disagree, and deriving keeps this
+     * working against a {@code meta} repo whose older entries predate the hash
+     * triple (added 2024-05).
+     *
+     * <p>It must be here at all because the caller mirrors this list into every
+     * shard the nanopub is written to, and the pubkey-hash is what the canonical
+     * retraction filter joins on ("invalidator and target share a signing key" —
+     * see {@code AuthorityResolver#samePublisherClause}). Emitting only the full
+     * pubkey — as this method did until issue #14 — made an invalidator's hash
+     * present in a shard when the invalidator happened to be loaded <em>after</em>
+     * its target (the forward path in {@link #loadInvalidateStatements} writes
+     * both) and absent when it was loaded before, so whether a retraction took
+     * effect in a type repo depended on load order.
+     */
     @GeneratedFlagForDependentElements
     static List<Statement> getInvalidatingStatements(IRI npId) {
         List<Statement> invalidatingStatements = new ArrayList<>();
@@ -1313,8 +1363,11 @@ public class NanopubLoader {
                 try (r) {
                     while (r.hasNext()) {
                         BindingSet b = r.next();
-                        invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), NPX.INVALIDATES, npId, NPA.GRAPH));
-                        invalidatingStatements.add(vf.createStatement((IRI) b.getBinding("np").getValue(), NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, b.getBinding("pubkey").getValue(), NPA.GRAPH));
+                        IRI invIri = (IRI) b.getBinding("np").getValue();
+                        Value pubkey = b.getBinding("pubkey").getValue();
+                        invalidatingStatements.add(vf.createStatement(invIri, NPX.INVALIDATES, npId, NPA.GRAPH));
+                        invalidatingStatements.add(vf.createStatement(invIri, NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY, pubkey, NPA.GRAPH));
+                        invalidatingStatements.add(vf.createStatement(invIri, NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH, vf.createLiteral(Utils.createHash(pubkey.stringValue())), NPA.GRAPH));
                     }
                 }
                 conn.commit();
