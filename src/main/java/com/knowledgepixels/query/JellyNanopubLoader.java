@@ -128,6 +128,21 @@ public class JellyNanopubLoader {
     private static final long METADATA_REFRESH_INTERVAL_MS = 30_000L;
 
     /**
+     * Epoch-millis of the last "registry is a test instance, ignoring its content"
+     * warning. Confined to the single-threaded loader executor in {@link MainVerticle},
+     * so a plain field is enough. Package-private only so tests can reset it.
+     */
+    static long lastTestInstanceWarnAtMs = 0L;
+
+    /**
+     * Minimum interval between test-instance skip warnings. The condition is a stable
+     * configuration mismatch, not an event, and {@link #loadUpdates} runs every
+     * {@value #UPDATES_POLL_INTERVAL} ms — unthrottled it would emit ~1800 identical
+     * WARN lines an hour.
+     */
+    static final long TEST_INSTANCE_WARN_INTERVAL_MS = 300_000L;
+
+    /**
      * Heartbeat counter for loadUpdates invocations. A summary log line is emitted
      * every {@link #HEARTBEAT_INTERVAL_INVOCATIONS} invocations so a truncated or
      * sampled log still shows the loader's state evolving. At the default 2 s poll
@@ -144,6 +159,20 @@ public class JellyNanopubLoader {
     record RegistryMetadata(long loadCounter, Long setupId, String coverageTypes,
                             String coverageAgents, String testInstance, String nanopubCount,
                             String trustStateHash) {
+
+        /**
+         * Whether the registry declares itself a test instance.
+         *
+         * <p>The header is absent on registries older than
+         * <a href="https://github.com/knowledgepixels/nanopub-registry/commit/c62b6adf">c62b6adf</a>,
+         * which is treated as "not a test instance" — the same reading the registry
+         * itself applies to its peers.
+         *
+         * @return {@code true} if {@code Nanopub-Registry-Test-Instance} is {@code true}
+         */
+        boolean isTestInstance() {
+            return "true".equalsIgnoreCase(testInstance);
+        }
     }
 
     /**
@@ -179,6 +208,12 @@ public class JellyNanopubLoader {
     public static void loadInitial(long afterCounter) {
         RegistryMetadata metadata = fetchRegistryMetadata();
         updateForwardingMetadata(metadata);
+        if (shouldIgnoreRegistryContent(metadata)) {
+            // Returning here leaves the caller free to mark the instance READY: an
+            // empty-but-healthy Query is the intended outcome of pointing a production
+            // instance at a test registry, and loadUpdates keeps re-checking the flag.
+            return;
+        }
         TrustStateLoader.maybeUpdate(metadata.trustStateHash());
         long targetCounter = metadata.loadCounter();
         logger.info("Fetched Registry load counter: {}", targetCounter);
@@ -260,6 +295,21 @@ public class JellyNanopubLoader {
             lastCommittedCounter = status.loadCounter;
             RegistryMetadata metadata = fetchRegistryMetadata();
             updateForwardingMetadata(metadata);
+            if (shouldIgnoreRegistryContent(metadata)) {
+                // Same bookkeeping as the caught-up branch below: a deliberate skip is
+                // still a successful tick, so the breaker resets, but liveness may only
+                // be stamped once RDF4J has actually answered — otherwise an instance
+                // attached to a test registry would report perfect health through a
+                // total store outage. Note the resync detection below is skipped too:
+                // a test registry's setupId must not drive this instance's state.
+                boolean probed = probeStoreReachable();
+                StatusController.get().setReady();
+                consecutiveBatchFailures = 0;
+                if (probed) {
+                    lastSuccessfulBatchAtMs = System.currentTimeMillis();
+                }
+                return;
+            }
             TrustStateLoader.maybeUpdate(metadata.trustStateHash());
             long targetCounter = metadata.loadCounter();
             Long currentSetupId = metadata.setupId();
@@ -527,6 +577,45 @@ public class JellyNanopubLoader {
      */
     static void setLastKnownSetupId(Long setupId) {
         lastKnownSetupId = setupId;
+    }
+
+    /**
+     * Whether the attached registry's content must be ignored because the registry
+     * declares itself a test instance (issue #25).
+     *
+     * <p>A registry sets {@code Nanopub-Registry-Test-Instance} at DB initialization
+     * from its own {@code REGISTRY_TEST_INSTANCE} variable, marking content that is
+     * not meant to reach production indexes. Nanopub Registry already refuses to sync
+     * from peers that report it; Query does the same for the registry it is attached
+     * to, loading neither nanopubs nor trust state from it.
+     *
+     * <p>The check is deliberately made per poll rather than once at startup: a
+     * registry that is wiped and re-initialized as a test instance under a running
+     * Query must stop feeding it, and one that is re-initialized the other way must
+     * be picked up without a restart. Nanopubs already loaded before the flag
+     * appeared are left in place — ignoring content is not the same as deleting it,
+     * and a registry reset shows up separately as a setupId change.
+     *
+     * <p>Overridable with {@code NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true} for a Query
+     * instance deliberately paired with a test registry; see
+     * {@link FeatureFlags#allowTestRegistry()}.
+     *
+     * @param metadata the registry metadata just fetched
+     * @return {@code true} if this poll must not ingest anything
+     */
+    private static boolean shouldIgnoreRegistryContent(RegistryMetadata metadata) {
+        if (!metadata.isTestInstance() || FeatureFlags.allowTestRegistry()) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastTestInstanceWarnAtMs >= TEST_INSTANCE_WARN_INTERVAL_MS) {
+            lastTestInstanceWarnAtMs = now;
+            logger.warn("Registry {} reports Nanopub-Registry-Test-Instance: true — ignoring its content. "
+                        + "No nanopubs and no trust state will be loaded from it. Set "
+                        + "NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true if this instance is deliberately "
+                        + "paired with a test registry.", registryUrl);
+        }
+        return true;
     }
 
     /**
