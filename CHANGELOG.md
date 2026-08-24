@@ -1,3 +1,22 @@
+## [1.27.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.26.0...nanopub-query-1.27.0) (2026-08-24)
+
+### Features
+
+* **loader:** ignore content of a registry that flags itself as a test instance ([ca6f8c9](https://github.com/knowledgepixels/nanopub-query/commit/ca6f8c90db557fd72ad1b4f91192ba2593409144)), closes [#25](https://github.com/knowledgepixels/nanopub-query/issues/25)
+* **spaces:** materialize introduced-but-unapproved accounts ([c81df9e](https://github.com/knowledgepixels/nanopub-query/commit/c81df9e3a9f22cf936ceac57963987a5d911ce97)), closes [#195](https://github.com/knowledgepixels/nanopub-query/issues/195)
+
+### Bug Fixes
+
+* **loader:** carry invalidator pubkey hash into shards in both load orders ([a14fa52](https://github.com/knowledgepixels/nanopub-query/commit/a14fa526427b3f56784183b6b31a67af1141e912)), closes [AuthorityResolver#samePublisherClause](https://github.com/knowledgepixels/AuthorityResolver/issues/samePublisherClause) [NanopubLoader#isShardedType](https://github.com/knowledgepixels/NanopubLoader/issues/isShardedType) [#14](https://github.com/knowledgepixels/nanopub-query/issues/14)
+
+### Documentation
+
+* **compose:** FORCE_RESYNC is for wiped/out-of-rotation instances only; counter rewind for bounded holes ([f6b8c5d](https://github.com/knowledgepixels/nanopub-query/commit/f6b8c5d425e00f93c9d78838be6d6ca3526cbbae))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([3c16a43](https://github.com/knowledgepixels/nanopub-query/commit/3c16a434e63ee8bb1faf6c850ee4abdb9f035d77))
+
 ## [1.26.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.25.0...nanopub-query-1.26.0) (2026-08-21)
 
 ### Features
