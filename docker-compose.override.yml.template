@@ -10,6 +10,10 @@ services:
 #     Declares this instance local/private: nanopubs typed npx:ProtectedNanopub are
 #     loaded and served instead of being rejected. NEVER enable on a public instance.
 #     - NANOPUB_QUERY_LOCAL_INSTANCE=true
+#     Keep loading from the attached registry even when it reports itself as a test
+#     instance (Nanopub-Registry-Test-Instance: true). By default such a registry's
+#     content is ignored. Only for a Query deliberately paired with a test registry.
+#     - NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true
     ports:
       - 5005:5005
     entrypoint: 'java -jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 nanopub-query.jar'

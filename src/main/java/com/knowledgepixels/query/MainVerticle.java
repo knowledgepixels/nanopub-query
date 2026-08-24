@@ -76,6 +76,11 @@ public class MainVerticle extends AbstractVerticle {
             logger.warn("Instance declared local/private via NANOPUB_QUERY_LOCAL_INSTANCE=true — "
                     + "nanopubs typed npx:ProtectedNanopub will be loaded and served. Never use this setting on a public instance.");
         }
+        if (FeatureFlags.allowTestRegistry()) {
+            logger.warn("Test-registry ingestion enabled via NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true — "
+                    + "content will be loaded even from a registry that reports itself as a test instance. "
+                    + "Never use this setting on a production instance.");
+        }
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
                         .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))

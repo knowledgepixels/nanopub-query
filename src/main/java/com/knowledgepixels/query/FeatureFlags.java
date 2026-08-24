@@ -5,7 +5,8 @@ package com.knowledgepixels.query;
  * as a central table so operator-controlled features have consistent naming and a
  * single place to audit. The {@code NANOPUB_QUERY_ENABLE_*} flags default to
  * {@code true}, i.e. the feature is enabled unless explicitly disabled;
- * {@link #localInstance()} defaults to {@code false}.
+ * {@link #localInstance()} and {@link #allowTestRegistry()} default to
+ * {@code false}.
  *
  * <p>Disabling a flag makes the corresponding feature's entry points no-op:
  * polling, materialisation, and auxiliary repo creation are all skipped. Callers
@@ -139,6 +140,33 @@ public final class FeatureFlags {
     public static boolean localInstance() {
         return "true".equalsIgnoreCase(
                 Utils.getEnvString("NANOPUB_QUERY_LOCAL_INSTANCE", "false"));
+    }
+
+    /**
+     * When {@code true}, this instance keeps ingesting from its attached Nanopub
+     * Registry even if that registry declares itself a test instance via the
+     * {@code Nanopub-Registry-Test-Instance: true} response header. On the default
+     * setting such a registry's content is ignored: {@link JellyNanopubLoader} loads
+     * no nanopubs and fetches no trust state from it, mirroring what the registry
+     * itself does with peers that report the same flag (it skips them outright).
+     *
+     * <p>A registry sets the flag at DB initialization from its own
+     * {@code REGISTRY_TEST_INSTANCE} variable, so it marks content that must not
+     * leak into production indexes. Enable this only for a Query instance that is
+     * deliberately paired with a test registry, where ingesting test content is the
+     * whole point (issue #25).
+     *
+     * <p>Content already loaded before the registry started reporting the flag is
+     * left in place; the flag only stops further ingestion.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_ALLOW_TEST_REGISTRY} environment
+     * variable. Default: {@code false}.
+     *
+     * @return {@code true} if content from a test-instance registry may be loaded
+     */
+    public static boolean allowTestRegistry() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_ALLOW_TEST_REGISTRY", "false"));
     }
 
     private FeatureFlags() {
