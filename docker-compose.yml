@@ -87,7 +87,7 @@ services:
     # loader bootstrap from counter 0). The image also changed the tomcat uid
     # (101 -> 100); init.sh re-chowns the mounted volumes at startup. The 5.3.x
     # client library in the query app stays compatible (REST protocol 12).
-    image: eclipse/rdf4j-workbench:6.0.0-tomcat
+    image: ${RDF4J_IMAGE:-eclipse/rdf4j-workbench}:${RDF4J_IMAGE_TAG:-6.0.0-tomcat}
     restart: unless-stopped
     # Start as root so init.sh can apt-get install curl (missing from the
     # 5.3.1-tomcat image but required by the healthcheck). init.sh drops to
