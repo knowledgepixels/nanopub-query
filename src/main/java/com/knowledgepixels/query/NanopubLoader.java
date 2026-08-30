@@ -26,6 +26,7 @@ import org.nanopub.extra.security.SignatureUtils;
 import org.nanopub.extra.server.GetNanopub;
 import org.nanopub.extra.server.NanopubServerUtils;
 import org.nanopub.extra.setting.IntroNanopub;
+import org.nanopub.trusty.TrustyNanopubUtils;
 import org.nanopub.vocabulary.NP;
 import org.nanopub.vocabulary.NPA;
 import org.nanopub.vocabulary.NPX;
@@ -258,6 +259,25 @@ public class NanopubLoader {
         // TODO Ensure proper synchronization and DB rollbacks
 
         // TODO Check for null characters ("\0"), which can cause problems in Virtuoso.
+
+        // Verify that the content actually hashes to the trusty URI's artifact code,
+        // BEFORE anything else touches the artifact code. The Registry does not verify
+        // this yet (knowledgepixels/nanopub-registry#164), so an entry whose URI is not
+        // a valid trusty code for its content (a "poison" entry, e.g. the RAAAAA…
+        // nanopub at counter 88951, 2026-08-29) can arrive on the Jelly stream. Without
+        // this check such an entry reached the repo writers, where
+        // NanopubUtils.updateXorChecksum threw ArrayIndexOutOfBoundsException on the
+        // short artifact code — a deterministic failure the retry loops treated as
+        // transient, so every poll re-fetched the same entry and re-failed for minutes
+        // at a time, wedging ingestion fleet-wide on one counter (issue #208). Routing
+        // it through the aborted/notes flow instead means the counter advances and the
+        // bad entry is recorded in the admin repo like any other unloadable nanopub.
+        if (!TrustyNanopubUtils.isValidTrustyNanopub(np)) {
+            logger.error("NOT loading nanopub #{} <{}>: content does not match its trusty URI artifact code; recording a note and advancing past it.", counter, np.getUri());
+            notes.add("could not load nanopub as its content does not match its trusty URI artifact code");
+            aborted = true;
+            return;
+        }
 
         String ac = TrustyUriUtils.getArtifactCode(np.getUri().toString());
         if (!np.getHeadUri().toString().contains(ac) || !np.getAssertionUri().toString().contains(ac) || !np.getProvenanceUri().toString().contains(ac) || !np.getPubinfoUri().toString().contains(ac)) {
