@@ -1,3 +1,26 @@
+## [1.28.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.27.1...nanopub-query-1.28.0) (2026-08-30)
+
+### Features
+
+* make the rdf4j image repository configurable (RDF4J_IMAGE) ([cdf84fe](https://github.com/knowledgepixels/nanopub-query/commit/cdf84fef8b2ec6878c67796668945b8e447184bd))
+
+### Dependency updates
+
+* **core-deps:** update dependency org.nanopub:nanopub to v1.92.0 ([ddfc68b](https://github.com/knowledgepixels/nanopub-query/commit/ddfc68bf27058358470f56d2079a9b8795e68ed1))
+
+### Bug Fixes
+
+* skip stream entries whose content does not match their trusty URI ([0128a12](https://github.com/knowledgepixels/nanopub-query/commit/0128a1200e481420803fefd4de8a7a1f84bd4b74)), closes [knowledgepixels/nanopub-registry#164](https://github.com/knowledgepixels/nanopub-registry/issues/164) [#208](https://github.com/knowledgepixels/nanopub-query/issues/208)
+
+### Build and continuous integration
+
+* **deps:** update actions/setup-java action to v6 ([d8402b9](https://github.com/knowledgepixels/nanopub-query/commit/d8402b9bc093c2f74378b9899fcca5c059bc2cab))
+* stop releases failing on issue references they cannot resolve ([75343a6](https://github.com/knowledgepixels/nanopub-query/commit/75343a654f5873f54266d867781ac1510c216275)), closes [eclipse-rdf4j/rdf4j#4775](https://github.com/eclipse-rdf4j/rdf4j/issues/4775) [knowledgepixels/nanopub-query#4775](https://github.com/knowledgepixels/nanopub-query/issues/4775) [eclipse-rdf4j/rdf4j#4775](https://github.com/eclipse-rdf4j/rdf4j/issues/4775)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([0fce0e0](https://github.com/knowledgepixels/nanopub-query/commit/0fce0e0f11c9ff8c15f4bd166c7e086f454532db))
+
 ## [1.27.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.27.0...nanopub-query-1.27.1) (2026-08-24)
 
 ### Bug Fixes
