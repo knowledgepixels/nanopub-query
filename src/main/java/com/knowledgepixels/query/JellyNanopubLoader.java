@@ -52,6 +52,21 @@ public class JellyNanopubLoader {
      */
     static volatile int consecutiveBatchFailures = 0;
 
+    /**
+     * The load counter observed when {@link #consecutiveBatchFailures} last went from
+     * zero to one. If the counter has not moved after several consecutive failures,
+     * the batch is failing deterministically on the same entry — the "poison entry"
+     * shape of issue #208 (one unloadable stream entry wedging ingestion fleet-wide)
+     * — rather than transiently on store pressure. Used only to escalate the log
+     * level with operator guidance; skipping is never based on failure counting,
+     * because a store outage would produce the same signature and skipping there
+     * would silently drop real nanopubs.
+     */
+    static volatile long counterAtFirstFailure = -1L;
+
+    /** Consecutive same-counter batch failures after which the wedge alarm is logged. */
+    static final int WEDGE_ALERT_THRESHOLD = 3;
+
     static final int BREAKER_THRESHOLD = 3;
     static final long BREAKER_PAUSE_MS = 30_000L;
 
@@ -382,8 +397,18 @@ public class JellyNanopubLoader {
             }
         } catch (Exception e) {
             consecutiveBatchFailures++;
+            if (consecutiveBatchFailures == 1) {
+                counterAtFirstFailure = lastCommittedCounter;
+            }
             logger.warn("Failed to load updates. Current counter: {} (consecutive failures: {})",
                     lastCommittedCounter, consecutiveBatchFailures, e);
+            if (consecutiveBatchFailures >= WEDGE_ALERT_THRESHOLD && lastCommittedCounter == counterAtFirstFailure) {
+                logger.error("Loader wedged: {} consecutive batch failures without advancing past counter {}. "
+                        + "If the store is healthy, the stream entry at counter {} is likely unloadable "
+                        + "(see issue #208); it should have been skipped with a note — check the "
+                        + "'NOT loading nanopub' log lines and the entry's validity on the Registry.",
+                        consecutiveBatchFailures, lastCommittedCounter, lastCommittedCounter + 1);
+            }
         } finally {
             try {
                 StatusController.get().setReady();
