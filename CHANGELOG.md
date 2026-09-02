@@ -1,3 +1,19 @@
+## [1.28.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.0...nanopub-query-1.28.1) (2026-09-02)
+
+### Dependency updates
+
+* **core-deps:** update dependency org.nanopub:nanopub to v1.93.0 ([2d62a9d](https://github.com/knowledgepixels/nanopub-query/commit/2d62a9d4ad612a306057da385c59f336641d6667))
+* **core-deps:** update dependency org.nanopub:nanopub to v1.94.0 ([5e7e9c8](https://github.com/knowledgepixels/nanopub-query/commit/5e7e9c8dafb66b16a0e8cc111be235d3647bbb0c))
+* **deps:** update vertx.version to v4.5.33 ([70c7a4b](https://github.com/knowledgepixels/nanopub-query/commit/70c7a4bf8ce71a4900d341730215a60121bae64d))
+
+### Bug Fixes
+
+* disable LMDB value-cache eviction in new repo configs ([fbb3970](https://github.com/knowledgepixels/nanopub-query/commit/fbb3970d186782808022254f025d0e965f22b800)), closes [eclipse-rdf4j/rdf4j#5970](https://github.com/eclipse-rdf4j/rdf4j/issues/5970)
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([06c59a1](https://github.com/knowledgepixels/nanopub-query/commit/06c59a156ac227155bbdb42b34beee309e3b771e))
+
 ## [1.28.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.27.1...nanopub-query-1.28.0) (2026-08-30)
 
 ### Features
