@@ -25,14 +25,21 @@ services:
       # (rdf4j#5960/#4806), so this is a backstop, not a first-line limit.
       - RDF4J_QUERY_TIMEOUT_SECONDS=${RDF4J_QUERY_TIMEOUT_SECONDS:-60}
       # Client-side socket timeout (ms) for this app's own reads from rdf4j
-      # (Utils.getHttpRequestConfig). 10s is aggressive for a store that is slow
-      # rather than broken: the read raises QueryInterruptedException, the loader's
-      # generic retry loops treat that as transient, and the retries add load, which
-      # makes the next read slower still. That storm saturated the OVH node on
-      # 2026-08-31 and again after the migration. Raise it where rdf4j shares CPU
-      # with other services; it is a timeout, so a higher value costs nothing when
-      # reads are fast.
-      - NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT=${NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT:-10000}
+      # (Utils.getHttpRequestConfig). The former 10s default was too aggressive for
+      # a store that is slow rather than broken: the read raises
+      # QueryInterruptedException, the loader's generic retry loops treat that as
+      # transient, and the retries add load, which makes the next read slower still.
+      # That storm saturated a fleet node on 2026-08-31. A timeout costs nothing when
+      # reads are fast, and reads normally complete in tens of milliseconds.
+      #
+      # Keep this in step with the default in Utils.getHttpRequestConfig, or the code
+      # and the deployment disagree about what "default" means.
+      #
+      # Trade-off: a genuinely hung backend now surfaces 3x slower, and each stuck
+      # read holds a pool connection 3x longer. Acceptable because detection no
+      # longer depends on it — JellyNanopubLoader logs "Loader wedged" after
+      # WEDGE_ALERT_THRESHOLD consecutive failures with no counter movement.
+      - NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT=${NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT:-30000}
       # One-shot repair/resync switch: re-streams the whole registry at startup;
       # per-repo isLoaded checks skip everything already present, so WITHOUT a
       # store wipe this fills holes (missing nanopubs) idempotently. Set it for
