@@ -24,6 +24,15 @@ services:
       # concurrent with writes are a suspected corruption trigger upstream
       # (rdf4j#5960/#4806), so this is a backstop, not a first-line limit.
       - RDF4J_QUERY_TIMEOUT_SECONDS=${RDF4J_QUERY_TIMEOUT_SECONDS:-60}
+      # Client-side socket timeout (ms) for this app's own reads from rdf4j
+      # (Utils.getHttpRequestConfig). 10s is aggressive for a store that is slow
+      # rather than broken: the read raises QueryInterruptedException, the loader's
+      # generic retry loops treat that as transient, and the retries add load, which
+      # makes the next read slower still. That storm saturated the OVH node on
+      # 2026-08-31 and again after the migration. Raise it where rdf4j shares CPU
+      # with other services; it is a timeout, so a higher value costs nothing when
+      # reads are fast.
+      - NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT=${NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT:-10000}
       # One-shot repair/resync switch: re-streams the whole registry at startup;
       # per-repo isLoaded checks skip everything already present, so WITHOUT a
       # store wipe this fills holes (missing nanopubs) idempotently. Set it for

@@ -423,6 +423,16 @@ public class TripleStore {
                 indexTypes = "spoc,posc,ospc";
             }
 
+            // valueEvictionInterval 0 disables LMDB's value-cache garbage collection.
+            // Without it, rdf4j frees unused value IDs and REUSES them; a stale reference
+            // then dereferences to a different value, which is the value-ID-remap
+            // corruption we hit eight times between 2026-08-20 and 2026-08-31 (upstream
+            // eclipse-rdf4j/rdf4j#5970). Crucially the eviction pass "is also run after
+            // opening the database" (ValueStore.java), which explains why every one of
+            // those events followed a restart of the affected store. Disabling it is the
+            // workaround recommended upstream on 2026-08-31; it costs disk (dead values
+            // are never reclaimed) but not memory — gcIds() returns early, so nothing
+            // accumulates on the heap. Revisit once the upstream race is fixed.
             String createRegularRepoQueryString =
                     "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n" +
                     "@prefix rep: <http://www.openrdf.org/config/repository#>.\n" +
@@ -441,6 +451,7 @@ public class TripleStore {
                     "            sail:sailType \"rdf4j:LmdbStore\" ;\n" +
                     "            sail:iterationCacheSyncThreshold \"10000\";\n" +
                     "            lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
+                    "            lmdb:valueEvictionInterval 0 ;\n" +
                     "            sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
                     "        ]\n"
                     + "    ].\n";
@@ -468,6 +479,7 @@ public class TripleStore {
                     "              sail:sailType \"rdf4j:LmdbStore\" ;\n" +
                     "              sail:iterationCacheSyncThreshold \"10000\";\n" +
                     "              lmdb:tripleIndexes \"" + indexTypes + "\" ;\n" +
+                    "              lmdb:valueEvictionInterval 0 ;\n" +
                     "              sb:defaultQueryEvaluationMode \"STANDARD\"\n" +
                     "            ]\n" +
                     "        ]\n" +
