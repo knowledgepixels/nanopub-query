@@ -291,7 +291,7 @@ public class Utils {
         return RequestConfig.custom()
                 .setConnectTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECT_TIMEOUT", 10000))
                 .setConnectionRequestTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_CONNECTION_REQUEST_TIMEOUT", 1000))
-                .setSocketTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT", 10000))
+                .setSocketTimeout(getEnvInt("NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT", 30000))
                 .setCookieSpec(CookieSpecs.IGNORE_COOKIES).build();
     }
 
