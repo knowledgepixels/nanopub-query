@@ -99,22 +99,47 @@ public class TripleStore {
     private String endpointBase = null;
     private String endpointType = null;
 
-    private static TripleStore tripleStoreInstance;
+    private static volatile TripleStore tripleStoreInstance;
+
+    /**
+     * Creates the singleton instance. A field rather than a direct constructor call only
+     * so that tests can substitute a slow factory to exercise concurrent first calls.
+     */
+    private static InstanceFactory instanceFactory = TripleStore::new;
+
+    @FunctionalInterface
+    interface InstanceFactory {
+        TripleStore create() throws IOException;
+    }
 
     /**
      * Returns singleton triple store instance.
      *
+     * <p>Thread-safe: the HTTP server accepts requests before the loader thread starts, so
+     * several threads make the first call at once. Before this was synchronized, each of
+     * them could construct its own instance, and since the constructor creates the
+     * {@code admin} repo and RDF4J answers concurrent create requests for a new repo with
+     * 204 each, every extra instance on a fresh store wrote its own
+     * {@code npa:hasRepoInitId} into {@code admin}. Every extra instance also leaked its
+     * HTTP client and that client's idle-connection thread.
+     *
      * @return Triple store instance
      */
     public static TripleStore get() {
-        if (tripleStoreInstance == null) {
-            try {
-                tripleStoreInstance = new TripleStore();
-            } catch (IOException ex) {
-                logger.info("Could not init TripleStore. ", ex);
-            }
+        TripleStore instance = tripleStoreInstance;
+        if (instance != null) {
+            return instance;
         }
-        return tripleStoreInstance;
+        synchronized (TripleStore.class) {
+            if (tripleStoreInstance == null) {
+                try {
+                    tripleStoreInstance = instanceFactory.create();
+                } catch (IOException ex) {
+                    logger.info("Could not init TripleStore. ", ex);
+                }
+            }
+            return tripleStoreInstance;
+        }
     }
 
     private TripleStore() throws IOException {

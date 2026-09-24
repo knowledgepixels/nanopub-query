@@ -24,6 +24,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -336,5 +340,57 @@ class TripleStoreTest {
         assertTrue(repositories.containsKey("type_x"));
         assertFalse(pending.containsKey("type_x"));
         verify(parked, never()).shutDown();
+    }
+
+    /**
+     * Concurrent first calls to {@link TripleStore#get()} must construct exactly one
+     * instance. The constructor creates the {@code empty} and {@code admin} repos, and
+     * RDF4J answers concurrent create requests for a new repo with 204 each, so every
+     * extra instance on a fresh store wrote its own {@code npa:hasRepoInitId} into
+     * {@code admin} (observed as 2-5 values on the fleet). A slow factory widens the
+     * race window without any network access.
+     */
+    @Test
+    void concurrentFirstGetConstructsSingleInstance() throws Exception {
+        Field instanceField = TripleStore.class.getDeclaredField("tripleStoreInstance");
+        Field factoryField = TripleStore.class.getDeclaredField("instanceFactory");
+        instanceField.setAccessible(true);
+        factoryField.setAccessible(true);
+        Object previousInstance = instanceField.get(null);
+        Object previousFactory = factoryField.get(null);
+        AtomicInteger constructed = new AtomicInteger();
+        TripleStore.InstanceFactory slowFactory = () -> {
+            constructed.incrementAndGet();
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            return mock(TripleStore.class);
+        };
+        instanceField.set(null, null);
+        factoryField.set(null, slowFactory);
+        int threads = 16;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            List<Future<TripleStore>> results = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                results.add(pool.submit(() -> {
+                    start.await();
+                    return TripleStore.get();
+                }));
+            }
+            start.countDown();
+            TripleStore first = results.get(0).get();
+            for (Future<TripleStore> result : results) {
+                assertSame(first, result.get());
+            }
+            assertEquals(1, constructed.get());
+        } finally {
+            pool.shutdownNow();
+            instanceField.set(null, previousInstance);
+            factoryField.set(null, previousFactory);
+        }
     }
 }
