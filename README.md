@@ -76,7 +76,11 @@ curl -sI http://localhost:9393/ | grep -i '^nanopub-query'
 
 Stop the instance with `docker compose stop` or `docker compose down` only, and give it time: the stack is
 configured to shut down its store cleanly, which can take a few minutes. Killing the containers mid-write can corrupt
-the store. For alerting rules on the loader, see [monitoring](monitoring/README.md).
+the store, and on a typical Ubuntu server two host settings need adjusting so that reboots and automatic updates do
+not do exactly that.
+
+See the [operations guide](doc/operations.md) for hardware requirements, preparing the host, upgrading, monitoring,
+and repairing an instance.
 
 ## Development
 
