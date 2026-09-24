@@ -4,7 +4,12 @@ services:
     image: nanopub/query:latest
     restart: unless-stopped
     ports:
-      - "9393:9393"
+      # Localhost only: the app has no authentication and forwards /repo requests
+      # of every method to RDF4J, which deletes a repository on DELETE of its URL.
+      # Published on all interfaces, this bypasses whatever the reverse proxy
+      # restricts (see nginx.conf); a host firewall does not help, since Docker
+      # manages its own iptables rules.
+      - "127.0.0.1:9393:9393"
       # :9394 is only accessible from localhost as it is used for the /metrics endpoint
       - "127.0.0.1:9394:9394"
     volumes:
@@ -88,22 +93,20 @@ services:
         max-file: "3"
 
   rdf4j:
-    # 6.0.0 (from 5.3.2, 2026-08-12): upstream unified LMDB transaction
-    # handling via TxnManager (ValueStore rewritten), which may resolve our
-    # three LMDB defects (eclipse-rdf4j/rdf4j#5970); deployed together with the
-    # client-side removal of SERIALIZABLE transactions (the suspected
-    # corruption trigger), so either change may stop the malloc-corruption
-    # crash loop.
+    # 6.1.0 (2026-09-23) fixes the LMDB value-ID corruption of 6.0.0
+    # (eclipse-rdf4j/rdf4j#6022: nextId wrong after reopen) and pools read
+    # transactions (PR #5974). Do not run anything below 6.1.0. The store format
+    # is unchanged from 6.0.0, so that step needs no wipe.
     #
-    # MIGRATION REQUIRED — this is not a plain image swap: 6.x changed the LMDB
-    # value-ID layout and refuses to open 5.x stores ("Directory contains data
-    # from an older unsupported version of LmdbStore"). Deploying this bump
-    # means stopping the stack, wiping ./data/rdf4j/data, and letting the query
-    # app re-ingest everything from the Registry (a fresh admin repo makes the
-    # loader bootstrap from counter 0). The image also changed the tomcat uid
-    # (101 -> 100); init.sh re-chowns the mounted volumes at startup. The 5.3.x
-    # client library in the query app stays compatible (REST protocol 12).
-    image: ${RDF4J_IMAGE:-eclipse/rdf4j-workbench}:${RDF4J_IMAGE_TAG:-6.0.0-tomcat}
+    # Coming from 5.x is NOT a plain image swap: 6.x changed the LMDB value-ID
+    # layout and refuses to open 5.x stores ("Directory contains data from an
+    # older unsupported version of LmdbStore"). Stop the stack, wipe
+    # ./data/rdf4j/data, and let the query app re-ingest everything from the
+    # Registry (a fresh admin repo makes the loader bootstrap from counter 0).
+    # The 6.x image also changed the tomcat uid (101 -> 100); init.sh re-chowns
+    # the mounted volumes at startup. The 5.3.x client library in the query app
+    # stays compatible (REST protocol 12).
+    image: ${RDF4J_IMAGE:-eclipse/rdf4j-workbench}:${RDF4J_IMAGE_TAG:-6.1.0-tomcat}
     restart: unless-stopped
     # Start as root so init.sh can apt-get install curl (missing from the
     # 5.3.1-tomcat image but required by the healthcheck). init.sh drops to
@@ -164,7 +167,9 @@ services:
       # queries (petapico, within a day of the raise). Hosts running the
       # PR#5974 lmdbpool canary pool their readers and are immune (kpxl, no
       # errors under the same load). So the default stays BELOW 256 with
-      # headroom: 240 threads / 120 per route / 240 total. A canary host may
+      # headroom: 240 threads / 120 per route / 240 total. rdf4j 6.1.0 includes
+      # PR#5974, so this ceiling no longer applies on the current default image;
+      # the defaults are kept until a raise has been measured, and a host may
       # raise all three in its .env (e.g. 400/200/400).
       #
       # This is mitigation, not a cure: it raises the threshold above realistic
