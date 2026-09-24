@@ -40,30 +40,54 @@ On top of that, there are these specific repos:
 Two admin graphs (`npa:graph` and `npa:networkGraph`) are created with metadata about the nanopublications.
 The [admin triple table](doc/admin-triple-table.csv) shows the details.
 
-## General Setup
+## Running an Instance
 
-Get pre-packaged data (optional):
+A Query instance loads its nanopublications from a
+[Nanopub Registry](https://github.com/knowledgepixels/nanopub-registry), ideally one you run next to it. It runs
+with Docker Compose, as two containers: the Query app itself and the RDF4J triple store behind it.
 
-    $ wget https://zenodo.org/records/14260335/files/rdf4j-20241202.tar.gz
-    $ tar -xzf rdf4j-20241202.tar.gz
+Create the data directories, copy the `docker-compose.override.yml.template` file to `docker-compose.override.yml`,
+and adjust the settings in its Section 1 (public URL and registry):
 
-Init directories:
+```bash
+./init-dirs.sh
+cp docker-compose.override.yml.template docker-compose.override.yml
+```
 
-    $ ./init-dirs.sh
+Then start it:
 
-Check `docker-compose.yml` and make any adjustments in a new file `docker-compose.override.yml`.
+```bash
+docker compose up -d
+```
 
-## Deadlock Problem Workaround
+The Query app serves plain HTTP on `localhost:9393` (plus a metrics endpoint on `localhost:9394`), and RDF4J on
+`localhost:8081`. None of these have authentication, so they are bound to localhost only. To make the instance
+publicly reachable via HTTPS, run a reverse proxy on the host that terminates TLS: [nginx.conf](nginx.conf) is the
+reference configuration, which also restricts the SPARQL endpoints to read-only queries and answers CORS preflight
+requests.
 
-There is a deadlock problem with RDF4J ([details](https://github.com/eclipse-rdf4j/rdf4j/discussions/5120)), which
-requires some specific web server configuration to work around it. Specifically, concurrent requests per repo have
-to be avoided, with a configuration like in [this nginx example](nginx.conf).
+On first start, the instance loads all nanopublications from the registry, which takes a while. Every response
+reports the progress in its headers: `Nanopub-Query-Status` goes from `LOADING_INITIAL` to `READY`, and
+`Nanopub-Query-Loaded-Nanopub-Count` approaches the registry's count in `Nanopub-Query-Registry-Nanopub-Count`:
 
-## Launch
+```bash
+curl -sI http://localhost:9393/ | grep -i '^nanopub-query'
+```
 
-Start with Docker Compose:
+Stop the instance with `docker compose stop` or `docker compose down` only, and give it time: the stack is
+configured to shut down its store cleanly, which can take a few minutes. Killing the containers mid-write can corrupt
+the store. For alerting rules on the loader, see [monitoring](monitoring/README.md).
 
-    $ sudo docker compose up -d
+## Development
+
+To build and run from the local sources, run:
+
+```bash
+./run.sh
+```
+
+Optional development features like remote JVM debugging (`localhost:5005`) can be enabled in the development section
+of `docker-compose.override.yml`.
 
 ## License
 

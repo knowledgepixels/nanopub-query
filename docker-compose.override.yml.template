@@ -1,22 +1,114 @@
+# Template for docker-compose.override.yml
+#
+# Copy this file to docker-compose.override.yml and adjust it:
+#
+#     cp docker-compose.override.yml.template docker-compose.override.yml
+#
+# For a regular (public/production) Query instance, you only need to adjust
+# Section 1. Sections 2 and 4 are optional and commented out; leave them as
+# they are unless you know you need them. To uncomment a line, replace its
+# leading '#' with a space, so the indentation stays intact. Section 3 lists
+# tuning values that go into a separate .env file, not into this one.
+#
+# Note on connectivity: the Query app serves plain HTTP on port 9393, and the
+# RDF4J triple store behind it on port 8081. Both are bound to localhost only
+# (see docker-compose.yml), because neither has any authentication: RDF4J
+# deletes a whole repository on a DELETE request, and the app forwards such
+# requests to it. To make the instance publicly reachable via HTTPS, run a
+# reverse proxy (e.g. nginx) on the host that terminates TLS and restricts
+# what gets through; nginx.conf in this repository is the reference
+# configuration. To check that the service itself is running, on the server
+# run: curl -i http://localhost:9393/
+
 services:
   query:
     environment:
-      - JPDA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+
+      # ----------------------------------------------------------------------
+      # Section 1: STANDARD SETTINGS - adjust these for your instance
+      # ----------------------------------------------------------------------
+
+      # Public URL under which this Query instance will be reachable (with
+      # trailing slash). Only used in generated documentation, such as the
+      # OpenAPI pages of the /api queries:
       - NANOPUB_QUERY_URL=https://query.your.domain.com/
-      - REGISTRY_FIXED_URL=http://your.nanopub.registry.com/
-      - RDF4J_PROXY_HOST=rdf4j
-      - RDF4J_PROXY_PORT=8080
+
+      # The Nanopub Registry this instance loads its nanopublications from
+      # (with trailing slash). Ideally a registry instance run next to this
+      # one; otherwise one of the public ones, e.g.
+      # https://registry.knowledgepixels.com/
+      - REGISTRY_FIXED_URL=https://registry.your.domain.com/
+
+      # ----------------------------------------------------------------------
+      # Section 2: OPTIONAL FEATURES - the defaults are fine for most instances
+      # ----------------------------------------------------------------------
+
+      # Each of these switches a part of the loading off; all are on by
+      # default. Switching one off breaks the queries that rely on it.
+#     - NANOPUB_QUERY_ENABLE_FULL_REPO=false  # No 'full' repo (generic SPARQL over all nanopubs)
+#     - NANOPUB_QUERY_ENABLE_TEXT_REPO=false  # No 'text' repo (full-text search); the heaviest write target
+#     - NANOPUB_QUERY_ENABLE_LAST30D_REPO=false  # No 'last30d' repo (recent nanopubs)
+#     - NANOPUB_QUERY_ENABLE_SPACES=false  # No 'spaces' repo and no space-state materialization
+#     - NANOPUB_QUERY_ENABLE_TRUST_STATE=false  # No 'trust' repo mirroring the registry's trust state
+#     - NANOPUB_QUERY_ENABLE_PENDING_ACCOUNTS=false  # Hide introduced-but-unapproved accounts in the space state
+#     - NANOPUB_QUERY_ENABLE_RECONCILIATION=false  # No periodic sweep that detects and re-loads missing nanopubs
+
+      # Grlc API specs to list on the start page (whitespace-separated):
 #     - NANOPUB_QUERY_PINNED_APIS=RAkYh4UPJryajbtIDbLG-Bfd6A4JD2SbU9bmZdvaEdFRY/fdo-text-search RAs0HI_KRAds4w_OOEMl-_ed0nZHFWdfePPXsDHf4kQkU/get-fdo-by-id
-#     Declares this instance local/private: nanopubs typed npx:ProtectedNanopub are
-#     loaded and served instead of being rejected. NEVER enable on a public instance.
+
+      # In-cluster URL for the SERVICE clauses in /api queries; the default
+      # http://query:9393/ is right for this Docker Compose setup. NEVER set
+      # this to the public URL: federated queries would then loop through the
+      # reverse proxy and compete with external clients for its limits.
+#     - NANOPUB_QUERY_INTERNAL_URL=http://query:9393/
+
+      # ----------------------------------------------------------------------
+      # Section 3: TUNING - these go into a file named .env next to
+      # docker-compose.yml, NOT into this file, because docker-compose.yml
+      # builds command lines from them. Leave them out to use the defaults.
+      # ----------------------------------------------------------------------
+      #
+      # RDF4J_IMAGE_TAG=6.1.0-tomcat  # RDF4J version; do not go below 6.1.0 (LMDB corruption bug in 6.0.0)
+      # RDF4J_MAX_RAM_PERCENTAGE=50  # RDF4J heap as % of host RAM; lower it if other services share the host
+      # RDF4J_MAX_CONN_PER_ROUTE=120  # Connection pool for federated SERVICE calls; these three must be
+      # RDF4J_MAX_CONN_TOTAL=240      # changed together (workers >= 2x per-route), and lowering them makes
+      # RDF4J_TOMCAT_MAX_THREADS=240  # federated queries deadlock sooner, not later
+      # RDF4J_QUERY_TIMEOUT_SECONDS=60  # Server-side limit for each SPARQL query; 0 disables
+      # RDF4J_HEALTHCHECK_RESTART=off  # Whether a failing health probe restarts RDF4J
+      #
+      # One-shot repair: re-stream the whole registry and fill in any missing
+      # nanopubs. Set it for a single `docker compose up -d`, then remove it
+      # again. Only on a wiped instance or one out of service; see the comment
+      # on FORCE_RESYNC in docker-compose.yml before using it on a live one.
+      #
+      # FORCE_RESYNC=true
+
+      # ----------------------------------------------------------------------
+      # Section 4: DEVELOPMENT / TEST ONLY - do not enable on a public
+      # production instance.
+      # ----------------------------------------------------------------------
+
+      # Local/private instance: load and serve nanopubs typed
+      # npx:ProtectedNanopub, which public instances reject. NEVER enable this
+      # on a public instance.
 #     - NANOPUB_QUERY_LOCAL_INSTANCE=true
-#     Keep loading from the attached registry even when it reports itself as a test
-#     instance (Nanopub-Registry-Test-Instance: true). By default such a registry's
-#     content is ignored. Only for a Query deliberately paired with a test registry.
+
+      # Keep loading from the registry even when it reports itself as a test
+      # instance (by default such a registry's content is ignored). Only for a
+      # Query instance deliberately paired with a test registry:
 #     - NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true
-    ports:
-      - 5005:5005
-    entrypoint: 'java -jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 nanopub-query.jar'
-# rdf4j:
-#   environment:
-#     - JAVA_OPTS=-Xmx16g -Xms1g -Xss100m -Dorg.eclipse.rdf4j.client.http.connectionTimeout=10000 -Dorg.eclipse.rdf4j.client.http.connectionRequestTimeout=10000 -Dorg.eclipse.rdf4j.client.http.socketTimeout=10000
+
+      # Seconds to wait before the local nanopub loader (./load) starts:
+#     - INIT_WAIT_SECONDS=120
+
+    # Serve on a different host port (e.g. 9390 for a test instance running
+    # next to a main instance); '!override' replaces the port list from
+    # docker-compose.yml instead of adding to it:
+#   ports: !override
+#     - 127.0.0.1:9390:9393
+#     - 127.0.0.1:9395:9394
+
+    # Enable remote JVM debugging on port 5005 (localhost only):
+#   ports:
+#     - 127.0.0.1:5005:5005
+#   entrypoint: 'java -jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 nanopub-query.jar'
