@@ -68,6 +68,7 @@ services:
       # builds command lines from them. Leave them out to use the defaults.
       # ----------------------------------------------------------------------
       #
+      # NANOPUB_QUERY_IMAGE_TAG=1.28.1  # Pin the Query version (default: latest); see doc/operations.md
       # RDF4J_IMAGE_TAG=6.1.0-tomcat  # RDF4J version; do not go below 6.1.0 (LMDB corruption bug in 6.0.0)
       # RDF4J_MAX_RAM_PERCENTAGE=50  # RDF4J heap as % of host RAM; lower it if other services share the host
       # RDF4J_MAX_CONN_PER_ROUTE=120  # Connection pool for federated SERVICE calls; these three must be

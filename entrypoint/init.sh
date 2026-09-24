@@ -33,7 +33,7 @@ chown -R tomcat: /var/rdf4j /usr/local/tomcat/logs /var/info
 # (2026-08-20) had only 42 http-nio workers against maxThreads=400 while all 60
 # route connections were held -- connections bind, threads do not, which is why
 # raising maxThreads alone measurably changed nothing. It is here so that
-# raising maxConnPerRoute is safe. See the rationale block in docker-compose.yml.
+# raising maxConnPerRoute is safe. See doc/deployment-rationale.md.
 #
 # conf/ is not a mounted volume, so this is re-applied cleanly on every start.
 if [ -n "$RDF4J_TOMCAT_MAX_THREADS" ]; then

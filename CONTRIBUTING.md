@@ -93,6 +93,10 @@ messages. This helps us automate the release process and generate changelogs eas
   contained within parentheses, e.g., `feat(parser): add ability to parse arrays`.
 - **Description**: A brief summary of the changes made in the commit.
 
+- **Re-ingest**: If existing instances have to wipe and re-ingest their store for a change to take full effect (e.g.
+  because it changes what is written for each nanopublication), say `(requires re-ingest)` at the end of the
+  description, so admins find it in the release notes.
+
 Using this format is **mandatory** in order to make automated releases work correctly. If your commit does not follow
 these
 guidelines, please specify it in the PR description so maintainers can help adjust it during the review process.
