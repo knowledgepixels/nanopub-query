@@ -23,11 +23,13 @@ public class TrustStateRegistry {
     private static TrustStateRegistry instance;
 
     /**
-     * Returns the singleton instance.
+     * Returns the singleton instance. Synchronized so that concurrent first calls cannot
+     * create two instances, one of which would lose a hash set on the other. It is
+     * called once per trust-state tick or space-state build, so the lock costs nothing.
      *
      * @return the singleton instance
      */
-    public static TrustStateRegistry get() {
+    public static synchronized TrustStateRegistry get() {
         if (instance == null) {
             instance = new TrustStateRegistry();
         }
