@@ -25,9 +25,25 @@ localhost-only as well; see [monitoring](../monitoring/README.md).
 
 ## RDF4J version
 
-6.1.0 (2026-09-23) fixes the LMDB value-ID corruption of 6.0.0 (eclipse-rdf4j/rdf4j#6022: `nextId` wrong after reopen)
-and pools read transactions (eclipse-rdf4j/rdf4j#5974). Do not run anything below 6.1.0. The store format is unchanged
-from 6.0.0, so that step needs no wipe.
+The default is `nanopub/rdf4j-workbench:6.0.0-lmdbpool4`: rdf4j 6.0.0 with the LMDB sail jar replaced by a build of
+eclipse-rdf4j/rdf4j#5974 cherry-picked onto the 6.0.0 tag (`8142e783` pooled read transactions, `f493d19` the #6022
+`nextId` fix), so every other component is the released 6.0.0. Neither official release is safe for this workload:
+
+- **Stock 6.0.0 corrupts the store.** After a reopen, `nextId` starts too low, so values written after a restart reuse
+  IDs that are still in use, and unrelated records end up sharing values (eclipse-rdf4j/rdf4j#6022; eleven corruption
+  events in August and September 2026).
+- **6.1.0 regressed query planning.** It contains both fixes, but on 2026-09-24 the first space admin grant it
+  processed made the `wouldInvalidate` ASK queries of `AuthorityResolver`'s incremental cycle run into their timeout
+  on every instance at once. The cycle retries every tick, so RDF4J sat at ~1,100% CPU and the whole fleet, Nanodash
+  included, stopped answering. The same queries had run fine on 6.0.0-based builds for 31 earlier admin grants, and
+  rolling back to lmdbpool4 cleared it immediately. The likely cause is 6.1.0's rewritten LMDB cardinality estimation.
+
+Known limitation of lmdbpool4: it predates 6.1.0's reserved reader slot, and under a heavy burst it can deadlock
+(RDF4J idle at near-zero CPU while every request times out, including the health check; restarting RDF4J clears it).
+This was seen once, on a single instance that was carrying the whole fleet's traffic. Move to an official release once
+one handles this workload.
+
+The store format is the same in 6.0.0, lmdbpool4 and 6.1.0, so switching between them needs no wipe.
 
 Coming from 5.x is not a plain image swap: 6.x changed the LMDB value-ID layout and refuses to open 5.x stores
 ("Directory contains data from an older unsupported version of LmdbStore"). Stop the stack, wipe `./data/rdf4j/data`,
@@ -150,8 +166,9 @@ Second ceiling (2026-08-20, found the hard way): rdf4j 6.0.0 hardcodes LMDB's re
 drove stock hosts into intermittent "MDB_READERS_FULL: Environment maxreaders limit reached" on plain queries
 (petapico, within a day of the raise). Hosts running the PR#5974 lmdbpool canary pooled their readers and were immune
 (kpxl, no errors under the same load). So the default stays below 256 with headroom: 240 threads / 120 per route /
-240 total. rdf4j 6.1.0 includes PR#5974, so this ceiling no longer applies on the current default image; the defaults
-are kept until a raise has been measured, and a host may raise all three in its `.env` (e.g. 400/200/400).
+240 total. The default image (lmdbpool4, see [RDF4J version](#rdf4j-version)) includes PR#5974's pooled readers, so this
+ceiling no longer applies to it; the defaults are kept until a raise has been measured, and a host may raise all three
+in its `.env` (e.g. 400/200/400).
 
 This is mitigation, not a cure: it raises the threshold above realistic concurrency but the circular wait remains
 reachable. The fix is removing the nesting (get-view-displays 3 SERVICE hops -> 1, already validated byte-for-byte
@@ -213,5 +230,5 @@ probe, only 2 from the federation probe. `/var/info/restart` is the kill log; `/
 Disabling the federation probe alone would have prevented 2.
 
 Re-enable with `RDF4J_HEALTHCHECK_RESTART=on` once the underlying LMDB `ValueStore$ReadTxn` leak is confirmed
-resolved (present through 5.3.2 even after #5807; the pooled read transactions of 6.1.0 should address it, but verify
-in production first; see eclipse-rdf4j/rdf4j#5970).
+resolved (present through 5.3.2 even after #5807; the pooled read transactions of PR#5974, in the default image,
+should address it, but verify in production first; see eclipse-rdf4j/rdf4j#5970).

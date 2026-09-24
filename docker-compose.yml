@@ -45,9 +45,12 @@ services:
         max-file: "3"
 
   rdf4j:
-    # Do not run anything below 6.1.0; 5.x -> 6.x needs a wipe and re-ingest
-    # (rationale: #rdf4j-version).
-    image: ${RDF4J_IMAGE:-eclipse/rdf4j-workbench}:${RDF4J_IMAGE_TAG:-6.1.0-tomcat}
+    # rdf4j 6.0.0 with the eclipse-rdf4j/rdf4j#5974 fixes. Neither stock 6.0.0 (store
+    # corruption) nor 6.1.0 (query-planning regression) is safe for this workload;
+    # 5.x -> 6.x needs a wipe and re-ingest (rationale: #rdf4j-version). Override
+    # RDF4J_IMAGE and RDF4J_IMAGE_TAG together: official releases are published as
+    # eclipse/rdf4j-workbench.
+    image: ${RDF4J_IMAGE:-nanopub/rdf4j-workbench}:${RDF4J_IMAGE_TAG:-6.0.0-lmdbpool4}
     restart: unless-stopped
     # Root, so init.sh can install curl and re-chown the volumes; it drops to the
     # tomcat user before starting the JVM.

@@ -102,8 +102,10 @@ Before upgrading, read the release notes of every version in between. A release 
 nanopublications loaded afterwards says "requires re-ingest": for those, [wipe and re-ingest](#wipe-and-re-ingest)
 after upgrading, or older nanopublications stay in the old form.
 
-RDF4J is upgraded separately, via `RDF4J_IMAGE_TAG` in `.env`. Do not run anything below 6.1.0, and note that going
-from 5.x to 6.x requires a wipe and re-ingest (see [rationale](deployment-rationale.md#rdf4j-version)).
+RDF4J is upgraded separately, via `RDF4J_IMAGE` and `RDF4J_IMAGE_TAG` in `.env`; set both, since the default image is
+`nanopub/rdf4j-workbench` while official releases are published as `eclipse/rdf4j-workbench`. Keep the default,
+`6.0.0-lmdbpool4`, unless you have read the [rationale](deployment-rationale.md#rdf4j-version): neither stock 6.0.0
+nor 6.1.0 is safe for this workload. Going from 5.x to 6.x requires a wipe and re-ingest.
 
 ## Checking on an Instance
 
