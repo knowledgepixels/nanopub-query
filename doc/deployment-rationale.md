@@ -36,7 +36,13 @@ eclipse-rdf4j/rdf4j#5974 cherry-picked onto the 6.0.0 tag (`8142e783` pooled rea
   processed made the `wouldInvalidate` ASK queries of `AuthorityResolver`'s incremental cycle run into their timeout
   on every instance at once. The cycle retries every tick, so RDF4J sat at ~1,100% CPU and the whole fleet, Nanodash
   included, stopped answering. The same queries had run fine on 6.0.0-based builds for 31 earlier admin grants, and
-  rolling back to lmdbpool4 cleared it immediately. The likely cause is 6.1.0's rewritten LMDB cardinality estimation.
+  rolling back to lmdbpool4 cleared it immediately. On one instance the stuck query was started 77 times over 85
+  minutes and never finished; on the same store, lmdbpool4 answered it in 10 seconds right after the rollback. Routine
+  cycles on 6.1.0 took their usual 2–5 seconds, and a copy of that store opened in a fresh 6.1.0 process answers in 6
+  seconds, so the trigger was state inside the long-running 6.1.0 process rather than the data. The cause is not yet
+  known. Since then, `AuthorityResolver` only runs a check when the kind of record it looks for is among the new ones,
+  and each request it sends carries a server-side time limit, so a repeat would cost one bounded request per tick
+  rather than an outage. 6.1.0 stays off the default until the cause is understood.
 
 Known limitation of lmdbpool4: it predates 6.1.0's reserved reader slot, and under a heavy burst it can deadlock
 (RDF4J idle at near-zero CPU while every request times out, including the health check; restarting RDF4J clears it).

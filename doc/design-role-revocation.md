@@ -83,8 +83,9 @@ nanopub).
 
 Negatives never materialize as final-state rows. Each is consumed where its key is bound, via a pair:
 **(a)** an inline suppression `FILTER NOT EXISTS` in the relevant INSERT tier (prevents (re-)materialization), and
-**(b)** a displacement `DELETE` run every cycle in `applyInvalidations` (removes already-materialized rows when the
-negative arrives in a later cycle). Both are required because the cycle is incremental and the periodic full rebuild
+**(b)** a displacement `DELETE` run by `applyInvalidations` in every cycle whose delta holds a negative of that kind
+(removes already-materialized rows when the negative arrives in a later cycle; cycles without one skip it, see
+`AuthorityResolver.DeltaKinds`). Both are required because the cycle is incremental and the periodic full rebuild
 only runs when `npa:needsFullRebuild` is set.
 
 The latest-wins comparison is `COALESCE(?negCreated, epoch) > COALESCE(?candCreated, epoch)` with a

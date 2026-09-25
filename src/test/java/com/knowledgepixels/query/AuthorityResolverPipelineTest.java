@@ -15,7 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.nanopub.vocabulary.NPA;
+import org.nanopub.vocabulary.NPX;
 
+import com.knowledgepixels.query.vocabulary.GEN;
 import com.knowledgepixels.query.vocabulary.NPAT;
 import com.knowledgepixels.query.vocabulary.SpacesVocab;
 
@@ -924,10 +926,104 @@ class AuthorityResolverPipelineTest {
 
     // ---------------- invalidation orchestration ----------------
 
+    /** Puts an extraction row of {@code type} into the spaces graph, its nanopub at load {@code ln}. */
+    private static void deltaExtraction(InMemoryTripleStore store, String local, IRI type, long ln) {
+        store.update(SPACES, """
+                INSERT DATA {
+                  GRAPH <%s> { <http://example.org/%s> a <%s> ; <%sviaNanopub> <http://example.org/np-%s> . }
+                  GRAPH <%s> { <http://example.org/np-%s> <%shasLoadNumber> %d . }
+                }""".formatted(SpacesVocab.SPACES_GRAPH, local, type, NPA_NS, local,
+                NPA.GRAPH, local, NPA_NS, ln));
+    }
+
+    /** Puts a nanopub that invalidates {@code target} at load {@code ln}. */
+    private static void deltaInvalidator(InMemoryTripleStore store, String local, String target, long ln) {
+        store.update(SPACES, """
+                INSERT DATA { GRAPH <%s> {
+                  <http://example.org/np-%s> <%s> <%s> ; <%shasLoadNumber> %d .
+                } }""".formatted(NPA.GRAPH, local, NPX.INVALIDATES, target, NPA_NS, ln));
+    }
+
+    @Test
+    void readDeltaKinds_seesEachKindOnlyInsideTheDelta() {
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            deltaInvalidator(store, "inv", "http://example.org/np-old", 25L);
+            deltaExtraction(store, "pa", SpacesVocab.PRESET_ASSIGNMENT, 25L);
+            // Loaded before the delta (10, ∞) starts, so not part of it.
+            deltaExtraction(store, "rev", SpacesVocab.ROLE_REVOCATION, 5L);
+
+            assertEquals(new AuthorityResolver.DeltaKinds(true, true, false, false),
+                    resolver().readDeltaKinds(10L));
+        }
+    }
+
+    @Test
+    void applyInvalidations_runsOnlyTheGatesWhenTheDeltaHoldsNothingTheChecksCouldMatch() {
+        // The 2026-09-24 outage: the delta held one admin grant, yet every check ran, and
+        // one of them never finished on rdf4j 6.1.0. Such a delta now costs the four
+        // two-pattern gate lookups and nothing else.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            IRI g = SpacesVocab.forSpaceState(HASH, 1L);
+            deltaExtraction(store, "grant", GEN.ROLE_INSTANTIATION, 25L);
+
+            assertFalse(resolver().applyInvalidations(g, 10L));
+            assertEquals(4, store.prepared().size(),
+                    "only the gates may run:\n" + String.join("\n----\n", store.prepared()));
+        }
+    }
+
+    @Test
+    void applyInvalidations_runsEveryCheckAndDeleteWhenEveryKindArrived() {
+        // With every gate open, each check-WHERE ASK and both invalidator-gated deletes
+        // execute for real; this is what proves they all parse and run on a SPARQL
+        // engine. None may match: the delta's records point at nothing in the state graph.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            IRI g = SpacesVocab.forSpaceState(HASH, 1L);
+            deltaInvalidator(store, "inv", "http://example.org/np-old", 25L);
+            deltaExtraction(store, "pa", SpacesVocab.PRESET_ASSIGNMENT, 25L);
+            deltaExtraction(store, "rev", SpacesVocab.ROLE_REVOCATION, 25L);
+            deltaExtraction(store, "det", SpacesVocab.ROLE_DETACHMENT, 25L);
+
+            assertFalse(resolver().applyInvalidations(g, 10L));
+            assertFalse(resolver().readNeedsFullRebuild());
+            // 4 gates + 11 checks (three of them per revocation tier) + 2 deletes.
+            assertEquals(17, store.prepared().size(), String.join("\n----\n", store.prepared()));
+        }
+    }
+
+    @Test
+    void applyInvalidations_deletesAnAdminRowWhoseNanopubWasInvalidated() {
+        // The npx:invalidates path through its gate: a same-publisher invalidator in the
+        // delta removes the admin RI it targets and raises the rebuild flag.
+        try (InMemoryTripleStore store = new InMemoryTripleStore()) {
+            IRI g = SpacesVocab.forSpaceState(HASH, 1L);
+            store.update(SPACES, """
+                    INSERT DATA {
+                      GRAPH <%s> {
+                        <http://example.org/ri1> a <%sRoleInstantiation> ;
+                            <%sinverseProperty> <%shasAdmin> ;
+                            <%sviaNanopub> <http://example.org/npGrant> .
+                      }
+                      GRAPH <%s> {
+                        <http://example.org/npInv> <%s> <http://example.org/npGrant> ;
+                            <%shasLoadNumber> 25 ;
+                            <%s> "pk1" .
+                        <http://example.org/npGrant> <%s> "pk1" .
+                      }
+                    }""".formatted(g, GEN_NS, NPA_NS, GEN_NS, NPA_NS,
+                    NPA.GRAPH, NPX.INVALIDATES, NPA_NS, NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH,
+                    NPA.HAS_VALID_SIGNATURE_FOR_PUBLIC_KEY_HASH));
+
+            assertTrue(resolver().applyInvalidations(g, 10L), "an admin invalidation is structural");
+            assertFalse(store.ask(SPACES, "ASK { GRAPH <%s> { <http://example.org/ri1> ?p ?o } }".formatted(g)),
+                    "the invalidated admin RI is deleted");
+            assertTrue(resolver().readNeedsFullRebuild());
+        }
+    }
+
     @Test
     void applyInvalidations_reportsNoStructuralChangeOnAQuietGraph() {
-        // All the check-WHERE ASKs execute here for real; on an empty graph none of
-        // them may match, and the rebuild flag must stay down.
+        // Nothing in the delta: every gate is closed, and the rebuild flag must stay down.
         try (InMemoryTripleStore ignored = new InMemoryTripleStore()) {
             IRI g = SpacesVocab.forSpaceState(HASH, 1L);
 

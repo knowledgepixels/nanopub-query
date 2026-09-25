@@ -5,14 +5,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.eclipse.rdf4j.model.Literal;
+import org.eclipse.rdf4j.query.BooleanQuery;
 import org.eclipse.rdf4j.query.QueryLanguage;
 import org.eclipse.rdf4j.query.TupleQueryResult;
+import org.eclipse.rdf4j.query.Update;
 import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.repository.base.RepositoryConnectionWrapper;
 import org.eclipse.rdf4j.repository.sail.SailRepository;
 import org.eclipse.rdf4j.sail.memory.MemoryStore;
 import org.mockito.MockedStatic;
@@ -50,13 +56,16 @@ final class InMemoryTripleStore implements AutoCloseable {
     private final Map<String, Repository> repos = new LinkedHashMap<>();
     private final MockedStatic<TripleStore> staticMock;
 
+    /** ASK and UPDATE texts prepared on connections handed to production code, in order. */
+    private final List<String> prepared = Collections.synchronizedList(new ArrayList<>());
+
     InMemoryTripleStore() {
         TripleStore store = mock(TripleStore.class);
         // A fresh connection per call: production code closes every connection it
         // takes, so handing out one shared instance would leave later calls working
         // against a closed connection.
         when(store.getRepoConnection(anyString()))
-                .thenAnswer(inv -> repo(inv.getArgument(0)).getConnection());
+                .thenAnswer(inv -> recording(repo(inv.getArgument(0))));
         // Utils.createHash writes its reverse-hash triple to the admin repo, so any
         // code path that hashes a pubkey or type IRI needs this seam backed too.
         when(store.getAdminRepoConnection())
@@ -77,6 +86,32 @@ final class InMemoryTripleStore implements AutoCloseable {
     /** Opens a connection the caller is responsible for closing. */
     RepositoryConnection connection(String name) {
         return repo(name).getConnection();
+    }
+
+    /**
+     * The ASK and UPDATE texts production code has prepared through
+     * {@link TripleStore#getRepoConnection(String)} so far, in order. Lets a test assert
+     * which checks ran, not only what they changed. The harness's own {@link #update} and
+     * {@link #ask} are not recorded.
+     */
+    List<String> prepared() {
+        return List.copyOf(prepared);
+    }
+
+    private RepositoryConnection recording(Repository repo) {
+        return new RepositoryConnectionWrapper(repo, repo.getConnection()) {
+            @Override
+            public BooleanQuery prepareBooleanQuery(QueryLanguage ql, String query, String baseURI) {
+                prepared.add(query);
+                return super.prepareBooleanQuery(ql, query, baseURI);
+            }
+
+            @Override
+            public Update prepareUpdate(QueryLanguage ql, String update, String baseURI) {
+                prepared.add(update);
+                return super.prepareUpdate(ql, update, baseURI);
+            }
+        };
     }
 
     /** Executes a SPARQL UPDATE against the named repo. */
