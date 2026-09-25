@@ -47,7 +47,7 @@
     <jcl-over-slf4j.version>2.0.20</jcl-over-slf4j.version>
     <slf4j-simple.version>2.0.20</slf4j-simple.version>
     <micrometer-registry-prometheus.version>1.10.13</micrometer-registry-prometheus.version>
-    <mockito-core.version>5.23.0</mockito-core.version>
+    <mockito-core.version>5.24.0</mockito-core.version>
 
     <main.verticle>com.knowledgepixels.query.MainVerticle</main.verticle>
     <launcher.class>com.knowledgepixels.query.ApplicationLauncher</launcher.class>
