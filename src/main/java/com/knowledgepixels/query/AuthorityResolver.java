@@ -16,8 +16,10 @@ import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.FOAF;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.query.BindingSet;
+import org.eclipse.rdf4j.query.BooleanQuery;
 import org.eclipse.rdf4j.query.QueryLanguage;
 import org.eclipse.rdf4j.query.TupleQueryResult;
+import org.eclipse.rdf4j.query.Update;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.RepositoryResult;
 import org.nanopub.vocabulary.NPA;
@@ -67,6 +69,17 @@ public final class AuthorityResolver {
     private static final String TRUST_REPO = "trust";
     /** Source of introduction-nanopub meta triples for the pending-account mirror (issue #195). */
     private static final String META_REPO = "meta";
+
+    /**
+     * Server-side limit, in seconds, on the invalidation checks, invalidation deletes and
+     * tier inserts this class sends to the spaces repo. Equal to the client's socket read
+     * timeout, so it never cuts off a request that could succeed today; its job is to stop
+     * rdf4j from evaluating a request the client has already given up on. Without it, a
+     * check that never finished on 2026-09-24 (rdf4j 6.1.0) kept running server-side while
+     * every tick retried it, until dozens of copies pegged rdf4j on every host. An update
+     * aborted by the limit rolls back as a whole.
+     */
+    private static final int SERVER_TIME_LIMIT_SECONDS = TripleStore.SOCKET_TIMEOUT_SECONDS;
 
     /** NPA constants pulled in locally (trust-side). */
     private static final IRI NPA_HAS_CURRENT_TRUST_STATE =
@@ -527,18 +540,23 @@ public final class AuthorityResolver {
     /**
      * Runs the four invalidation-DELETE / ASK steps. Sets {@code npa:needsFullRebuild}
      * when admin-RI, RoleAssignment, or RoleDeclaration invalidations matched (the
-     * three structural kinds). Leaf-tier RI deletes don't set the flag.
+     * three structural kinds). Leaf-tier RI deletes don't set the flag. A step runs
+     * only when the delta holds the kind of record it looks for ({@link DeltaKinds}).
      *
      * @return true iff at least one structural kind was invalidated
      */
     boolean applyInvalidations(IRI graph, long lastProcessed) {
         boolean structural = false;
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ true,
+        // Each check runs only when its kind of record is in the delta; see DeltaKinds for
+        // why this is exact.
+        DeltaKinds delta = readDeltaKinds(lastProcessed);
+        logger.debug("AuthorityResolver.applyInvalidations: delta ({}, ∞) holds {}", lastProcessed, delta);
+        if (delta.invalidators() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ true,
                             adminInvalidationCheckWhere(graph, lastProcessed))) {
             executeUpdate(adminInvalidationDelete(graph, lastProcessed));
             structural = true;
         }
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+        if (delta.invalidators() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             roleAssignmentInvalidationCheckWhere(graph, lastProcessed))) {
             executeUpdate(roleAssignmentInvalidationDelete(graph, lastProcessed));
             structural = true;
@@ -554,7 +572,7 @@ public final class AuthorityResolver {
         // instead of leaving them sticky until the periodic rebuild. The structural
         // flag still fires so downstream rows derived through a removed edge stay
         // rebuild-bounded.
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+        if (delta.invalidators() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             subSpaceInvalidationCheckWhere(graph, lastProcessed))) {
             executeUpdate(subSpaceInvalidationDelete(graph, lastProcessed));
             executeUpdate(subSpaceConvenienceEdgeCleanup(graph, lastProcessed));
@@ -566,7 +584,7 @@ public final class AuthorityResolver {
         // drops the now-unbacked npa:sameAsSpace edge (issue #125 finding #5 — the
         // load-bearing case), so admin authority can no longer outlive a retraction
         // until the next periodic rebuild.
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+        if (delta.invalidators() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             aliasInvalidationCheckWhere(graph, lastProcessed))) {
             executeUpdate(aliasInvalidationDelete(graph, lastProcessed));
             executeUpdate(aliasConvenienceEdgeCleanup(graph, lastProcessed));
@@ -580,7 +598,7 @@ public final class AuthorityResolver {
         // npa:derivedFromPreset so directly-published gen:hasRole attachments are never
         // touched; the §4.3 re-INSERT re-materializes only currently-active pairs in the same
         // cycle. See doc/design-preset-role-materialization.md §4.4.
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+        if (delta.presetAssignments() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             presetDeactivationCheckWhere(graph, lastProcessed))) {
             executeUpdate(presetDeactivationDelete(graph, lastProcessed));
             structural = true;
@@ -588,7 +606,7 @@ public final class AuthorityResolver {
         // Admin role-instantiation revocation (issue #129). STRUCTURAL — admin RIs feed every
         // downstream tier, so a removed admin must bound the staleness via a full rebuild
         // (mirrors adminInvalidationDelete). Root admins are exempt inside the check-where.
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ true,
+        if (delta.roleRevocations() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ true,
                             adminRevocationCheckWhere(graph, lastProcessed))) {
             executeUpdate(adminRevocationDelete(graph, lastProcessed));
             structural = true;
@@ -597,7 +615,7 @@ public final class AuthorityResolver {
         // (direct or preset-derived) cascades to the instantiations anchored on it, bounded
         // by the periodic full rebuild. The attachment-tier inline filters then keep the
         // detached role suppressed until a newer attachment / preset assignment out-ranks it.
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+        if (delta.roleDetachments() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             roleDetachmentCheckWhere(graph, lastProcessed))) {
             executeUpdate(roleDetachmentDelete(graph, lastProcessed));
             structural = true;
@@ -610,23 +628,27 @@ public final class AuthorityResolver {
         // schedule a full rebuild to re-evaluate (and drop) those now-unauthorized downstream
         // grants. The inline suppression filter prevents re-materialization on that rebuild.
         for (IRI revTier : List.of(GEN.MAINTAINER_ROLE, GEN.MEMBER_ROLE, GEN.OBSERVER_ROLE)) {
-            if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+            if (delta.roleRevocations() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                                 roleRevocationCheckWhere(graph, lastProcessed, revTier))) {
                 executeUpdate(roleRevocationDelete(graph, lastProcessed, revTier));
                 structural = true;
             }
         }
-        // Leaf-tier RI deletes — no flag.
-        executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
-        // Ref-scoped preset-assignment listing stamps whose assignment nanopub was
-        // hard-retracted (issue #122) — no flag (display leaf, nothing downstream).
-        executeUpdate(presetAssignmentRefInvalidationDelete(graph, lastProcessed));
+        // Both deletes are npx:invalidates-based, so they can only match when an
+        // invalidator is in the delta.
+        if (delta.invalidators()) {
+            // Leaf-tier RI deletes — no flag.
+            executeUpdate(leafTierInvalidationDelete(graph, lastProcessed));
+            // Ref-scoped preset-assignment listing stamps whose assignment nanopub was
+            // hard-retracted (issue #122) — no flag (display leaf, nothing downstream).
+            executeUpdate(presetAssignmentRefInvalidationDelete(graph, lastProcessed));
+        }
         // Maintained-resource declaration deletes — no flag (leaf relation, no
         // downstream caches to bound). The per-declaration delete removes the row; the
         // convenience-edge cleanup drops the now-unbacked isMaintainedBy edges (issue
         // #125 finding #5). Guarded so the orphan-sweep only scans when something was
         // actually invalidated (the delete itself was already a no-op otherwise).
-        if (wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
+        if (delta.invalidators() && wouldInvalidate(graph, lastProcessed, /*adminPinned=*/ false,
                             maintainedResourceInvalidationCheckWhere(graph, lastProcessed))) {
             executeUpdate(maintainedResourceInvalidationDelete(graph, lastProcessed));
             executeUpdate(maintainedResourceConvenienceEdgeCleanup(graph, lastProcessed));
@@ -745,6 +767,77 @@ public final class AuthorityResolver {
                   }
                 }
                 """, NPA.NAMESPACE, SpacesVocab.SPACES_GRAPH, NPA.GRAPH, lastProcessed);
+        return runAsk(ask);
+    }
+
+    /**
+     * Which kinds of record the load-number delta {@code (lastProcessed, ∞)} holds, as far
+     * as {@link #applyInvalidations} is concerned. Every invalidation check joins its delta
+     * nanopub to exactly one of these kinds inside its own WHERE clause, and each gate below
+     * is that sub-pattern on its own. A check can therefore only match when its gate does,
+     * so skipping the check on a false gate is exact, not a heuristic.
+     *
+     * <p>Most cycles bring none of these (an admin grant, a role assignment, a new space),
+     * yet every check used to be evaluated anyway. The checks are large joins whose plans
+     * hinge on rdf4j's cardinality estimates: on 2026-09-24 the preset-deactivation check
+     * never finished on rdf4j 6.1.0 after a routine admin grant and took the fleet down.
+     * The gates are two-pattern lookups that plan the same on any version.
+     *
+     * @param invalidators      a nanopub with an {@code npx:invalidates} triple
+     * @param presetAssignments an {@code npa:PresetAssignment} extraction
+     * @param roleRevocations   an {@code npa:RoleRevocation} extraction
+     * @param roleDetachments   an {@code npa:RoleDetachment} extraction
+     */
+    record DeltaKinds(boolean invalidators, boolean presetAssignments,
+                      boolean roleRevocations, boolean roleDetachments) {
+    }
+
+    /** Reads the {@link DeltaKinds} of the delta {@code (lastProcessed, ∞)}. */
+    DeltaKinds readDeltaKinds(long lastProcessed) {
+        return new DeltaKinds(
+                invalidatorsArrived(lastProcessed),
+                extractionsArrived(SpacesVocab.PRESET_ASSIGNMENT, lastProcessed),
+                extractionsArrived(SpacesVocab.ROLE_REVOCATION, lastProcessed),
+                extractionsArrived(SpacesVocab.ROLE_DETACHMENT, lastProcessed));
+    }
+
+    /**
+     * Cheap ASK: did a nanopub with an {@code npx:invalidates} triple land in the delta
+     * {@code (lastProcessed, ∞)}? The gate of every {@code npx:invalidates}-based check and
+     * delete in {@link #applyInvalidations}.
+     */
+    boolean invalidatorsArrived(long lastProcessed) {
+        String ask = String.format("""
+                PREFIX npa: <%1$s>
+                ASK {
+                  GRAPH <%2$s> {
+                    ?invNp <%3$s> ?target ;
+                           npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %4$d)
+                  }
+                }
+                """, NPA.NAMESPACE, NPA.GRAPH, NPX.INVALIDATES, lastProcessed);
+        return runAsk(ask);
+    }
+
+    /**
+     * Cheap ASK: did an extraction of the given type land in the delta
+     * {@code (lastProcessed, ∞)}?
+     */
+    boolean extractionsArrived(IRI type, long lastProcessed) {
+        String ask = String.format("""
+                PREFIX npa: <%1$s>
+                ASK {
+                  GRAPH <%2$s> {
+                    ?x a <%3$s> ;
+                       npa:viaNanopub ?np .
+                  }
+                  GRAPH <%4$s> {
+                    ?np npa:hasLoadNumber ?ln .
+                    FILTER (?ln > %5$d)
+                  }
+                }
+                """, NPA.NAMESPACE, SpacesVocab.SPACES_GRAPH, type, NPA.GRAPH, lastProcessed);
         return runAsk(ask);
     }
 
@@ -1113,7 +1206,9 @@ public final class AuthorityResolver {
             // runs the UPDATE atomically per SPARQL 1.1 semantics — which is all we
             // need; there's nothing else to commit atomically alongside the UPDATE.
             try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-                conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate).execute();
+                Update update = conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate);
+                update.setMaxExecutionTime(SERVER_TIME_LIMIT_SECONDS);
+                update.execute();
             }
             long after = graphSize(graph);
             long added = after - before;
@@ -3316,13 +3411,17 @@ public final class AuthorityResolver {
 
     private boolean runAsk(String sparql) {
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-            return conn.prepareBooleanQuery(QueryLanguage.SPARQL, sparql).evaluate();
+            BooleanQuery query = conn.prepareBooleanQuery(QueryLanguage.SPARQL, sparql);
+            query.setMaxExecutionTime(SERVER_TIME_LIMIT_SECONDS);
+            return query.evaluate();
         }
     }
 
     private void executeUpdate(String sparqlUpdate) {
         try (RepositoryConnection conn = TripleStore.get().getRepoConnection(SPACES_REPO)) {
-            conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate).execute();
+            Update update = conn.prepareUpdate(QueryLanguage.SPARQL, sparqlUpdate);
+            update.setMaxExecutionTime(SERVER_TIME_LIMIT_SECONDS);
+            update.execute();
         }
     }
 

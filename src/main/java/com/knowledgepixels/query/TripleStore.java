@@ -77,6 +77,13 @@ public class TripleStore {
     private static final long SHUTDOWN_GRACE_MS = 60_000;
 
     /**
+     * Socket read timeout of {@link #httpclient}, in seconds. Also the server-side
+     * limit {@link AuthorityResolver} puts on its own SPARQL requests, so rdf4j stops
+     * evaluating a request once this client has given up on it.
+     */
+    static final int SOCKET_TIMEOUT_SECONDS = 60;
+
+    /**
      * Repos that are never evicted. The core named repos plus the view-critical type
      * repos: ResourceView and ViewDisplay are queried and federated into constantly by
      * the spaces/view UI, so they churn through the {@code cap 100} LRU fastest and were
@@ -190,7 +197,7 @@ public class TripleStore {
             .setMaxConnPerRoute(10)
             .setMaxConnTotal(40)
             .setDefaultRequestConfig(RequestConfig.custom()
-                    .setSocketTimeout(60_000)
+                    .setSocketTimeout(SOCKET_TIMEOUT_SECONDS * 1000)
                     .setConnectionRequestTimeout(30_000)
                     .setConnectTimeout(10_000)
                     .build())
