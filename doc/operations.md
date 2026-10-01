@@ -44,6 +44,18 @@ load is much faster than across the internet, and the Query instance does not de
 
 A registry that reports itself as a test instance is ignored, unless `NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true` is set.
 
+## Declaring a Test Instance
+
+A staging instance should not be read as a production one. With `NANOPUB_QUERY_TEST_INSTANCE=true`, every response
+carries `Nanopub-Query-Test-Instance: true`, and consumers keep the instance apart: the
+[monitor](https://monitor.knowledgepixels.com/) still lists it, but compares it only against other test instances,
+so a staging mirror no longer counts towards the production consistency check nor shows up as disagreeing with it.
+
+This describes the instance, not the registry it loads from — a staging instance usually mirrors a production
+registry, which is why the registry's own flag cannot express this. The two are separate settings: to also ingest
+from a registry that reports itself as a test instance, set `NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true` as well.
+The flag is read at startup and affects nothing that is stored, so it can be set or removed with a restart.
+
 ## Preparing the Host: Clean Shutdowns
 
 The RDF4J store can be corrupted if it is killed in the middle of a write. The Compose setup gives both containers

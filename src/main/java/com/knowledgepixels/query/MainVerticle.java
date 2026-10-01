@@ -176,6 +176,13 @@ public class MainVerticle extends AbstractVerticle {
                     + "content will be loaded even from a registry that reports itself as a test instance. "
                     + "Never use this setting on a production instance.");
         }
+        if (FeatureFlags.testInstance()) {
+            logger.warn("Instance declared a test instance via NANOPUB_QUERY_TEST_INSTANCE=true — "
+                    + "every response reports Nanopub-Query-Test-Instance: true, and consumers such as "
+                    + "nanopub-monitor will not compare it against production instances. This says nothing "
+                    + "about the registry it loads from: to ingest from a registry that reports itself as a "
+                    + "test instance, set NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true as well.");
+        }
         HttpClient httpClient = vertx.createHttpClient(
                 new HttpClientOptions()
                         .setConnectTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_CONNECT_TIMEOUT", 1000))
@@ -817,6 +824,15 @@ public class MainVerticle extends AbstractVerticle {
         // npx:ProtectedNanopub nanopubs and must not be treated as a public source.
         if (FeatureFlags.localInstance()) {
             response.putHeader("Nanopub-Query-Local-Instance", "true");
+        }
+        // Likewise advertised only when set. Says something about this instance, not
+        // about its registry: a staging instance that mirrors production data does so
+        // from a production registry, so this is the only way it can be told apart
+        // from the instances it mirrors (issue #200). Not to be confused with
+        // Nanopub-Query-Registry-Test-Instance below, which forwards what the
+        // attached registry reports about itself.
+        if (FeatureFlags.testInstance()) {
+            response.putHeader("Nanopub-Query-Test-Instance", "true");
         }
         // Forward registry metadata headers
         String coverageTypes = JellyNanopubLoader.lastCoverageTypes;
