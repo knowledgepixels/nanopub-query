@@ -1,3 +1,38 @@
+## [1.28.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.1...nanopub-query-1.28.2) (2026-10-01)
+
+### Dependency updates
+
+* **core-deps:** update slf4j monorepo to v2.0.19 ([7318eb2](https://github.com/knowledgepixels/nanopub-query/commit/7318eb2d62f7b9b22fb2609196dae64ae701045e))
+* **core-deps:** update slf4j monorepo to v2.0.20 ([9339d65](https://github.com/knowledgepixels/nanopub-query/commit/9339d655f4e7889b0b70568491ffbaf6a9237db0))
+* **deps:** update vertx.version to v4.5.34 ([3dfcb12](https://github.com/knowledgepixels/nanopub-query/commit/3dfcb12f107aa791e3a439b0fe50703d9d073a20))
+
+### Bug Fixes
+
+* default RDF4J to 6.0.0-lmdbpool4; 6.1.0 regressed query planning ([b833529](https://github.com/knowledgepixels/nanopub-query/commit/b8335291d1a19743b3ca39540662184196303e1e)), closes [eclipse-rdf4j/rdf4j#6022](https://github.com/eclipse-rdf4j/rdf4j/issues/6022) [eclipse-rdf4j/rdf4j#5974](https://github.com/eclipse-rdf4j/rdf4j/issues/5974)
+* make the TripleStore and TrustStateRegistry singletons thread-safe ([80bd566](https://github.com/knowledgepixels/nanopub-query/commit/80bd566b7450d7f05880107496854f7959d498c4))
+* raise the default rdf4j read timeout from 10s to 30s ([516fe56](https://github.com/knowledgepixels/nanopub-query/commit/516fe56c43a189d2c3bbca429b82d09e0ca51c3d))
+* **spaces:** gate invalidation checks on the delta and cap their server time ([536ad06](https://github.com/knowledgepixels/nanopub-query/commit/536ad06b92e583918382b90c6822f294282505c6))
+
+### Documentation
+
+* **ops:** operations guide for admins, rationale moved out of compose ([ca85773](https://github.com/knowledgepixels/nanopub-query/commit/ca8577324930695b08ce27397e831f31dad28ee5))
+* **setup:** guidance for admins running their own instance ([8b40b0f](https://github.com/knowledgepixels/nanopub-query/commit/8b40b0fe8083a6944d783bb0186b9ac9b182b494)), closes [rdf4j#6022](https://github.com/knowledgepixels/rdf4j/issues/6022)
+
+### Tests
+
+* **deps:** update dependency org.mockito:mockito-core to v5.24.0 ([a9fc9f3](https://github.com/knowledgepixels/nanopub-query/commit/a9fc9f3ce9d3bca20c24122d63fe8ff368b9c737))
+
+### Build and continuous integration
+
+* **deps:** update actions/setup-java action to v6.0.1 ([b4b55b4](https://github.com/knowledgepixels/nanopub-query/commit/b4b55b438531219126326b3ba7d4ceac469d0441))
+* **deps:** update dependency org.apache.maven.plugins:maven-compiler-plugin to v3.16.0 ([68a986a](https://github.com/knowledgepixels/nanopub-query/commit/68a986ad5a733540cf0cedafaa2786eccecff44c))
+* **deps:** update dependency org.apache.maven.plugins:maven-surefire-plugin to v3.6.0 ([247c425](https://github.com/knowledgepixels/nanopub-query/commit/247c4255590eea6bc7f913ad1c81bea8ee001e49))
+* **deps:** update dependency org.codehaus.mojo:exec-maven-plugin to v3.6.4 ([81fa5e0](https://github.com/knowledgepixels/nanopub-query/commit/81fa5e00e2a6b6322fbcdec1d588fd88e8904536))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([f031504](https://github.com/knowledgepixels/nanopub-query/commit/f031504e1a5d6c13a8643408344f399d27a11b52))
+
 ## [1.28.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.0...nanopub-query-1.28.1) (2026-09-02)
 
 ### Dependency updates
