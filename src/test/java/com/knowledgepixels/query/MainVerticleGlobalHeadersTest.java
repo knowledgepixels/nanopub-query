@@ -43,6 +43,36 @@ class MainVerticleGlobalHeadersTest {
     }
 
     @Test
+    void advertisesTestInstanceOnlyWhenFlagIsSet() {
+        try (MockedStatic<TripleStore> mockedTripleStore = mockStatic(TripleStore.class);
+             MockedStatic<Utils> mockedUtils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+            initializeStatusController(mockedTripleStore);
+            HttpServerResponse response = mock(HttpServerResponse.class);
+            when(response.putHeader(anyString(), anyString())).thenReturn(response);
+
+            String savedRegistryFlag = JellyNanopubLoader.lastTestInstance;
+            try {
+                // No registry flag, so this instance's own declaration is the only source
+                // of a test-instance header here.
+                JellyNanopubLoader.lastTestInstance = null;
+
+                MainVerticle.applyGlobalHeaders(response);
+                verify(response, never()).putHeader(eq("Nanopub-Query-Test-Instance"), anyString());
+
+                mockedUtils.when(() -> Utils.getRawEnv("NANOPUB_QUERY_TEST_INSTANCE")).thenReturn("true");
+                MainVerticle.applyGlobalHeaders(response);
+                verify(response).putHeader("Nanopub-Query-Test-Instance", "true");
+                // The self-declared flag must not be mistaken for the forwarded one: the
+                // registry this instance mirrors may well be a production registry, which
+                // is the whole point of the flag (issue #200).
+                verify(response, never()).putHeader(eq("Nanopub-Query-Registry-Test-Instance"), anyString());
+            } finally {
+                JellyNanopubLoader.lastTestInstance = savedRegistryFlag;
+            }
+        }
+    }
+
+    @Test
     void neverReadsTheStoreWhenTheLoadedCountCacheIsCold() {
         // applyGlobalHeaders runs on the Vert.x event loop for every inbound request.
         // The non-cached accessors fall back to a blocking store read on a cold cache,
