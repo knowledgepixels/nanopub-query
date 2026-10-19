@@ -569,6 +569,8 @@ public class MainVerticle extends AbstractVerticle {
                         req.setURI(Utils.appendQueryTimeout(
                                 "/rdf4j-server/repositories/" + grlcSpec.getRepoName(), queryTimeoutSeconds));
                         logger.info("Forwarding apix request to /rdf4j-server/repositories/{}", grlcSpec.getRepoName());
+                        context.set("queryPath", req.getURI().replaceFirst("[?].*$", "").replaceFirst("^/api/", ""));
+                        context.set("queryStart", System.currentTimeMillis());
                     } catch (InvalidGrlcSpecException ex) {
                         logger.warn("Bad API request for '{}' with params {}: {}", req.getURI(), req.proxiedRequest().params(), ex.getMessage());
                         return Future.succeededFuture(context.request()
@@ -591,7 +593,13 @@ public class MainVerticle extends AbstractVerticle {
             @Override
             @GeneratedFlagForDependentElements
             public Future<Void> handleProxyResponse(ProxyContext context) {
-                logger.info("Receiving api response");
+                String queryPath = context.get("queryPath", String.class);
+                if (queryPath != null) {
+                    Long start = context.get("queryStart", Long.class);
+                    long durationMs = start != null ? System.currentTimeMillis() - start : -1;
+                    int statusCode = context.response().getStatusCode();
+                    logger.info("Query stats: path={} status={} durationMs={}", queryPath, statusCode, durationMs);
+                }
                 ProxyResponse resp = context.response();
                 resp.putHeader("Access-Control-Allow-Origin", "*");
                 resp.putHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
