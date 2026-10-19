@@ -5,8 +5,8 @@ package com.knowledgepixels.query;
  * as a central table so operator-controlled features have consistent naming and a
  * single place to audit. The {@code NANOPUB_QUERY_ENABLE_*} flags default to
  * {@code true}, i.e. the feature is enabled unless explicitly disabled;
- * {@link #localInstance()} and {@link #allowTestRegistry()} default to
- * {@code false}.
+ * {@link #localInstance()}, {@link #allowTestRegistry()} and
+ * {@link #testInstance()} default to {@code false}.
  *
  * <p>Disabling a flag makes the corresponding feature's entry points no-op:
  * polling, materialisation, and auxiliary repo creation are all skipped. Callers
@@ -167,6 +167,39 @@ public final class FeatureFlags {
     public static boolean allowTestRegistry() {
         return "true".equalsIgnoreCase(
                 Utils.getEnvString("NANOPUB_QUERY_ALLOW_TEST_REGISTRY", "false"));
+    }
+
+    /**
+     * When {@code true}, this instance declares itself a test instance: every
+     * response carries {@code Nanopub-Query-Test-Instance: true}, so consumers can
+     * tell a staging deployment from a production one. nanopub-monitor keeps such an
+     * instance in a cohort of its own, where it no longer votes in the production
+     * majority-checksum comparison — which is the point for a staging instance that
+     * mirrors production data and would otherwise be compared against the instances
+     * it mirrors (issue #200).
+     *
+     * <p>Distinct from the forwarded {@code Nanopub-Query-Registry-Test-Instance}
+     * header, which reports what the <em>attached registry</em> says about itself
+     * ({@link JellyNanopubLoader}). A test instance is typically paired with a
+     * production registry, which is exactly the case the registry's own flag cannot
+     * express, so neither flag implies the other and a consumer that means "test in
+     * either sense" reads both. Independent of {@link #allowTestRegistry()} as well:
+     * declaring this instance a test instance does not by itself permit ingestion
+     * from a test registry, which stays a separate, explicit opt-in.
+     *
+     * <p>Unlike the registry's {@code REGISTRY_TEST_INSTANCE}, which is persisted at
+     * DB initialization, this flag is read from the environment like every other one
+     * here: it describes the deployment rather than its content, so setting or
+     * clearing it takes effect on restart and never calls for a re-ingest.
+     *
+     * <p>Controlled by the {@code NANOPUB_QUERY_TEST_INSTANCE} environment
+     * variable. Default: {@code false}.
+     *
+     * @return {@code true} if this instance declares itself a test instance
+     */
+    public static boolean testInstance() {
+        return "true".equalsIgnoreCase(
+                Utils.getEnvString("NANOPUB_QUERY_TEST_INSTANCE", "false"));
     }
     
   /**
