@@ -1,44 +1,42 @@
 package com.knowledgepixels.query;
 
 import io.vertx.core.VertxOptions;
+import io.vertx.launcher.application.HookContext;
+import io.vertx.micrometer.Label;
 import io.vertx.micrometer.MicrometerMetricsOptions;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ApplicationLauncherTest {
 
     @Test
     void beforeStartingVertxEnablesMetrics() {
         VertxOptions options = new VertxOptions();
-        new ApplicationLauncher().beforeStartingVertx(options);
+        HookContext context = mock(HookContext.class);
+        when(context.vertxOptions()).thenReturn(options);
 
-        assertTrue(options.getMetricsOptions().isEnabled());
-        assertTrue(((MicrometerMetricsOptions) options.getMetricsOptions()).isJvmMetricsEnabled());
-        assertTrue(((MicrometerMetricsOptions) options.getMetricsOptions()).getPrometheusOptions().isEnabled());
+        new ApplicationLauncher(new String[0]).beforeStartingVertx(context);
+
+        MicrometerMetricsOptions metricsOptions = (MicrometerMetricsOptions) options.getMetricsOptions();
+        assertTrue(metricsOptions.isEnabled());
+        assertTrue(metricsOptions.isJvmMetricsEnabled());
+        assertTrue(metricsOptions.getPrometheusOptions().isEnabled());
+        assertTrue(metricsOptions.getLabels().contains(Label.HTTP_ROUTE));
     }
 
     @Test
-    void beforeStartingVertxWithNullOptions() {
-        assertThrows(NullPointerException.class, () -> new ApplicationLauncher().beforeStartingVertx(null));
+    void beforeStartingVertxWithNullContext() {
+        assertThrows(NullPointerException.class, () -> new ApplicationLauncher(new String[0]).beforeStartingVertx(null));
     }
 
     @Test
-    void mainMethod() {
-        PrintStream originalOut = System.out;
-        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(outContent));
-        try {
-            ApplicationLauncher.main(new String[]{"list"});
-            String output = outContent.toString();
-            assertTrue(output.contains("Listing vert.x applications..."));
-        } finally {
-            System.setOut(originalOut);
-        }
+    void launchWithHelpExitsWithoutStartingVertx() {
+        assertEquals(0, new ApplicationLauncher(new String[]{"--help"}).launch());
     }
 
 }
