@@ -1,5 +1,6 @@
 package com.knowledgepixels.query;
 
+import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 
@@ -98,16 +99,16 @@ public final class MetricsCollector {
         // counters kept by ShardReconciler — no SPARQL on the scrape path. Any
         // non-zero repaired value means the backend acknowledged a shard write
         // that was not durable, and deserves an alert.
-        Gauge.builder("registry.reconciler.nanopubs_checked_total",
-                        () -> (double) ShardReconciler.checkedNanopubCount)
+        FunctionCounter.builder("registry.reconciler.nanopubs_checked", ShardReconciler.class,
+                        reconciler -> (double) ShardReconciler.checkedNanopubCount)
                 .description("Nanopubs whose shard fan-out was verified by the reconciliation sweep since process start")
                 .register(meterRegistry);
-        Gauge.builder("registry.reconciler.shards_repaired_total",
-                        () -> (double) ShardReconciler.repairedShardCount)
+        FunctionCounter.builder("registry.reconciler.shards_repaired", ShardReconciler.class,
+                        reconciler -> (double) ShardReconciler.repairedShardCount)
                 .description("Missing shard repos detected and re-loaded by the reconciliation sweep since process start")
                 .register(meterRegistry);
-        Gauge.builder("registry.reconciler.shards_relost_total",
-                        () -> (double) ShardReconciler.relostShardCount)
+        FunctionCounter.builder("registry.reconciler.shards_relost", ShardReconciler.class,
+                        reconciler -> (double) ShardReconciler.relostShardCount)
                 .description("Shards that a previous sweep verified present and that later vanished (backend revoked readable state, issue #142)")
                 .register(meterRegistry);
 

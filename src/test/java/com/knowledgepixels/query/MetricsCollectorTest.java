@@ -2,8 +2,8 @@ package com.knowledgepixels.query;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import io.micrometer.prometheus.PrometheusConfig;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
@@ -22,7 +22,7 @@ class MetricsCollectorTest {
 
     @Test
     void constructWithValidMeterRegistry() {
-        MeterRegistry meterRegistry = mock(MeterRegistry.class);
+        MeterRegistry meterRegistry = new SimpleMeterRegistry();
         MetricsCollector collector = new MetricsCollector(meterRegistry);
         assertNotNull(collector);
     }
@@ -98,7 +98,7 @@ class MetricsCollectorTest {
 
     @Test
     void updateMetrics() {
-        MeterRegistry meterRegistry = mock(MeterRegistry.class);
+        MeterRegistry meterRegistry = new SimpleMeterRegistry();
         MetricsCollector collector = new MetricsCollector(meterRegistry);
         try (MockedStatic<TripleStore> tripleStoreMockedStatic = mockStatic(TripleStore.class)) {
             TripleStore tripleStore = mock(TripleStore.class);

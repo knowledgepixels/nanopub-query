@@ -2,7 +2,7 @@ package com.knowledgepixels.query;
 
 import com.github.jsonldjava.shaded.com.google.common.base.Charsets;
 import com.knowledgepixels.query.GrlcSpec.InvalidGrlcSpecException;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -212,7 +212,7 @@ public class MainVerticle extends AbstractVerticle {
                         .setIdleTimeout(Utils.getEnvInt("NANOPUB_QUERY_VERTX_SERVER_IDLE_TIMEOUT", 300))
         );
         Router proxyRouter = Router.router(vertx);
-        proxyRouter.route().handler(CorsHandler.create().addRelativeOrigin(".*"));
+        proxyRouter.route().handler(CorsHandler.create().addOriginWithRegex(".*"));
 
         // Metrics
         final var metricsHttpServer = vertx.createHttpServer();
