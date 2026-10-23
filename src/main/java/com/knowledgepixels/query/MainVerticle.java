@@ -217,7 +217,7 @@ public class MainVerticle extends AbstractVerticle {
         // Metrics
         final var metricsHttpServer = vertx.createHttpServer();
         final var metricsRouter = Router.router(vertx);
-        metricsHttpServer.requestHandler(metricsRouter).listen(9394);
+        Future<HttpServer> metricsListening = metricsHttpServer.requestHandler(metricsRouter).listen(9394);
 
         final var metricsRegistry = (PrometheusMeterRegistry) BackendRegistries.getDefaultNow();
         final var collector = new MetricsCollector(metricsRegistry);
@@ -620,7 +620,7 @@ public class MainVerticle extends AbstractVerticle {
             applyGlobalHeaders(req.response());
             proxyRouter.handle(req);
         });
-        proxyServer.listen(9393);
+        Future<HttpServer> proxyListening = proxyServer.listen(9393);
 
         // Periodic metrics update. Runs on a dedicated single-thread scheduled executor
         // (not on the Vert.x event loop) because `updateMetrics` can fall through to a
@@ -779,6 +779,25 @@ public class MainVerticle extends AbstractVerticle {
 
         vertxRef = vertx;
         Runtime.getRuntime().addShutdownHook(new Thread(MainVerticle::shutdownGracefully));
+        completeWhenListening(startPromise, metricsListening, proxyListening);
+    }
+
+    /**
+     * Completes the start promise once all given servers listen, and fails it if one of them
+     * cannot. Vert.x 5's launcher waits for the deployment to complete and stops the application
+     * when it times out, so a promise that is never completed restarts the app every two minutes.
+     *
+     * @param startPromise the verticle's start promise
+     * @param listening    the futures returned by {@code HttpServer.listen}
+     */
+    static void completeWhenListening(Promise<Void> startPromise, Future<?>... listening) {
+        Future.all(List.of(listening)).onComplete(ar -> {
+            if (ar.succeeded()) {
+                startPromise.complete();
+            } else {
+                startPromise.fail(ar.cause());
+            }
+        });
     }
 
     private String getResourceAsString(String file) {
