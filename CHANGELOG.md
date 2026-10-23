@@ -1,3 +1,21 @@
+## [1.28.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.2...nanopub-query-1.28.3) (2026-10-23)
+
+### Dependency updates
+
+* **core-deps:** update dependency io.micrometer:micrometer-registry-prometheus to v1.17.2 ([d283a5a](https://github.com/knowledgepixels/nanopub-query/commit/d283a5a84d7bf2918c44f7e44de373608a6020e0))
+* **core-deps:** update Vert.x to 5.2.1 and Micrometer to 1.17.1 ([6a812e8](https://github.com/knowledgepixels/nanopub-query/commit/6a812e824697eea6264b7380ff2a5a084ae0ba60))
+* **deps:** update dependency maven to v3.10.0 ([73efb84](https://github.com/knowledgepixels/nanopub-query/commit/73efb84769766466c9a7013d6123066f0892469b))
+* **deps:** update vertx.version to v5.2.2 ([a054661](https://github.com/knowledgepixels/nanopub-query/commit/a054661e546939ac9109d87dad14f39139015710))
+
+### Build and continuous integration
+
+* **deps:** update actions/setup-java action to v6.1.0 ([1c2c113](https://github.com/knowledgepixels/nanopub-query/commit/1c2c1136466eb2e84acc979bf4834740cea8f23a))
+* **deps:** update actions/setup-node action to v7.1.0 ([97ccccc](https://github.com/knowledgepixels/nanopub-query/commit/97cccccee05c26d2a620980d2c19018f91310466))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([715aaff](https://github.com/knowledgepixels/nanopub-query/commit/715aaffa51ff588075430a395896e587e82da9f2))
+
 ## [1.28.2](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.1...nanopub-query-1.28.2) (2026-10-01)
 
 ### Dependency updates
