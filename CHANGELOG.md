@@ -1,3 +1,13 @@
+## [1.28.4](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.3...nanopub-query-1.28.4) (2026-10-23)
+
+### Bug Fixes
+
+* complete the start promise once the servers listen ([d0e160b](https://github.com/knowledgepixels/nanopub-query/commit/d0e160b507b42cb1b038f9a91b5c39bea3e889fc))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([865abb6](https://github.com/knowledgepixels/nanopub-query/commit/865abb681a214d16f0a824e0808f328f09205f7e))
+
 ## [1.28.3](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.2...nanopub-query-1.28.3) (2026-10-23)
 
 ### Dependency updates
