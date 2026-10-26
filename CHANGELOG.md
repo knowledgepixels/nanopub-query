@@ -1,3 +1,23 @@
+## [1.29.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.4...nanopub-query-1.29.0) (2026-10-26)
+
+### Features
+
+* allow a query instance to declare itself a test instance ([e593deb](https://github.com/knowledgepixels/nanopub-query/commit/e593deb51b5776d124683af41acb82275010fa12)), closes [#200](https://github.com/knowledgepixels/nanopub-query/issues/200)
+* **tools:** add SIB SPARQL editor page alongside YASGUI ([5c6cf7c](https://github.com/knowledgepixels/nanopub-query/commit/5c6cf7c0e34f5842ff9eebeb280625efc9547997)), closes [#51](https://github.com/knowledgepixels/nanopub-query/issues/51)
+
+### Dependency updates
+
+* **core-deps:** update dependency org.nanopub:nanopub to v1.95.0 ([1ef29a7](https://github.com/knowledgepixels/nanopub-query/commit/1ef29a740ba7931ecd3ddd6a689b77cad1736977))
+
+### Build and continuous integration
+
+* **deps:** update dependency org.apache.maven.plugins:maven-surefire-plugin to v3.6.1 ([17edb5d](https://github.com/knowledgepixels/nanopub-query/commit/17edb5d81ce8487c5294d4bbd0980935eaac96a6))
+* **deps:** update dependency org.jacoco:jacoco-maven-plugin to v0.8.16 ([8b2cf01](https://github.com/knowledgepixels/nanopub-query/commit/8b2cf0103d7bdc5400be0f1f3a766c66d62325cb))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([e1b7af4](https://github.com/knowledgepixels/nanopub-query/commit/e1b7af44cb4b30e74f132b311dba7e419d39b207))
+
 ## [1.28.4](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.3...nanopub-query-1.28.4) (2026-10-23)
 
 ### Bug Fixes
