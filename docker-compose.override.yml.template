@@ -100,6 +100,13 @@ services:
       # Query instance deliberately paired with a test registry:
 #     - NANOPUB_QUERY_ALLOW_TEST_REGISTRY=true
 
+      # Declare this instance a test instance: every response then reports
+      # Nanopub-Query-Test-Instance: true, so consumers such as nanopub-monitor
+      # keep it apart from the production instances instead of comparing it
+      # against them. For a staging instance, including one that mirrors a
+      # production registry. Says nothing about the registry it loads from:
+#     - NANOPUB_QUERY_TEST_INSTANCE=true
+
       # Seconds to wait before the local nanopub loader (./load) starts:
 #     - INIT_WAIT_SECONDS=120
 

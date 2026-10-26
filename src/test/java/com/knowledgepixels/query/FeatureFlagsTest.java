@@ -63,4 +63,52 @@ class FeatureFlagsTest {
         withTestRegistryEnv("yes", () -> assertFalse(FeatureFlags.allowTestRegistry()));
     }
 
+    private static void withTestInstanceEnv(String value, Runnable assertion) {
+        withEnv("NANOPUB_QUERY_TEST_INSTANCE", value, assertion);
+    }
+
+    @Test
+    void testInstanceDefaultsToFalse() {
+        withTestInstanceEnv(null, () -> assertFalse(FeatureFlags.testInstance()));
+        withTestInstanceEnv("", () -> assertFalse(FeatureFlags.testInstance()));
+    }
+
+    @Test
+    void testInstanceParsesTrueCaseInsensitively() {
+        withTestInstanceEnv("true", () -> assertTrue(FeatureFlags.testInstance()));
+        withTestInstanceEnv("TRUE", () -> assertTrue(FeatureFlags.testInstance()));
+    }
+
+    @Test
+    void testInstanceStaysFalseForOtherValues() {
+        withTestInstanceEnv("false", () -> assertFalse(FeatureFlags.testInstance()));
+        withTestInstanceEnv("1", () -> assertFalse(FeatureFlags.testInstance()));
+        withTestInstanceEnv("yes", () -> assertFalse(FeatureFlags.testInstance()));
+    }
+
+    @Test
+    void testInstanceIsIndependentOfTheTestRegistryFlag() {
+        // The two are deliberately separate: the motivating case for a self-declared
+        // test instance is one paired with a *production* registry (issue #200), so
+        // neither flag may quietly imply the other. Both variables are mocked here, so
+        // the assertions hold whatever the environment running the tests happens to set.
+        withEnvPair("NANOPUB_QUERY_TEST_INSTANCE", "true", "NANOPUB_QUERY_ALLOW_TEST_REGISTRY", null, () -> {
+            assertTrue(FeatureFlags.testInstance());
+            assertFalse(FeatureFlags.allowTestRegistry());
+        });
+        withEnvPair("NANOPUB_QUERY_TEST_INSTANCE", null, "NANOPUB_QUERY_ALLOW_TEST_REGISTRY", "true", () -> {
+            assertFalse(FeatureFlags.testInstance());
+            assertTrue(FeatureFlags.allowTestRegistry());
+        });
+    }
+
+    private static void withEnvPair(String firstName, String firstValue, String secondName, String secondValue,
+                                    Runnable assertion) {
+        try (MockedStatic<Utils> mockedUtils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+            mockedUtils.when(() -> Utils.getRawEnv(firstName)).thenReturn(firstValue);
+            mockedUtils.when(() -> Utils.getRawEnv(secondName)).thenReturn(secondValue);
+            assertion.run();
+        }
+    }
+
 }
