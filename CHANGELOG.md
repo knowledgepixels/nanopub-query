@@ -1,3 +1,17 @@
+## [1.29.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.29.0...nanopub-query-1.29.1) (2026-11-02)
+
+### Dependency updates
+
+* **core-deps:** update dependency org.nanopub:nanopub to v1.95.1 ([f74f7b0](https://github.com/knowledgepixels/nanopub-query/commit/f74f7b0aa82ad477d620882519147d5b495fc26d))
+
+### Bug Fixes
+
+* **query-stats:** log original API path instead of rewritten rdf4j path ([7295b51](https://github.com/knowledgepixels/nanopub-query/commit/7295b514433710df5bd858313d3125726b0db96c))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([abd0f2e](https://github.com/knowledgepixels/nanopub-query/commit/abd0f2e1351a11a32a5dec7c40c50c3117ca3e3e))
+
 ## [1.29.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.28.4...nanopub-query-1.29.0) (2026-10-26)
 
 ### Features
