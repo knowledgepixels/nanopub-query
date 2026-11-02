@@ -572,6 +572,8 @@ public class MainVerticle extends AbstractVerticle {
                             req.setURI(req.getURI().replaceFirst("[.]srx([?].*)?$", "$1"));
                         }
                         GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
+                        context.set("queryPath", req.getURI().replaceFirst("[?].*$", "").replaceFirst("^/api/", ""));
+                        context.set("queryStart", System.currentTimeMillis());
 
                         // Variant 1:
                         req.putHeader("Content-Type", "application/sparql-query");
@@ -583,8 +585,6 @@ public class MainVerticle extends AbstractVerticle {
                         req.setURI(Utils.appendQueryTimeout(
                                 "/rdf4j-server/repositories/" + grlcSpec.getRepoName(), queryTimeoutSeconds));
                         logger.info("Forwarding apix request to /rdf4j-server/repositories/{}", grlcSpec.getRepoName());
-                        context.set("queryPath", req.getURI().replaceFirst("[?].*$", "").replaceFirst("^/api/", ""));
-                        context.set("queryStart", System.currentTimeMillis());
                     } catch (InvalidGrlcSpecException ex) {
                         logger.warn("Bad API request for '{}' with params {}: {}", req.getURI(), req.proxiedRequest().params(), ex.getMessage());
                         return Future.succeededFuture(context.request()
