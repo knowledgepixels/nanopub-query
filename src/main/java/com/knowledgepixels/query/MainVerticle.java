@@ -573,6 +573,9 @@ public class MainVerticle extends AbstractVerticle {
                         }
                         GrlcSpec grlcSpec = new GrlcSpec(req.getURI(), req.proxiedRequest().params());
                         context.set("queryPath", req.getURI().replaceFirst("[?].*$", "").replaceFirst("^/api/", ""));
+                        String fullUri = req.getURI();
+                        int qIdx = fullUri.indexOf('?');
+                        context.set("queryParams", qIdx >= 0 ? fullUri.substring(qIdx + 1) : "");
                         context.set("queryStart", System.currentTimeMillis());
 
                         // Variant 1:
@@ -612,7 +615,8 @@ public class MainVerticle extends AbstractVerticle {
                     Long start = context.get("queryStart", Long.class);
                     long durationMs = start != null ? System.currentTimeMillis() - start : -1;
                     int statusCode = context.response().getStatusCode();
-                    logger.info("Query stats: path={} status={} durationMs={}", queryPath, statusCode, durationMs);
+                    String queryParams = context.get("queryParams", String.class);
+                    logger.info("Query stats: path={} status={} durationMs={} params={}", queryPath, statusCode, durationMs, queryParams != null ? queryParams : "");
                 }
                 ProxyResponse resp = context.response();
                 resp.putHeader("Access-Control-Allow-Origin", "*");
