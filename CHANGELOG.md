@@ -1,3 +1,13 @@
+## [1.30.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.29.1...nanopub-query-1.30.0) (2026-11-03)
+
+### Features
+
+* **query-stats:** append params to Query stats log line ([3c9721e](https://github.com/knowledgepixels/nanopub-query/commit/3c9721eb84e95b8d96a713d506de65c581ef8250))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([920fad7](https://github.com/knowledgepixels/nanopub-query/commit/920fad7f0e1d54d6bfb6014f8710a79e8d145727))
+
 ## [1.29.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.29.0...nanopub-query-1.29.1) (2026-11-02)
 
 ### Dependency updates
