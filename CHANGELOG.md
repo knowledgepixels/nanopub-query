@@ -1,3 +1,13 @@
+## [1.30.1](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.30.0...nanopub-query-1.30.1) (2026-11-05)
+
+### Bug Fixes
+
+* stop retries of an identical /api request from piling up in RDF4J ([eedb72b](https://github.com/knowledgepixels/nanopub-query/commit/eedb72be34ef23a54dd6b5ec3309e5e5112d971e))
+
+### General maintenance
+
+* setting next snapshot version [skip ci] ([5513e3b](https://github.com/knowledgepixels/nanopub-query/commit/5513e3b59ee29f73d5a2dbe7c3a9484cf4bcd097))
+
 ## [1.30.0](https://github.com/knowledgepixels/nanopub-query/compare/nanopub-query-1.29.1...nanopub-query-1.30.0) (2026-11-03)
 
 ### Features
