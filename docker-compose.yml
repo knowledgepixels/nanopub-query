@@ -26,6 +26,11 @@ services:
       # Server-side SPARQL evaluation limit in seconds; 0 disables
       # (rationale: #query-timeout).
       - RDF4J_QUERY_TIMEOUT_SECONDS=${RDF4J_QUERY_TIMEOUT_SECONDS:-60}
+      # Repeated identical /api requests: how many may run at once (0 = no limit), and
+      # how long one must run before its failure refuses identical requests until RDF4J
+      # must have stopped evaluating it (0 = never) (rationale: #identical-api-requests).
+      - NANOPUB_QUERY_MAX_IDENTICAL_IN_FLIGHT=${NANOPUB_QUERY_MAX_IDENTICAL_IN_FLIGHT:-3}
+      - NANOPUB_QUERY_SLOW_FAILURE_SECONDS=${NANOPUB_QUERY_SLOW_FAILURE_SECONDS:-5}
       # Socket timeout (ms) for the app's own reads from RDF4J; keep in step with
       # the default in Utils.getHttpRequestConfig (rationale: #fetching-socket-timeout).
       - NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT=${NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT:-30000}

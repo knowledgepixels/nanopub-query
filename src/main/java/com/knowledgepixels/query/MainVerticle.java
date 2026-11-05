@@ -54,6 +54,9 @@ public class MainVerticle extends AbstractVerticle {
     /** The Vert.x instance to close on shutdown; {@code vertx} itself is per-verticle state. */
     private static volatile io.vertx.core.Vertx vertxRef;
 
+    /** Caps repeated identical /api requests; see {@link ApiQueryGuard}. */
+    private ApiQueryGuard apiQueryGuard;
+
     /**
      * Budget for letting in-flight work finish during shutdown, in seconds. Must stay
      * comfortably below the container's {@code stop_grace_period} (150 s in
@@ -243,6 +246,11 @@ public class MainVerticle extends AbstractVerticle {
         // timeout so aborts stay rare: interrupted evaluations concurrent with writes
         // are a suspected LMDB corruption trigger upstream (rdf4j#5960/#4806).
         int queryTimeoutSeconds = Utils.getEnvInt("RDF4J_QUERY_TIMEOUT_SECONDS", 60);
+
+        // Since evaluations outlive the edge timeout, repeated identical /api requests are
+        // capped so that a query that never finishes in time cannot occupy every core.
+        apiQueryGuard = ApiQueryGuard.fromEnvironment(queryTimeoutSeconds);
+        vertx.setPeriodic(60_000, id -> apiQueryGuard.purge(System.currentTimeMillis()));
 
         rdf4jProxy.addInterceptor(new ProxyInterceptor() {
 
@@ -587,6 +595,20 @@ public class MainVerticle extends AbstractVerticle {
 
                         req.setURI(Utils.appendQueryTimeout(
                                 "/rdf4j-server/repositories/" + grlcSpec.getRepoName(), queryTimeoutSeconds));
+
+                        String guardKey = context.get("queryPath", String.class) + "?" + context.get("queryParams", String.class);
+                        ApiQueryGuard.Admission admission = apiQueryGuard.admit(guardKey, System.currentTimeMillis());
+                        if (admission instanceof ApiQueryGuard.Refused refused) {
+                            logger.info("Refused API request {}: {}", guardKey, refused.reason());
+                            return Future.succeededFuture(context.request()
+                                    .response()
+                                    .setStatusCode(503)
+                                    .putHeader("Retry-After", String.valueOf(refused.retryAfterSeconds()))
+                                    .putHeader("Content-Type", "text/plain")
+                                    .setBody(Body.body(Buffer.buffer("Query not started: " + refused.reason()
+                                            + ". Try again in " + refused.retryAfterSeconds() + " s."))));
+                        }
+                        releaseWhenDone(req.proxiedRequest().response(), (ApiQueryGuard.Admitted) admission);
                         logger.info("Forwarding apix request to /rdf4j-server/repositories/{}", grlcSpec.getRepoName());
                     } catch (InvalidGrlcSpecException ex) {
                         logger.warn("Bad API request for '{}' with params {}: {}", req.getURI(), req.proxiedRequest().params(), ex.getMessage());
@@ -814,6 +836,28 @@ public class MainVerticle extends AbstractVerticle {
                 startPromise.complete();
             } else {
                 startPromise.fail(ar.cause());
+            }
+        });
+    }
+
+    /**
+     * Releases an admitted /api request once its response has ended or its connection has
+     * closed, whichever comes first. A closed connection counts as not completed: the client
+     * (typically the edge, after 10 s) gave up, and RDF4J may still be evaluating the query.
+     *
+     * @param response the client-facing response
+     * @param admitted the guard's admission for the request
+     */
+    void releaseWhenDone(HttpServerResponse response, ApiQueryGuard.Admitted admitted) {
+        AtomicBoolean released = new AtomicBoolean(false);
+        response.endHandler(v -> {
+            if (released.compareAndSet(false, true)) {
+                apiQueryGuard.release(admitted, response.getStatusCode() < 500, System.currentTimeMillis());
+            }
+        });
+        response.closeHandler(v -> {
+            if (released.compareAndSet(false, true)) {
+                apiQueryGuard.release(admitted, false, System.currentTimeMillis());
             }
         });
     }

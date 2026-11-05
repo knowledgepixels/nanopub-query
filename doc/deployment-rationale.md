@@ -68,6 +68,24 @@ evaluation: abandoned heavy queries pile up and can spiral the changeset overlay
 above the edge timeout: aborted evaluations concurrent with writes are a suspected corruption trigger upstream
 (rdf4j#5960/#4806), so this is a backstop, not a first-line limit.
 
+## Identical API requests
+
+Because evaluations outlive the edge timeout, a client that retries a query which never finishes within 10 s starts a
+new evaluation of up to `RDF4J_QUERY_TIMEOUT_SECONDS` on every attempt, while the earlier ones are still running. On
+2026-11-05 one view query, requested a few times a minute, kept 6-9 copies running on every host and used all their
+cores; the readers it kept open also stopped RDF4J from writing the `last30d` repo to disk (rdf4j#6070).
+
+`ApiQueryGuard` therefore limits identical `/api` requests (same query, same parameters):
+
+- `NANOPUB_QUERY_MAX_IDENTICAL_IN_FLIGHT` (default 3; 0 = no limit): how many may run at the same time.
+- `NANOPUB_QUERY_SLOW_FAILURE_SECONDS` (default 5; 0 = never): when one ends without a complete response (an error
+  status, or the client closing the connection) after running at least this long, identical requests are refused until
+  its start plus `RDF4J_QUERY_TIMEOUT_SECONDS`, when RDF4J must have stopped evaluating it. Quick failures don't count,
+  so a client that cancels the slower instances once one has answered blocks nothing.
+
+Refused requests get a 503 with `Retry-After` at once, which costs RDF4J nothing; Nanodash races all instances and
+takes another one's answer. Requests that complete are never affected. The limits apply per instance.
+
 ## Fetching socket timeout
 
 `NANOPUB_QUERY_FETCHING_SOCKET_TIMEOUT` (default 30000 ms) is the client-side socket timeout for the app's own reads
