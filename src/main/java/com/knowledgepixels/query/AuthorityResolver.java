@@ -3072,13 +3072,32 @@ public final class AuthorityResolver {
      * materialized role. {@code dct:created} is written as a full IRI (not a {@code dct:}
      * prefix) because {@link #wouldInvalidate}'s ASK wrapper only declares {@code npa:} /
      * {@code gen:}.
+     *
+     * <p>The newer assignments loaded in this cycle come first, in a sub-select, which RDF4J
+     * evaluates before the other patterns: there are only a few of them, and everything else
+     * is joined to them by bound lookups. Left to RDF4J's own ordering, this check took 12-25 s
+     * with a few hundred rows of each kind, and the DELETE built on it went over the 60 s
+     * limit, so the failing cycle was retried with the same batch and no further role was
+     * validated (2026-11-04). The latest-wins FILTER stands outside the GRAPH blocks because
+     * it compares variables from the sub-select, and a FILTER only sees its own group.
      */
     static String presetDeactivationCheckWhere(IRI graph, long lastProcessed) {
         return String.format("""
-                  GRAPH <%1$s> {
-                    ?ra a gen:RoleAssignment ;
-                        npa:derivedFromPreset ?assignNp ;
-                        npa:forSpaceRef ?targetRef .
+                  {
+                    SELECT ?paNewer ?preset ?resource ?pkhNewer ?createdNewer WHERE {
+                      GRAPH <%2$s> {
+                        ?paNewer a npa:PresetAssignment ;
+                                 npa:ofPreset    ?preset ;
+                                 npa:forResource ?resource ;
+                                 npa:pubkeyHash  ?pkhNewer ;
+                                 npa:viaNanopub  ?assignNpNewer ;
+                                 <http://purl.org/dc/terms/created> ?createdNewer .
+                      }
+                      GRAPH <%3$s> {
+                        ?assignNpNewer npa:hasLoadNumber ?lnNewer .
+                        FILTER (?lnNewer > %4$d)
+                      }
+                    }
                   }
                   GRAPH <%2$s> {
                     ?pa a npa:PresetAssignment ;
@@ -3086,18 +3105,13 @@ public final class AuthorityResolver {
                         npa:ofPreset    ?preset ;
                         npa:forResource ?resource ;
                         <http://purl.org/dc/terms/created> ?created .
-                    ?paNewer a npa:PresetAssignment ;
-                             npa:ofPreset    ?preset ;
-                             npa:forResource ?resource ;
-                             npa:pubkeyHash  ?pkhNewer ;
-                             npa:viaNanopub  ?assignNpNewer ;
-                             <http://purl.org/dc/terms/created> ?createdNewer .
-                    FILTER (?createdNewer > ?created
-                            || (?createdNewer = ?created && STR(?paNewer) > STR(?pa)))
                   }
-                  GRAPH <%3$s> {
-                    ?assignNpNewer npa:hasLoadNumber ?lnNewer .
-                    FILTER (?lnNewer > %4$d)
+                  FILTER (?createdNewer > ?created
+                          || (?createdNewer = ?created && STR(?paNewer) > STR(?pa)))
+                  GRAPH <%1$s> {
+                    ?ra a gen:RoleAssignment ;
+                        npa:derivedFromPreset ?assignNp ;
+                        npa:forSpaceRef ?targetRef .
                   }
                   GRAPH <%1$s> {
                     ?acctNewer a npa:AccountState ;
@@ -3117,6 +3131,8 @@ public final class AuthorityResolver {
      * subject; scoped via {@code npa:derivedFromPreset} so directly-published attachments
      * are never touched. The {@link #presetAttachmentValidationUpdate} re-INSERT in the
      * same cycle re-materializes the pair iff the newest assignment is still active.
+     * The rows to remove are found first, in a sub-select, so that their triples are read
+     * by subject rather than by scanning the whole graph.
      */
     static String presetDeactivationDelete(IRI graph, long lastProcessed) {
         return String.format("""
@@ -3126,8 +3142,12 @@ public final class AuthorityResolver {
                   ?ra ?p ?o .
                 } }
                 WHERE {
-                  GRAPH <%3$s> { ?ra ?p ?o . }
+                  {
+                    SELECT DISTINCT ?ra WHERE {
                 %4$s
+                    }
+                  }
+                  GRAPH <%3$s> { ?ra ?p ?o . }
                 }
                 """, NPA.NAMESPACE, GEN.NAMESPACE, graph,
                 presetDeactivationCheckWhere(graph, lastProcessed));
