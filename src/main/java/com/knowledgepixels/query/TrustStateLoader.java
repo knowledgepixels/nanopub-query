@@ -438,11 +438,22 @@ public class TrustStateLoader {
     }
 
     /**
-     * Trust-approved status set: rows with one of these {@code npa:trustStatus}
-     * values are eligible to contribute the canonical agent name. Matches the
-     * set used by {@code AuthorityResolver.mirrorTrustState}.
+     * Trust-approved status set: accounts with one of these statuses are mirrored
+     * into the space state ({@code AuthorityResolver.mirrorTrustState}) and are
+     * eligible to contribute the canonical agent name. This is the one place the
+     * set is defined.
+     *
+     * <ul>
+     * <li>{@code loaded}: approved, with its nanopubs loaded.</li>
+     * <li>{@code capped}: approved, with its nanopubs loaded as far as its quota
+     * allows. A registry that enforces quotas gives an account this status when it
+     * reaches its quota; the account keeps its approval (issue #264).</li>
+     * <li>{@code toLoad}: approved, with its nanopubs not loaded yet. Registries
+     * leave such accounts out of the published trust state since
+     * nanopub-registry#119; the status stays here for older ones.</li>
+     * </ul>
      */
-    private static final Set<String> APPROVED_STATUSES = Set.of("loaded", "toLoad");
+    static final Set<String> APPROVED_STATUSES = Set.of("loaded", "capped", "toLoad");
 
     /**
      * Per-agent canonical name resolution. Returns a map from agent IRI to its
@@ -451,7 +462,7 @@ public class TrustStateLoader {
      *
      * <p>
      * Policy: among an agent's account rows whose {@code status} is approved
-     * ({@code loaded} or {@code toLoad}) and whose {@code ratio} and
+     * (one of {@link #APPROVED_STATUSES}) and whose {@code ratio} and
      * {@code name} are both non-null, pick the row with the highest
      * {@code ratio}. Ties break on lex-min {@code name} for determinism across
      * rebuilds. Agents with no qualifying row are simply absent from the result

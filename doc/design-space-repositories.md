@@ -270,7 +270,7 @@ GRAPH npa:graph {
 
 The graph contains two parts:
 
-1. **Mirrored trust state** — copy of the trust-approved `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. "Trust-approved" means `npa:trustStatus` ∈ `{npa:loaded, npa:toLoad}` (the positive set per [design-trust-state-repos.md](design-trust-state-repos.md); `npa:contested`, `npa:skipped`, and the transient statuses are distinct values of the same `npa:trustStatus` predicate and are excluded automatically). Inline rather than federated so per-tier UPDATEs join purely locally.
+1. **Mirrored trust state** — copy of the trust-approved `(agent, pubkey)` rows from `npat:<trustStateHash>`, inline. "Trust-approved" means `npa:trustStatus` ∈ `{npa:loaded, npa:capped, npa:toLoad}` (the positive set per [design-trust-state-repos.md](design-trust-state-repos.md); `npa:contested`, `npa:skipped`, and the transient statuses are distinct values of the same `npa:trustStatus` predicate and are excluded automatically). Inline rather than federated so per-tier UPDATEs join purely locally.
 2. **Validated closures** — `gen:RoleInstantiation` and `gen:RoleAssignment` entries copied over from `npa:spacesGraph` once they pass tier validation, one per validated nanopub. Each entry keeps its `npari:` / `npara:` subject IRI and carries `npa:viaNanopub <originatingNP>`, so invalidation cleanup matches entries by their originating nanopub.
 
 Progress counter for incremental updates, stored inside the state graph itself so it drops atomically with `DROP GRAPH npass:<oldId>`:
@@ -324,7 +324,7 @@ try (var trustConn = trustRepo.getConnection();
     spacesConn.begin();
     try (var rows = trustConn.getStatements(null, NPA.TRUST_STATUS, null, trustStateIri)) {
         for (Statement s : rows) {
-            if (!APPROVED_SET.contains(s.getObject())) continue;  // {npa:loaded, npa:toLoad}
+            if (!APPROVED_SET.contains(s.getObject())) continue;  // {npa:loaded, npa:capped, npa:toLoad}
             // copy (?accountState a npa:AccountState; npa:agent ...; npa:pubkey ...;
             //       npa:trustStatus ?status) into npass:<trustStateHash>_<loadCounterAtBuildStart>
         }

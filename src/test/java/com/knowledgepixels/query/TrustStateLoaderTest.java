@@ -333,13 +333,24 @@ class TrustStateLoaderTest {
 
     @Test
     void resolveCanonicalNames_acceptsToLoadStatusToo() {
-        // toLoad is the second authority-approving status alongside loaded.
-        // Per APPROVED_STATUSES, both should contribute names.
+        // toLoad is authority-approving too (registries before nanopub-registry#119
+        // published such accounts). Per APPROVED_STATUSES, it contributes names.
         TrustStateSnapshot.AccountEntry toLoad = new TrustStateSnapshot.AccountEntry(
                 "pk1", "https://example.org/agent", "toLoad", 1, 1, 0.5, 100L,
                 "ToLoad Name", Instant.parse("2025-01-01T00:00:00Z"));
         Map<String, String> names = TrustStateLoader.resolveCanonicalNames(snapshotOf(toLoad));
         assertEquals("ToLoad Name", names.get("https://example.org/agent"));
+    }
+
+    @Test
+    void resolveCanonicalNames_acceptsCappedStatusToo() {
+        // A registry that enforces quotas marks an account capped when it reaches its
+        // quota. The account stays approved, and so keeps its name (issue #264).
+        TrustStateSnapshot.AccountEntry capped = new TrustStateSnapshot.AccountEntry(
+                "pk1", "https://example.org/agent", "capped", 1, 1, 0.5, 100L,
+                "Capped Name", Instant.parse("2025-01-01T00:00:00Z"));
+        Map<String, String> names = TrustStateLoader.resolveCanonicalNames(snapshotOf(capped));
+        assertEquals("Capped Name", names.get("https://example.org/agent"));
     }
 
     // ---------------- fetchSnapshot ----------------

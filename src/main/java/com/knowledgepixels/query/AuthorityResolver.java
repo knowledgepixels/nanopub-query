@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.eclipse.rdf4j.common.transaction.IsolationLevels;
 import org.eclipse.rdf4j.model.IRI;
@@ -89,8 +90,6 @@ public final class AuthorityResolver {
     private static final IRI NPA_PUBKEY = vf.createIRI(NPA.NAMESPACE, "pubkey");
     private static final IRI NPA_TRUST_STATUS = vf.createIRI(NPA.NAMESPACE, "trustStatus");
     private static final IRI NPA_VIA_NANOPUB = vf.createIRI(NPA.NAMESPACE, "viaNanopub");
-    private static final IRI NPA_LOADED = vf.createIRI(NPA.NAMESPACE, "loaded");
-    private static final IRI NPA_TO_LOAD = vf.createIRI(NPA.NAMESPACE, "toLoad");
 
     /**
      * Class of the introduced-but-unapproved account rows written by
@@ -115,13 +114,16 @@ public final class AuthorityResolver {
 
     /**
      * Trust-approved set: rows with one of these {@code npa:trustStatus} values
-     * are mirrored into the space-state graph. Per
-     * {@code doc/design-trust-state-repos.md}, these are the two "authority-
-     * approving" statuses; {@code npa:contested}, {@code npa:skipped}, and the
-     * transient statuses are distinct values of the same predicate and are
-     * excluded automatically by this positive-list filter.
+     * are mirrored into the space-state graph. These are the "authority-approving"
+     * statuses of {@link TrustStateLoader#APPROVED_STATUSES} as IRIs, so that the
+     * mirror and the canonical names cannot disagree on them;
+     * {@code npa:contested}, {@code npa:skipped}, and the transient statuses are
+     * distinct values of the same predicate and are excluded automatically by
+     * this positive-list filter.
      */
-    private static final Set<IRI> APPROVED_SET = Set.of(NPA_LOADED, NPA_TO_LOAD);
+    private static final Set<IRI> APPROVED_SET = TrustStateLoader.APPROVED_STATUSES.stream()
+            .map(status -> vf.createIRI(NPA.NAMESPACE, status))
+            .collect(Collectors.toUnmodifiableSet());
 
     private static AuthorityResolver instance;
 

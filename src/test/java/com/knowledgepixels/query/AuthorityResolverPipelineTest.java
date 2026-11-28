@@ -94,22 +94,27 @@ class AuthorityResolverPipelineTest {
 
     @Test
     void mirrorTrustState_copiesOnlyTrustApprovedRows() {
-        // loaded + toLoad are the two authority-approving statuses; contested and
-        // skipped rows must not confer any authority in the space state.
+        // loaded, capped and toLoad are the authority-approving statuses; contested
+        // and skipped rows must not confer any authority in the space state.
         try (InMemoryTripleStore store = new InMemoryTripleStore()) {
             trustAccount(store, HASH, "a1", "https://example.org/alice", "pk1", "loaded");
             trustAccount(store, HASH, "a2", "https://example.org/bob", "pk2", "toLoad");
             trustAccount(store, HASH, "a3", "https://example.org/mallory", "pk3", "contested");
             trustAccount(store, HASH, "a4", "https://example.org/eve", "pk4", "skipped");
+            trustAccount(store, HASH, "a5", "https://example.org/carol", "pk5", "capped");
 
             IRI target = SpacesVocab.forSpaceState(HASH, 1L);
             int mirrored = resolver().mirrorTrustState(HASH, target);
 
-            assertEquals(2, mirrored, "only the two approved rows are mirrored");
+            assertEquals(3, mirrored, "only the three approved rows are mirrored");
             assertTrue(store.ask(SPACES, "ASK { GRAPH <%s> { <https://example.org/acct/a1> <%sagent> <https://example.org/alice> } }"
                     .formatted(target, NPA.NAMESPACE)));
             assertTrue(store.ask(SPACES, "ASK { GRAPH <%s> { <https://example.org/acct/a2> <%sagent> <https://example.org/bob> } }"
                     .formatted(target, NPA.NAMESPACE)));
+            // An account that reached its quota under quota enforcement keeps its approval (issue #264).
+            assertTrue(store.ask(SPACES, "ASK { GRAPH <%1$s> { <https://example.org/acct/a5> <%2$sagent> <https://example.org/carol> ; <%2$strustStatus> <%2$scapped> } }"
+                    .formatted(target, NPA.NAMESPACE)),
+                    "capped is mirrored, with its status");
             assertFalse(store.ask(SPACES, "ASK { GRAPH <%s> { <https://example.org/acct/a3> ?p ?o } }".formatted(target)),
                     "contested must not be mirrored");
             assertFalse(store.ask(SPACES, "ASK { GRAPH <%s> { <https://example.org/acct/a4> ?p ?o } }".formatted(target)),
